@@ -1,0 +1,130 @@
+/* ENGINE LAYER (Phase 3) — runs on top of the locked Premium Finish skin.
+   Presentational additions only; the canonical DOM/ids/hierarchy are untouched. */
+#cv{position:absolute;border-radius:26px;z-index:1;display:none}
+body.p3 #cv{display:block}
+body.p3 .layer.cv-scene{opacity:0;pointer-events:none}
+body.p3 .cv-toggle,body.p3 .cv-tag,body.p3 .cv-status,body.p3 .cv-hint,body.p3 .cv-legend{z-index:3}
+
+/* soft transition veil between environments */
+.p3-fade{position:absolute;inset:0;border-radius:26px;background:#05060a;opacity:0;pointer-events:none;transition:opacity .22s ease;z-index:2}
+.p3-fade.show{opacity:1}
+
+/* floating object-editor toolbar (Select tool only) */
+.p3-toolbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%) translateY(4px);
+  display:none;gap:4px;align-items:center;padding:6px;border-radius:999px;z-index:6;
+  background:rgba(9,12,17,.72);border:1px solid rgba(255,255,255,.08);
+  backdrop-filter:blur(22px) saturate(1.3);box-shadow:0 22px 60px rgba(0,0,0,.5)}
+body.p3 .p3-toolbar.on{display:flex}
+.p3-toolbar button{height:40px;min-width:54px;padding:0 12px;border-radius:999px;font-size:12px;font-weight:650;
+  color:#a9b3c2;border:1px solid transparent;background:transparent}
+.p3-toolbar button:hover{background:rgba(255,255,255,.05);color:#fff}
+.p3-toolbar button:disabled{opacity:.32;cursor:default;background:rgba(255,255,255,0);border-color:rgba(255,255,255,.06);color:rgba(255,255,255,.55)}
+.p3-toolbar button.on{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.2);color:#fff}
+.p3-toolbar i{width:1px;height:26px;background:rgba(255,255,255,.09);margin:0 4px}
+
+/* overlay host */
+#sosOv{display:none;position:fixed;inset:0;z-index:80;align-items:center;justify-content:center;
+  background:rgba(4,5,8,.62);backdrop-filter:blur(14px) saturate(1.2)}
+#sosOv.p3{display:flex}
+#sosOv .p3-panel{width:min(920px,94vw);max-height:86vh;display:flex;flex-direction:column;
+  background:rgba(14,17,23,.8);border:1px solid rgba(255,255,255,.09);border-radius:24px;
+  box-shadow:0 50px 140px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05);overflow:hidden}
+.p3-panel-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid rgba(255,255,255,.06)}
+.p3-panel-head b{font-size:15px;font-weight:800;letter-spacing:-.01em;color:#f5f7fa}
+.p3-x{width:34px;height:34px;border-radius:999px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);
+  color:#9aa4b4;font-size:13px;font-weight:700}
+.p3-x:hover{background:rgba(255,255,255,.1);color:#fff}
+.p3-panel-body{padding:16px 20px 22px;overflow:auto;display:flex;flex-direction:column;gap:18px}
+.p3-sec{display:flex;flex-direction:column;gap:10px}
+.p3-sec>label{font-size:10px;font-weight:800;letter-spacing:.24em;color:#6b7686;text-transform:uppercase}
+.p3-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.p3-opt{height:40px;padding:0 15px;border-radius:12px;font-size:12.5px;font-weight:650;
+  color:#c2cad7;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)}
+.p3-opt:hover{background:rgba(255,255,255,.08);color:#fff}
+.p3-opt.on,.p3-opt.primary{background:#fff;color:#0a0c11;border-color:#fff;font-weight:750}
+.p3-opt.busy{opacity:.5;pointer-events:none}
+.p3-sec.sub{font-size:12px;color:#7e8796;line-height:1.5}
+/* environment tiles */
+.p3-env{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.p3-tile{display:flex;flex-direction:column;gap:8px;padding:8px;border-radius:16px;text-align:left;
+  background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06)}
+.p3-tile:hover{border-color:rgba(255,255,255,.16);background:rgba(255,255,255,.05)}
+.p3-tile .th{height:88px;border-radius:11px;background-size:cover;background-position:center;
+  background-color:#12151b;border:1px solid rgba(255,255,255,.05)}
+.p3-tile b{font-size:12px;font-weight:650;color:#dfe5ed;padding:0 2px 2px}
+.p3-tile.on{border-color:rgba(255,255,255,.32);box-shadow:0 0 0 3px rgba(255,255,255,.07)}
+.p3-tile.on b{color:#fff}
+/* versions */
+.p3-vers{display:flex;flex-direction:column;gap:8px}
+.p3-ver{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:13px;
+  background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06)}
+.p3-ver span{font-weight:650;font-size:13px;color:#e6ebf2}
+.p3-ver small{color:#6d7788;font-size:11.5px;margin-left:auto}
+.p3-ver i{display:flex;gap:6px}
+.p3-ver button{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#c7d0dd;
+  border-radius:9px;font-size:11.5px;padding:6px 10px}
+.p3-ver button:hover{background:#fff;color:#0a0c11}
+.p3-empty{color:#6b7686;font-size:12.5px;padding:6px 0}
+/* materials list (runtime) */
+.p3-mats{display:flex;flex-direction:column;gap:6px}
+.p3-part{display:flex;align-items:center;gap:11px;padding:8px 9px;border-radius:13px;
+  border:1px solid transparent}
+.p3-part:hover{background:rgba(255,255,255,.03)}
+.p3-part.on{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.14)}
+.p3-part .sw{width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,.14)}
+.p3-part .mn{display:flex;flex-direction:column;gap:1px}
+.p3-part .mn b{font-size:12.5px;font-weight:650;color:#e6ebf2}
+.p3-part .mn span{font-size:10.5px;color:#75808f}
+.p3-part .dots{margin-left:auto;display:flex;gap:5px}
+.p3-part .dots i{width:11px;height:11px;border-radius:99px;border:1px solid rgba(255,255,255,.12)}
+.p3-adv{display:flex;flex-direction:column;gap:10px;border-top:1px solid rgba(255,255,255,.06);padding-top:12px}
+.p3-adv>label{font-size:10px;font-weight:800;letter-spacing:.2em;color:#6b7686;text-transform:uppercase}
+.p3-sl{display:grid;grid-template-columns:96px 1fr auto;align-items:center;gap:10px}
+.p3-sl>span{font-size:11.5px;color:#9aa5b5}
+.p3-sl input[type=range]{width:100%;accent-color:#6aa5ff;height:18px}
+.p3-sl input[type=color]{width:44px;height:34px;border:none;border-radius:9px;background:transparent;cursor:pointer}
+.p3-fmtsum{font-size:11.5px;color:#7e8796;margin-top:2px}
+/* help/controls list */
+.p3-list{display:flex;flex-direction:column;gap:8px}
+.p3-list>div{display:grid;grid-template-columns:170px 1fr;gap:12px;align-items:baseline}
+.p3-list b{font-size:12px;color:#dfe6ee;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.p3-list span{font-size:12.5px;color:#98a2b2;line-height:1.5}
+/* Learn tour */
+.p3-tour{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+.p3-tour .p3-spot{position:fixed;border-radius:16px;box-shadow:0 0 0 2000px rgba(3,4,8,.6),0 0 0 2px rgba(150,195,255,.85),0 0 40px rgba(106,165,255,.6);
+  transition:all .34s cubic-bezier(.22,.8,.3,1);pointer-events:none;z-index:1}
+.p3-tooltip{position:fixed;z-index:2;width:min(360px,84vw);background:rgba(16,20,26,.96);
+  border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:16px;
+  box-shadow:0 40px 110px rgba(0,0,0,.7);transition:all .34s cubic-bezier(.22,.8,.3,1)}
+.p3-tt-head{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.p3-tt-head i{display:grid;place-items:center;width:30px;height:30px;border-radius:10px;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#a6c8ff}
+.p3-tt-head b{font-size:13px;font-weight:750;color:#f5f7fa;letter-spacing:.01em}
+.p3-tt-head .p3-x{margin-left:auto;width:28px;height:28px}
+.p3-tt-body{font-size:12.5px;color:#b9c2d0;line-height:1.5}
+.p3-video-slot{margin-top:12px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:13px;
+  background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.14)}
+.p3-video-slot i{display:grid;place-items:center;width:30px;height:30px;border-radius:999px;background:#fff;color:#0a0c11}
+.p3-video-slot span{font-size:11px;color:#8b96a6}
+.p3-tt-foot{display:flex;align-items:center;gap:8px;margin-top:14px}
+.p3-tt-foot span{margin-right:auto;font-size:10.5px;color:#6d7788;letter-spacing:.1em}
+.p3-tt-foot button{height:36px;padding:0 14px;border-radius:11px;font-size:12px;font-weight:700;
+  border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#dbe2ec}
+.p3-tt-foot button:hover{background:#fff;color:#0a0c11}
+
+/* Honor Pad / touch floors (design-system: 13px+ readable, targets >= 40px) */
+@media (max-width:1240px) and (orientation:landscape), (max-width:900px){
+  .p3-toolbar button{height:46px;min-width:64px;font-size:13px}
+  .p3-toolbar{bottom:14px}
+  .p3-opt{height:44px;font-size:13px}
+  .p3-x{width:42px;height:42px;font-size:15px}
+  .p3-tile .th{height:96px}
+  .p3-part .mn b{font-size:13px}.p3-part .mn span{font-size:11.5px}
+  .p3-sl>span{font-size:13px}
+  .p3-panel-head b{font-size:16px}
+  .p3-tt-body{font-size:13.5px}.p3-list span{font-size:13px}
+}
+@media (max-width:980px){
+  .p3-panel{width:94vw;max-height:88vh}
+  .p3-env{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+}

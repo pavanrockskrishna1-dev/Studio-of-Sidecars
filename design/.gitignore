@@ -1,0 +1,37 @@
+# ---- Studio of Sidecars repo — ignore rules ----
+# Only scratch/tooling caches are ignored. Canonical sources, env assets, the
+# Hero, and approval screens under design/**/exports/ are committed.
+
+# deps / runtimes / caches
+node_modules/
+package-lock.json
+.pwlibs/
+ms-playwright/
+playwright/
+.cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.tox/
+.nox/
+.venv/
+venv/
+
+# QA scratch only (temp probes/screens, never canonical)
+_tmp_*
+tmp_*
+scratch/
+*.bak
+*~
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# local secrets (never committed)
+.env
+.env.*
+!.env.example
