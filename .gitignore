@@ -1,0 +1,42 @@
+# ---- dependencies & package caches ----
+node_modules/
+package-lock.json
+
+# ---- Playwright / Chromium runtimes & caches ----
+.pwlibs/
+ms-playwright/
+playwright/
+.cache/
+
+# ---- build / tool caches ----
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.tox/
+.nox/
+.venv/
+venv/
+
+# ---- temporary screenshots / QA scratch only ----
+# (canonical approval screens under design/**/exports/ are NOT ignored)
+_tmp_*.png
+_tmp_*.mjs
+tmp_*.png
+scratch/
+*.bak
+*~
+
+# ---- OS cruft ----
+.DS_Store
+Thumbs.db
+
+# ---- local dot-env / secrets guard (never committed) ----
+.env
+.env.*
+!.env.example
+
+# sandbox marker
+.sudo_as_admin_successful

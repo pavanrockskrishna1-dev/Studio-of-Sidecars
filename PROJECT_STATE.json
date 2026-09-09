@@ -1,0 +1,87 @@
+{
+  "project": "Premium GLB Commercial Studio — multi-version single-file HTML studio",
+  "status": "COMPLETE — final regression green (223/223, zero console errors)",
+  "buildDate": "2026-09-09",
+  "deliverables": {
+    "singleFile": "deliverables/Premium_GLB_Commercial_Studio.html",
+    "zip": "Premium_GLB_Commercial_Studio.zip",
+    "readme": "deliverables/README_PREMIUM_STUDIO.txt"
+  },
+  "versions": {
+    "count": 6,
+    "bootVersion": "commercial",
+    "builtins": [
+      { "id": "classic", "label": "Classic Studio", "short": "V1" },
+      { "id": "commercial", "label": "Instagram Commercial", "short": "V2" },
+      { "id": "blender", "label": "Blender Python", "short": "V3" },
+      { "id": "creator", "label": "Creator Studio", "short": "V4" },
+      { "id": "assetlib", "label": "Asset Library", "short": "V5" },
+      { "id": "brandstudio", "label": "Brand Studio", "short": "V6" }
+    ],
+    "userDuplicatesAllowed": "yes via toolbar '＋ V7…' (persisted)",
+    "noNewVersionForHub": "Creator Hub implemented inside V6 (brandstudio) only"
+  },
+  "creatorHubV6": {
+    "projectManager": true,
+    "undoRedo": { "engineHistory": true, "keyboardShortcuts": true, "touchButtons": true, "cap": 200 },
+    "presetLibrary": { "camera": true, "lighting": true, "scene": true },
+    "autoBackup": { "intervalMs": 180000, "recoveryBannerOnBoot": true },
+    "batchExport": {
+      "reelMp4": "Blender Python script 1080x1920",
+      "story": "PNG 1080x1920 + MP4 Blender script",
+      "postPng": "1080x1080",
+      "heroImages": ["front", "side", "rear", "top", "45"],
+      "transparentPngPack": true,
+      "blenderCompatible": true
+    },
+    "quickWorkflow": ["chooseProject", "addAssets", "chooseScene", "buildReel", "export"],
+    "offline": true
+  },
+  "brandStudioV6": {
+    "sampleKits": ["Coffee Bike", "BBQ Bike", "The KOP"],
+    "customKits": true,
+    "watermarkInPhotoExports": true,
+    "introOutroCards": true,
+    "crossVersionPersistence": true
+  },
+  "regression": {
+    "multiver": 25,
+    "vermanager": 40,
+    "blender": 25,
+    "creator": 32,
+    "asset": 28,
+    "brand": 25,
+    "hub": 48,
+    "total": 223,
+    "consoleErrors": 0,
+    "suites": ["multiver_test.mjs", "vermanager_test.mjs", "blender_test.mjs", "creator_test.mjs", "asset_test.mjs", "brand_test.mjs", "hub_test.mjs"]
+  },
+  "source": {
+    "root": "viewer_src/",
+    "build": "cd viewer_src && npm run build  ->  dist/index.html (single file)",
+    "newHubModules": [
+      "src/core/hub.js",
+      "src/core/hub_ui.js",
+      "src/core/hub_exports.js",
+      "src/core/blender_render.js (exports added)",
+      "src/core/studio.js (snapshot/restore/renderBlob/history hooks)",
+      "src/main.js (hub wiring)",
+      "src/versions/version-brand.js (hub chrome)",
+      "index.html (hub CSS)"
+    ],
+    "storageKeys": [
+      "glbHub.projects.meta.v1",
+      "glbHub.project.<id>",
+      "glbHub.autobackup.v1",
+      "glbHub.presets.v1",
+      "glbStudio.brand.kits.v1",
+      "glbStudio.brand.active.v1"
+    ]
+  },
+  "nextStepsForMaintainer": [
+    "Regenerate deliverable after any source change (npm run build, copy dist/index.html to deliverables/, rebuild zip).",
+    "Re-run all 7 test suites (Playwright) after any change; they must stay 223/223 with zero console errors.",
+    "MP4 export is delivered as offline Blender Python scripts by design (browser cannot encode H.264); do not remove scene.glb from packs.",
+    "Do NOT add a V7 template for hub features — hub must remain inside V6."
+  ]
+}

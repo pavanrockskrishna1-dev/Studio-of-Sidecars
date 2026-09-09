@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate Special 3D Studio - Professional Edition</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+        #canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            max-width: 420px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 100;
+        }
+        .controls::-webkit-scrollbar {
+            width: 8px;
+        }
+        .controls::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        .controls::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .controls h2 {
+            margin: 0 0 15px 0;
+            font-size: 20px;
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .section:first-of-type {
+            border-top: none;
+            margin-top: 0;
+        }
+        .section h3 {
+            font-size: 14px;
+            color: #ff6b35;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .file-input label {
+            display: block;
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: 600;
+            transition: transform 0.2s;
+            margin-bottom: 10px;
+        }
+        .file-input label:hover {
+            transform: translateY(-2px);
+        }
+        .file-input input {
+            display: none;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px 0;
+            width: 100%;
+            font-weight: 500;
+            transition: background 0.2s;
+            font-size: 14px;
+        }
+        .btn:hover:not(:disabled) {
+            background: #1d4ed8;
+        }
+        .btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .btn-danger {
+            background: #dc2626;
+        }
+        .btn-danger:hover:not(:disabled) {
+            background: #b91c1c;
+        }
+        .btn-success {
+            background: #16a34a;
+        }
+        .btn-success:hover:not(:disabled) {
+            background: #15803d;
+        }
+        .btn-purple {
+            background: #8b5cf6;
+        }
+        .btn-purple:hover:not(:disabled) {
+            background: #7c3aed;
+        }
+        .btn-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .btn-grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+        }
+        .parts-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 10px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 8px;
+        }
+        .parts-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .parts-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .parts-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+        .part-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 6px 0;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .part-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 107, 53, 0.3);
+        }
+        .part-item.selected {
+            border-color: #ff6b35;
+            background: rgba(255, 107, 53, 0.15);
+        }
+        .part-name {
+            font-weight: 600;
+            color: #fff;
+            flex: 1;
+        }
+        .part-color-preview {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            margin: 0 8px;
+        }
+        .delete-part-btn {
+            background: #dc2626;
+            border: none;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.2s;
+        }
+        .delete-part-btn:hover {
+            background: #b91c1c;
+        }
+        input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            margin: 8px 0;
+        }
+        label {
+            color: #ccc;
+            font-size: 13px;
+            display: block;
+            margin-top: 12px;
+            margin-bottom: 4px;
+        }
+        select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        .color-picker-group {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+            margin: 10px 0;
+        }
+        .color-preset {
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+            font-size: 11px;
+        }
+        .color-preset:hover {
+            border-color: #ff6b35;
+            transform: scale(1.05);
+        }
+        input[type="range"] {
+            width: 100%;
+            margin: 8px 0;
+        }
+        input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        .slider-value {
+            color: #ff6b35;
+            font-weight: 600;
+            font-size: 12px;
+            text-align: right;
+            margin-top: -4px;
+            margin-bottom: 8px;
+        }
+        .light-preset {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 8px 0;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .light-preset:hover {
+            border-color: #ff6b35;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .light-preset.active {
+            border-color: #16a34a;
+            background: rgba(22, 163, 74, 0.1);
+        }
+        .light-preset-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .light-preset-desc {
+            font-size: 11px;
+            color: #999;
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: #999;
+            font-size: 13px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 420px;
+            z-index: 100;
+        }
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            font-size: 13px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 100;
+        }
+        .stats-item {
+            margin: 5px 0;
+        }
+        .placeholder {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #666;
+            font-size: 18px;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .placeholder-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        .notification {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 20px 30px;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            z-index: 1000;
+            border: 2px solid #16a34a;
+            display: none;
+        }
+        .notification.show {
+            display: block;
+            animation: fadeInOut 2s;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+        }
+        .quick-actions {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        .quick-btn {
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+            backdrop-filter: blur(10px);
+        }
+        .quick-btn:hover {
+            background: rgba(255, 107, 53, 0.9);
+            transform: translateY(-2px);
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            flex: 1;
+        }
+        .camera-preset-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .camera-preset-btn:hover {
+            background: rgba(255, 107, 53, 0.2);
+            border-color: #ff6b35;
+        }
+        .position-control {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+            margin: 8px 0;
+        }
+        .position-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+        .position-btn:hover {
+            background: rgba(255, 107, 53, 0.3);
+        }
+        .color-scheme {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 8px 0;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .color-scheme:hover {
+            border-color: #ff6b35;
+        }
+        .color-scheme-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .color-scheme-preview {
+            display: flex;
+            gap: 4px;
+            height: 20px;
+        }
+        .color-scheme-preview div {
+            flex: 1;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="controls">
+        <h2>🎬 Ultimate 3D Studio Pro</h2>
+        
+        <!-- Quick Actions -->
+        <div class="section">
+            <h3>⚡ Quick Actions</h3>
+            <div class="btn-grid">
+                <button class="btn btn-success" id="screenshotBtn">📷 Photo</button>
+                <button class="btn btn-success" id="screenshot4kBtn">📷 4K</button>
+            </div>
+            <button class="btn btn-danger" id="recordBtn">⏺️ Record</button>
+            <button class="btn" id="stopRecordBtn" style="display: none;">⏹️ Stop</button>
+            <div id="recordingStatus" style="color: #ff6b35; font-size: 12px; margin-top: 8px; display: none;">
+                ⏺️ Recording... <span id="recordTime">0:00</span>
+            </div>
+        </div>
+        
+        <!-- Add Models -->
+        <div class="section">
+            <h3>➕ Models</h3>
+            <div class="file-input">
+                <label for="file">📁 Add Model</label>
+                <input type="file" id="file" accept=".glb,.gltf" multiple>
+            </div>
+        </div>
+        
+        <!-- View Modes -->
+        <div class="section" id="viewSection" style="display: none;">
+            <h3>👁️ View Modes</h3>
+            <div class="checkbox-group">
+                <input type="checkbox" id="wireframeMode">
+                <label for="wireframeMode">Wireframe Mode</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="xrayMode">
+                <label for="xrayMode">X-Ray Mode</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="showGrid">
+                <label for="showGrid">Show Grid</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="autoRotate">
+                <label for="autoRotate">Auto-Rotate</label>
+            </div>
+            <div style="display: none;" id="rotateSpeedControl">
+                <label>Rotation Speed:</label>
+                <input type="range" id="rotateSpeed" min="0.001" max="0.05" step="0.001" value="0.01">
+                <div class="slider-value" id="rotateSpeedValue">0.01</div>
+            </div>
+        </div>
+        
+        <!-- Camera Presets -->
+        <div class="section" id="cameraSection" style="display: none;">
+            <h3>📷 Camera Angles</h3>
+            <div class="btn-grid-3">
+                <button class="camera-preset-btn" data-angle="front">⬆️ Front</button>
+                <button class="camera-preset-btn" data-angle="top">⬆️ Top</button>
+                <button class="camera-preset-btn" data-angle="right">➡️ Right</button>
+                <button class="camera-preset-btn" data-angle="45">↗️ 45°</button>
+                <button class="camera-preset-btn" data-angle="back">⬇️ Back</button>
+                <button class="camera-preset-btn" data-angle="left">⬅️ Left</button>
+            </div>
+            <button class="btn" id="resetCamera" style="margin-top: 10px;">🔄 Reset</button>
+        </div>
+        
+        <!-- Background -->
+        <div class="section">
+            <h3>🖼️ Background</h3>
+            <label>Color:</label>
+            <input type="color" id="bgColor" value="#1a1a1a">
+            
+            <label>Or Upload Image:</label>
+            <div class="file-input">
+                <label for="bgImageFile">📷 Upload</label>
+                <input type="file" id="bgImageFile" accept="image/*">
+            </div>
+            <button class="btn btn-danger" id="removeBgBtn" style="display: none;">❌ Remove Image</button>
+        </div>
+        
+        <!-- Lighting -->
+        <div class="section">
+            <h3>💡 Lighting</h3>
+            <div id="lightPresets">
+                <div class="light-preset active" data-preset="studio">
+                    <div class="light-preset-name">🏢 Studio</div>
+                    <div class="light-preset-desc">Product shots</div>
+                </div>
+                <div class="light-preset" data-preset="dramatic">
+                    <div class="light-preset-name">🎬 Dramatic</div>
+                    <div class="light-preset-desc">Cinematic</div>
+                </div>
+                <div class="light-preset" data-preset="soft">
+                    <div class="light-preset-name">☁️ Soft</div>
+                    <div class="light-preset-desc">Gentle</div>
+                </div>
+                <div class="light-preset" data-preset="golden">
+                    <div class="light-preset-name">🌅 Golden</div>
+                    <div class="light-preset-desc">Sunset</div>
+                </div>
+            </div>
+            
+            <label>Brightness:</label>
+            <input type="range" id="brightness" min="0.2" max="3" step="0.1" value="1">
+            <div class="slider-value" id="brightnessValue">1.0x</div>
+            
+            <label>Shadows:</label>
+            <input type="range" id="shadowStrength" min="0" max="1" step="0.1" value="0.3">
+            <div class="slider-value" id="shadowValue">0.3</div>
+        </div>
+        
+        <!-- Parts List -->
+        <div class="section" id="partSection" style="display: none;">
+            <h3>🎯 Parts (<span id="partsCount">0</span>)</h3>
+            <div class="parts-list" id="partsListContainer"></div>
+        </div>
+        
+        <!-- Selected Part -->
+        <div class="section" id="selectedPartSection" style="display: none;">
+            <h3>🎨 <span id="selectedPartName">Part</span></h3>
+            
+            <label>Color:</label>
+            <input type="color" id="partColor" value="#ff6b35">
+            
+            <div class="color-picker-group">
+                <div class="color-preset" style="background: #ff6b35;" data-color="#ff6b35">🔥</div>
+                <div class="color-preset" style="background: #dc2626;" data-color="#dc2626">🔴</div>
+                <div class="color-preset" style="background: #2563eb;" data-color="#2563eb">🔵</div>
+                <div class="color-preset" style="background: #16a34a;" data-color="#16a34a">🟢</div>
+                <div class="color-preset" style="background: #fbbf24;" data-color="#fbbf24">🟡</div>
+                <div class="color-preset" style="background: #8b5cf6;" data-color="#8b5cf6">🟣</div>
+                <div class="color-preset" style="background: #ffffff;" data-color="#ffffff">⚪</div>
+                <div class="color-preset" style="background: #000000;" data-color="#000000">⚫</div>
+            </div>
+            
+            <label>Material:</label>
+            <select id="partMaterial">
+                <option value="standard">Standard</option>
+                <option value="glossy">Glossy</option>
+                <option value="metallic">Metallic</option>
+                <option value="chrome">Chrome</option>
+                <option value="matte">Matte</option>
+            </select>
+            
+            <label>Position (Precise):</label>
+            <div class="position-control">
+                <div>
+                    <input type="number" id="posX" step="0.1" placeholder="X">
+                </div>
+                <div>
+                    <input type="number" id="posY" step="0.1" placeholder="Y">
+                </div>
+                <div>
+                    <input type="number" id="posZ" step="0.1" placeholder="Z">
+                </div>
+            </div>
+            
+            <label>Position Controls:</label>
+            <div class="position-control">
+                <button class="position-btn" data-dir="left">⬅️</button>
+                <button class="position-btn" data-dir="up">⬆️</button>
+                <button class="position-btn" data-dir="right">➡️</button>
+                <button class="position-btn" data-dir="back">↙️</button>
+                <button class="position-btn" data-dir="down">⬇️</button>
+                <button class="position-btn" data-dir="forward">↗️</button>
+            </div>
+            
+            <label>Move Step Size:</label>
+            <select id="stepSize">
+                <option value="0.1">Small (0.1)</option>
+                <option value="0.5" selected>Medium (0.5)</option>
+                <option value="1">Large (1.0)</option>
+                <option value="2">XL (2.0)</option>
+            </select>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="snapToGrid">
+                <label for="snapToGrid">Snap to Grid</label>
+            </div>
+            
+            <div class="btn-grid">
+                <button class="btn" id="resetPos">🔄 Reset Pos</button>
+                <button class="btn btn-danger" id="deletePart">🗑️ Delete</button>
+            </div>
+        </div>
+        
+        <!-- Color Schemes -->
+        <div class="section" id="colorSchemeSection" style="display: none;">
+            <h3>🎨 Color Schemes</h3>
+            <div class="color-scheme" data-scheme="fire">
+                <div class="color-scheme-name">🔥 Fire</div>
+                <div class="color-scheme-preview">
+                    <div style="background: #dc2626;"></div>
+                    <div style="background: #ff6b35;"></div>
+                    <div style="background: #fbbf24;"></div>
+                </div>
+            </div>
+            <div class="color-scheme" data-scheme="ocean">
+                <div class="color-scheme-name">🌊 Ocean</div>
+                <div class="color-scheme-preview">
+                    <div style="background: #0ea5e9;"></div>
+                    <div style="background: #06b6d4;"></div>
+                    <div style="background: #14b8a6;"></div>
+                </div>
+            </div>
+            <div class="color-scheme" data-scheme="forest">
+                <div class="color-scheme-name">🌲 Forest</div>
+                <div class="color-scheme-preview">
+                    <div style="background: #16a34a;"></div>
+                    <div style="background: #65a30d;"></div>
+                    <div style="background: #84cc16;"></div>
+                </div>
+            </div>
+            <div class="color-scheme" data-scheme="sunset">
+                <div class="color-scheme-name">🌅 Sunset</div>
+                <div class="color-scheme-preview">
+                    <div style="background: #f97316;"></div>
+                    <div style="background: #f59e0b;"></div>
+                    <div style="background: #fbbf24;"></div>
+                </div>
+            </div>
+            <div class="color-scheme" data-scheme="monochrome">
+                <div class="color-scheme-name">⚫ Mono</div>
+                <div class="color-scheme-preview">
+                    <div style="background: #000000;"></div>
+                    <div style="background: #6b7280;"></div>
+                    <div style="background: #ffffff;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="stats">
+        <div class="stats-item">📦 <strong>Parts:</strong> <span id="statsPartsCount">0</span></div>
+        <div class="stats-item">🎯 <strong>Selected:</strong> <span id="statsSelected">None</span></div>
+        <div class="stats-item">📐 <strong>Pos:</strong> <span id="statsPosition">-</span></div>
+    </div>
+    
+    <div class="info">
+        💡 <strong>Pro Controls:</strong><br>
+        • Precise positioning with number inputs<br>
+        • Arrow buttons for small adjustments<br>
+        • Snap to grid for alignment<br>
+        • Auto-rotate, wireframe, x-ray modes!
+    </div>
+    
+    <div class="quick-actions">
+        <button class="quick-btn" id="quickSave">💾 Save Config</button>
+        <button class="quick-btn" id="quickUndo" disabled>↩️ Undo</button>
+    </div>
+    
+    <div class="placeholder" id="placeholder">
+        <div class="placeholder-icon">✨</div>
+        <div>Ultimate 3D Studio Pro<br>
+        <small style="color: #999; font-size: 14px;">Professional features included!</small></div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 6, 8);
+
+        const renderer = new THREE.WebGLRenderer({ 
+            canvas: document.getElementById('canvas'), 
+            antialias: true,
+            preserveDrawingBuffer: true 
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.shadowMap.enabled = true;
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Lighting
+        let ambLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambLight);
+
+        let dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 10, 5);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        let fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        fillLight.position.set(-5, 5, -5);
+        scene.add(fillLight);
+
+        // Ground
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(100, 100),
+            new THREE.ShadowMaterial({ opacity: 0.3 })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+        gridHelper.position.y = -1.99;
+        gridHelper.visible = false;
+        scene.add(gridHelper);
+
+        // State
+        let allMeshes = [];
+        let selectedPart = null;
+        let originalMaterials = new Map();
+        let autoRotateEnabled = false;
+        let rotationSpeed = 0.01;
+        let undoStack = [];
+        let currentConfig = {};
+
+        const loader = new GLTFLoader();
+        const textureLoader = new THREE.TextureLoader();
+
+        // Notification
+        function showNotification(message) {
+            const notif = document.getElementById('notification');
+            notif.textContent = message;
+            notif.classList.add('show');
+            setTimeout(() => notif.classList.remove('show'), 2000);
+        }
+
+        // Save state for undo
+        function saveState() {
+            if (selectedPart) {
+                undoStack.push({
+                    uuid: selectedPart.uuid,
+                    position: selectedPart.position.clone(),
+                    rotation: selectedPart.rotation.clone(),
+                    scale: selectedPart.scale.clone(),
+                    color: selectedPart.material.color.clone()
+                });
+                document.getElementById('quickUndo').disabled = false;
+                if (undoStack.length > 20) undoStack.shift();
+            }
+        }
+
+        // Undo
+        document.getElementById('quickUndo').addEventListener('click', () => {
+            if (undoStack.length > 0) {
+                const state = undoStack.pop();
+                const mesh = allMeshes.find(m => m.uuid === state.uuid);
+                if (mesh) {
+                    mesh.position.copy(state.position);
+                    mesh.rotation.copy(state.rotation);
+                    mesh.scale.copy(state.scale);
+                    mesh.material.color.copy(state.color);
+                    updatePositionInputs();
+                    showNotification('↩️ Undone!');
+                }
+                if (undoStack.length === 0) {
+                    document.getElementById('quickUndo').disabled = true;
+                }
+            }
+        });
+
+        // Save configuration
+        document.getElementById('quickSave').addEventListener('click', () => {
+            const config = {
+                parts: allMeshes.map(mesh => ({
+                    name: mesh.name,
+                    position: mesh.position.toArray(),
+                    rotation: mesh.rotation.toArray(),
+                    scale: mesh.scale.toArray(),
+                    color: '#' + mesh.material.color.getHexString(),
+                    metalness: mesh.material.metalness,
+                    roughness: mesh.material.roughness
+                })),
+                camera: {
+                    position: camera.position.toArray(),
+                    target: controls.target.toArray()
+                },
+                background: '#' + scene.background.getHexString()
+            };
+            
+            const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `config_${Date.now()}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+            showNotification('💾 Configuration saved!');
+        });
+
+        // Screenshot
+        document.getElementById('screenshotBtn').addEventListener('click', () => {
+            renderer.render(scene, camera);
+            renderer.domElement.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `render_${Date.now()}.png`;
+                link.click();
+                URL.revokeObjectURL(url);
+                showNotification('✅ Screenshot saved!');
+            });
+        });
+
+        // 4K Screenshot
+        document.getElementById('screenshot4kBtn').addEventListener('click', () => {
+            const oldSize = { width: renderer.domElement.width, height: renderer.domElement.height };
+            renderer.setSize(3840, 2160, false);
+            renderer.render(scene, camera);
+            renderer.domElement.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `render_4k_${Date.now()}.png`;
+                link.click();
+                URL.revokeObjectURL(url);
+                showNotification('✅ 4K saved!');
+                renderer.setSize(oldSize.width, oldSize.height, false);
+            });
+        });
+
+        // Video recording
+        let mediaRecorder, recordedChunks = [], recordStartTime, recordInterval;
+
+        document.getElementById('recordBtn').addEventListener('click', async () => {
+            try {
+                const stream = renderer.domElement.captureStream(30);
+                mediaRecorder = new MediaRecorder(stream, { 
+                    mimeType: 'video/webm;codecs=vp9',
+                    videoBitsPerSecond: 8000000
+                });
+                
+                recordedChunks = [];
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+                
+                mediaRecorder.start();
+                document.getElementById('recordBtn').style.display = 'none';
+                document.getElementById('stopRecordBtn').style.display = 'block';
+                document.getElementById('recordingStatus').style.display = 'block';
+                
+                recordStartTime = Date.now();
+                recordInterval = setInterval(() => {
+                    const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    document.getElementById('recordTime').textContent = 
+                        `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }, 1000);
+                
+                showNotification('⏺️ Recording!');
+            } catch (err) {
+                alert('Recording not supported. Use Chrome or Edge!');
+            }
+        });
+
+        document.getElementById('stopRecordBtn').addEventListener('click', () => {
+            mediaRecorder.stop();
+            clearInterval(recordInterval);
+            
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `video_${Date.now()}.webm`;
+                link.click();
+                URL.revokeObjectURL(url);
+                
+                document.getElementById('recordBtn').style.display = 'block';
+                document.getElementById('stopRecordBtn').style.display = 'none';
+                document.getElementById('recordingStatus').style.display = 'none';
+                showNotification('✅ Video saved!');
+            };
+        });
+
+        // Load models
+        document.getElementById('file').addEventListener('change', (e) => {
+            const files = e.target.files;
+            Array.from(files).forEach((file, index) => {
+                const url = URL.createObjectURL(file);
+                
+                loader.load(url, (gltf) => {
+                    const model = gltf.scene;
+                    
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 4 / maxDim;
+                    
+                    model.scale.multiplyScalar(scale);
+                    model.position.sub(center.multiplyScalar(scale));
+                    model.position.x += index * 3;
+                    model.position.y = 0;
+                    
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            allMeshes.push(child);
+                            originalMaterials.set(child.uuid, child.material.clone());
+                        }
+                    });
+                    
+                    scene.add(model);
+                    document.getElementById('placeholder').style.display = 'none';
+                    document.getElementById('viewSection').style.display = 'block';
+                    document.getElementById('cameraSection').style.display = 'block';
+                    document.getElementById('partSection').style.display = 'block';
+                    document.getElementById('colorSchemeSection').style.display = 'block';
+                    
+                    populatePartsList();
+                    updateStats();
+                    
+                    URL.revokeObjectURL(url);
+                    showNotification(`✅ ${allMeshes.length} parts loaded!`);
+                });
+            });
+            
+            e.target.value = '';
+        });
+
+        // Parts list
+        function populatePartsList() {
+            const container = document.getElementById('partsListContainer');
+            container.innerHTML = '';
+            
+            allMeshes.forEach((mesh, index) => {
+                const item = document.createElement('div');
+                item.className = 'part-item';
+                
+                const name = document.createElement('span');
+                name.className = 'part-name';
+                name.textContent = mesh.name || `Part ${index + 1}`;
+                
+                const colorPreview = document.createElement('span');
+                colorPreview.className = 'part-color-preview';
+                colorPreview.style.background = '#' + mesh.material.color.getHexString();
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-part-btn';
+                deleteBtn.textContent = '🗑️';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (confirm('Delete this part?')) {
+                        if (mesh.parent) mesh.parent.remove(mesh);
+                        allMeshes = allMeshes.filter(m => m !== mesh);
+                        if (selectedPart === mesh) {
+                            selectedPart = null;
+                            document.getElementById('selectedPartSection').style.display = 'none';
+                        }
+                        populatePartsList();
+                        updateStats();
+                        showNotification('🗑️ Deleted!');
+                    }
+                };
+                
+                item.appendChild(name);
+                item.appendChild(colorPreview);
+                item.appendChild(deleteBtn);
+                
+                item.addEventListener('click', () => selectPart(mesh));
+                
+                container.appendChild(item);
+            });
+            
+            document.getElementById('partsCount').textContent = allMeshes.length;
+        }
+
+        // Select part
+        function selectPart(mesh) {
+            saveState();
+            selectedPart = mesh;
+            document.getElementById('selectedPartSection').style.display = 'block';
+            document.getElementById('selectedPartName').textContent = mesh.name || 'Part';
+            document.getElementById('partColor').value = '#' + mesh.material.color.getHexString();
+            updatePositionInputs();
+            updateStats();
+            updatePartsListSelection();
+        }
+
+        function updatePositionInputs() {
+            if (selectedPart) {
+                document.getElementById('posX').value = selectedPart.position.x.toFixed(2);
+                document.getElementById('posY').value = selectedPart.position.y.toFixed(2);
+                document.getElementById('posZ').value = selectedPart.position.z.toFixed(2);
+            }
+        }
+
+        function updatePartsListSelection() {
+            document.querySelectorAll('.part-item').forEach((item, index) => {
+                if (allMeshes[index] === selectedPart) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        function updateStats() {
+            document.getElementById('statsPartsCount').textContent = allMeshes.length;
+            document.getElementById('statsSelected').textContent = selectedPart ? (selectedPart.name || 'Part') : 'None';
+            if (selectedPart) {
+                const p = selectedPart.position;
+                document.getElementById('statsPosition').textContent = 
+                    `${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}`;
+            }
+        }
+
+        // Color change
+        document.getElementById('partColor').addEventListener('input', (e) => {
+            if (selectedPart) {
+                selectedPart.material.color.set(e.target.value);
+                populatePartsList();
+            }
+        });
+
+        // Color presets
+        document.querySelectorAll('.color-preset').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (selectedPart) {
+                    const color = btn.getAttribute('data-color');
+                    document.getElementById('partColor').value = color;
+                    selectedPart.material.color.set(color);
+                    populatePartsList();
+                }
+            });
+        });
+
+        // Material
+        document.getElementById('partMaterial').addEventListener('change', (e) => {
+            if (!selectedPart) return;
+            const type = e.target.value;
+            const materials = {
+                standard: { metalness: 0, roughness: 0.5 },
+                glossy: { metalness: 0, roughness: 0.1 },
+                metallic: { metalness: 1, roughness: 0.3 },
+                chrome: { metalness: 1, roughness: 0.05 },
+                matte: { metalness: 0, roughness: 1 }
+            };
+            Object.assign(selectedPart.material, materials[type]);
+        });
+
+        // Position inputs (PRECISE CONTROL!)
+        ['posX', 'posY', 'posZ'].forEach(id => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                if (!selectedPart) return;
+                const axis = id.slice(-1).toLowerCase();
+                const value = parseFloat(e.target.value) || 0;
+                
+                // Snap to grid if enabled
+                const snap = document.getElementById('snapToGrid').checked;
+                selectedPart.position[axis] = snap ? Math.round(value * 2) / 2 : value;
+                
+                updateStats();
+            });
+        });
+
+        // Position buttons
+        document.querySelectorAll('.position-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!selectedPart) return;
+                saveState();
+                
+                const dir = btn.getAttribute('data-dir');
+                const step = parseFloat(document.getElementById('stepSize').value);
+                
+                switch(dir) {
+                    case 'left': selectedPart.position.x -= step; break;
+                    case 'right': selectedPart.position.x += step; break;
+                    case 'up': selectedPart.position.y += step; break;
+                    case 'down': selectedPart.position.y -= step; break;
+                    case 'forward': selectedPart.position.z -= step; break;
+                    case 'back': selectedPart.position.z += step; break;
+                }
+                
+                updatePositionInputs();
+                updateStats();
+            });
+        });
+
+        // Reset position
+        document.getElementById('resetPos').addEventListener('click', () => {
+            if (selectedPart) {
+                saveState();
+                selectedPart.position.set(0, 0, 0);
+                updatePositionInputs();
+                updateStats();
+                showNotification('🔄 Position reset!');
+            }
+        });
+
+        // Delete part
+        document.getElementById('deletePart').addEventListener('click', () => {
+            if (selectedPart && confirm('Delete this part?')) {
+                if (selectedPart.parent) selectedPart.parent.remove(selectedPart);
+                allMeshes = allMeshes.filter(m => m !== selectedPart);
+                selectedPart = null;
+                document.getElementById('selectedPartSection').style.display = 'none';
+                populatePartsList();
+                updateStats();
+                showNotification('🗑️ Deleted!');
+            }
+        });
+
+        // View modes
+        document.getElementById('wireframeMode').addEventListener('change', (e) => {
+            allMeshes.forEach(mesh => mesh.material.wireframe = e.target.checked);
+            showNotification(e.target.checked ? '🔲 Wireframe ON' : '🔲 Wireframe OFF');
+        });
+
+        document.getElementById('xrayMode').addEventListener('change', (e) => {
+            allMeshes.forEach(mesh => {
+                mesh.material.transparent = e.target.checked;
+                mesh.material.opacity = e.target.checked ? 0.3 : 1;
+            });
+            showNotification(e.target.checked ? '👻 X-Ray ON' : '👻 X-Ray OFF');
+        });
+
+        document.getElementById('showGrid').addEventListener('change', (e) => {
+            gridHelper.visible = e.target.checked;
+        });
+
+        document.getElementById('autoRotate').addEventListener('change', (e) => {
+            autoRotateEnabled = e.target.checked;
+            document.getElementById('rotateSpeedControl').style.display = e.target.checked ? 'block' : 'none';
+            showNotification(e.target.checked ? '🔄 Auto-Rotate ON' : '🔄 Auto-Rotate OFF');
+        });
+
+        document.getElementById('rotateSpeed').addEventListener('input', (e) => {
+            rotationSpeed = parseFloat(e.target.value);
+            document.getElementById('rotateSpeedValue').textContent = rotationSpeed.toFixed(3);
+        });
+
+        // Camera presets
+        document.querySelectorAll('.camera-preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const angle = btn.getAttribute('data-angle');
+                const angles = {
+                    front: [0, 4, 8],
+                    back: [0, 4, -8],
+                    left: [-8, 4, 0],
+                    right: [8, 4, 0],
+                    top: [0, 12, 0.1],
+                    '45': [6, 5, 6]
+                };
+                camera.position.set(...angles[angle]);
+                controls.target.set(0, 0, 0);
+                controls.update();
+            });
+        });
+
+        document.getElementById('resetCamera').addEventListener('click', () => {
+            camera.position.set(8, 6, 8);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        });
+
+        // Background
+        document.getElementById('bgColor').addEventListener('input', (e) => {
+            scene.background = new THREE.Color(e.target.value);
+        });
+
+        document.getElementById('bgImageFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    textureLoader.load(event.target.result, (texture) => {
+                        scene.background = texture;
+                        document.getElementById('removeBgBtn').style.display = 'block';
+                        showNotification('✅ Background added!');
+                    });
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('removeBgBtn').addEventListener('click', () => {
+            scene.background = new THREE.Color(document.getElementById('bgColor').value);
+            document.getElementById('removeBgBtn').style.display = 'none';
+        });
+
+        // Lighting presets
+        const lightingPresets = {
+            studio: { ambient: 0.8, directional: 1.2, fill: 0.6, exposure: 1.2 },
+            dramatic: { ambient: 0.2, directional: 2.0, fill: 0.1, exposure: 0.9 },
+            soft: { ambient: 1.0, directional: 0.6, fill: 0.8, exposure: 1.3 },
+            golden: { ambient: 0.5, directional: 1.5, fill: 0.3, exposure: 1.1 }
+        };
+
+        document.querySelectorAll('.light-preset').forEach(preset => {
+            preset.addEventListener('click', () => {
+                document.querySelectorAll('.light-preset').forEach(p => p.classList.remove('active'));
+                preset.classList.add('active');
+                
+                const settings = lightingPresets[preset.getAttribute('data-preset')];
+                ambLight.intensity = settings.ambient;
+                dirLight.intensity = settings.directional;
+                fillLight.intensity = settings.fill;
+                renderer.toneMappingExposure = settings.exposure;
+                
+                showNotification('💡 Lighting applied!');
+            });
+        });
+
+        document.getElementById('brightness').addEventListener('input', (e) => {
+            renderer.toneMappingExposure = parseFloat(e.target.value);
+            document.getElementById('brightnessValue').textContent = e.target.value + 'x';
+        });
+
+        document.getElementById('shadowStrength').addEventListener('input', (e) => {
+            ground.material.opacity = parseFloat(e.target.value);
+            document.getElementById('shadowValue').textContent = e.target.value;
+        });
+
+        // Color schemes
+        const colorSchemes = {
+            fire: ['#dc2626', '#ff6b35', '#fbbf24'],
+            ocean: ['#0ea5e9', '#06b6d4', '#14b8a6'],
+            forest: ['#16a34a', '#65a30d', '#84cc16'],
+            sunset: ['#f97316', '#f59e0b', '#fbbf24'],
+            monochrome: ['#000000', '#6b7280', '#ffffff']
+        };
+
+        document.querySelectorAll('.color-scheme').forEach(scheme => {
+            scheme.addEventListener('click', () => {
+                const colors = colorSchemes[scheme.getAttribute('data-scheme')];
+                allMeshes.forEach((mesh, i) => {
+                    mesh.material.color.set(colors[i % colors.length]);
+                });
+                populatePartsList();
+                showNotification('🎨 Color scheme applied!');
+            });
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (autoRotateEnabled && allMeshes.length > 0) {
+                allMeshes.forEach(mesh => {
+                    if (mesh.parent && mesh.parent.type === 'Scene') {
+                        mesh.rotation.y += rotationSpeed;
+                    }
+                });
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+import { chromium } from 'playwright-core';
+const browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-swiftshader','--use-angle=swiftshader','--ignore-gpu-blocklist'] });
+const page = await (await browser.newContext({ viewport: { width: 1360, height: 850 } })).newPage();
+await page.goto('file:///home/user/viewer_src/dist/index.html', { waitUntil: 'load', timeout: 60000 });
+await page.waitForTimeout(6000);
+const res = await page.evaluate(async () => {
+  const THREE = window.__viewer.THREE;
+  const v = window.__viewer;
+  const g = v.state.models[0] && v.state.models[0].group;
+  const clip = g && g.animations[0];
+  const out = { hasGroup: !!g, clipNames: clip ? clip.name : null, tracks: clip ? clip.tracks.map(t=>t.name) : [] };
+  if (!g || !clip) return out;
+  const mixer = new THREE.AnimationMixer(g);
+  const action = mixer.clipAction(clip);
+  action.play();
+  for (let i = 0; i < 10; i++) mixer.update(0.1);
+  const wf = g.getObjectByName('WheelFront');
+  out.qz = wf ? wf.quaternion.z : null;
+  out.bindings = action._bindings ? action._bindings.length : null;
+  out.actionTime = action.time;
+  out.mixerRoot = g.name;
+  return out;
+});
+console.log(JSON.stringify(res, null, 1));
+await browser.close();

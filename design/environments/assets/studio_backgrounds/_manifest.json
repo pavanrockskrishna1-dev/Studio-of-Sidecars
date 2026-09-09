@@ -1,0 +1,90 @@
+{
+  "app_path": "Assets -> Studio Backgrounds",
+  "hero": {
+    "name": "Hero (Default)",
+    "name_ui": "Propeller & Pistons Loft",
+    "file": "hero/HERO_propeller_pistons_loft.png",
+    "locked": true,
+    "sha256_prefix": "c37e89dd458ba0a5"
+  },
+  "resolution": "4096x2732 (4K)",
+  "rules": [
+    "same camera perspective as Hero",
+    "same circular glossy display platform position",
+    "same floor reflection quality",
+    "center stage always empty for the sidecar",
+    "no text, logos, UI, people, or vehicles"
+  ],
+  "assets": [
+    {
+      "id": "01",
+      "name": "Vintage Garage Studio",
+      "file": "assets/studio_backgrounds/vintage_garage_studio.jpg",
+      "preview": "previews/vintage_garage_studio.png",
+      "mood": "warm tungsten workshop \u00b7 amber on charcoal"
+    },
+    {
+      "id": "02",
+      "name": "Coal & Fire Forge",
+      "file": "assets/studio_backgrounds/coal_and_fire_forge.jpg",
+      "preview": "previews/coal_and_fire_forge.png",
+      "mood": "blacksmith forge \u00b7 molten furnace glow"
+    },
+    {
+      "id": "03",
+      "name": "Royal Enfield Heritage Workshop",
+      "file": "assets/studio_backgrounds/royal_enfield_heritage_workshop.jpg",
+      "preview": "previews/royal_enfield_heritage_workshop.png",
+      "mood": "heritage workshop \u00b7 green & brass \u00b7 no logos"
+    },
+    {
+      "id": "04",
+      "name": "Aviation Heritage Hangar",
+      "file": "assets/studio_backgrounds/aviation_heritage_hangar.jpg",
+      "preview": "previews/aviation_heritage_hangar.png",
+      "mood": "riveted hangar \u00b7 light shafts \u00b7 aviation decor"
+    },
+    {
+      "id": "05",
+      "name": "Industrial Steel Factory",
+      "file": "assets/studio_backgrounds/industrial_steel_factory.jpg",
+      "preview": "previews/industrial_steel_factory.png",
+      "mood": "steel hall \u00b7 cool daylight + warm lamps"
+    },
+    {
+      "id": "06",
+      "name": "Midnight Black Commercial Studio",
+      "file": "assets/studio_backgrounds/midnight_black_commercial_studio.jpg",
+      "preview": "previews/midnight_black_commercial_studio.png",
+      "mood": "black cyc \u00b7 single beam \u00b7 blue rim"
+    },
+    {
+      "id": "07",
+      "name": "Luxury Brick Loft Museum",
+      "file": "assets/studio_backgrounds/luxury_brick_loft_museum.jpg",
+      "preview": "previews/luxury_brick_loft_museum.png",
+      "mood": "brick loft \u00b7 brass track light \u00b7 alcoves"
+    },
+    {
+      "id": "08",
+      "name": "Coffee Roastery Workshop",
+      "file": "assets/studio_backgrounds/coffee_roastery_workshop.jpg",
+      "preview": "previews/coffee_roastery_workshop.png",
+      "mood": "copper roaster \u00b7 burlap \u00b7 warm haze"
+    },
+    {
+      "id": "09",
+      "name": "Matte White Photography Studio",
+      "file": "assets/studio_backgrounds/matte_white_photography_studio.jpg",
+      "preview": "previews/matte_white_photography_studio.png",
+      "mood": "seamless matte white cyc \u00b7 soft light"
+    },
+    {
+      "id": "10",
+      "name": "Marble Luxury Showroom",
+      "file": "assets/studio_backgrounds/marble_luxury_showroom.jpg",
+      "preview": "previews/marble_luxury_showroom.png",
+      "mood": "marble \u00b7 cove light \u00b7 brass accents"
+    }
+  ]
+}

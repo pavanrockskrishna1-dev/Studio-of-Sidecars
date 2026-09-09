@@ -1,0 +1,13 @@
+/* Static premium-shell extras: baked SVG sizing + inline alignment polish.
+   (The locked static shell stays pure HTML/CSS — no JS here.) */
+.abtn svg{width:14px;height:14px;flex:0 0 auto}
+#tbExport svg{width:12px;height:12px}
+#btnDoExport svg{width:15px;height:15px;vertical-align:-2px;flex:0 0 auto}
+#soLogo svg{width:22px;height:22px}
+.vrow .tick svg{width:10px;height:10px;display:block;margin:auto}
+.proj-th svg,.dz-ic svg{width:26px;height:26px}
+.dz-act svg{width:13px;height:13px;flex:0 0 auto}
+#sideNav .tile .tt-ic svg{width:15px;height:15px}
+.inspector .tt-ic svg{width:16px;height:16px}
+.tag svg{flex:0 0 auto;display:block}
+button abbr,label abbr{text-decoration:none}

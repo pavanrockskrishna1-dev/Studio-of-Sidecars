@@ -1,0 +1,403 @@
+/* =========================================================================
+   STUDIO OF SIDECARS · "CINEMATIC" FINISH LAYER
+   A premium/retail-grade restyle of the locked Phase-1 chrome.
+   - Layout regions, DOM ids, radios, and every interaction are untouched.
+   - One quiet glass material · strict loudness ladder · monochrome chrome
+     with a single reserved accent · unframed cinematic stage.
+   Applied AFTER the Phase-1 stylesheet, so these rules win the cascade.
+   ========================================================================= */
+
+/* ------------------------------ 1 · TOKENS ------------------------------ */
+
+
+/* ------------------------- 2 · PAGE / ATMOSPHERE ------------------------ */
+body{
+  background:
+    radial-gradient(1100px 620px at 74% -8%,rgba(255,255,255,.03),transparent 60%),
+    radial-gradient(900px 620px at 4% 110%,rgba(255,255,255,.02),transparent 55%),
+    linear-gradient(180deg,#07080d,#05060a 46%);
+}
+
+/* ------------------- 3 · STAGE = THE SHOWROOM, NOT A FRAME --------------- */
+.viewport{inset:var(--pad)}
+.canvas{
+  background:#030409;
+  border:1px solid rgba(255,255,255,.05);
+  border-radius:26px;
+  box-shadow:0 44px 120px rgba(0,0,0,.7),0 2px 14px rgba(0,0,0,.5);
+}
+/* cinematic stage edge: dissolve the hard corner into the page */
+.canvas::after{
+  content:"";position:absolute;inset:0;border-radius:26px;pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+}
+
+/* ------------------------------ 4 · TOP BAR ------------------------------ */
+#topStrip{
+  padding:9px 18px 8px;
+  background:linear-gradient(180deg,rgba(5,6,10,.9),rgba(5,6,10,.62));
+  border-bottom:1px solid rgba(255,255,255,.045);
+}
+#appBrand{gap:10px}
+#soLogo{
+  width:40px;height:40px;border-radius:13px;font-size:0;line-height:0;
+  background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.025));
+  border:1px solid rgba(255,255,255,.11);
+  box-shadow:0 8px 24px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.14);
+}
+#soLogo svg{width:21px;height:21px;color:#f2f5f9}
+#soTitle{font-size:15px;font-weight:750;letter-spacing:-.01em}
+#soTag{font-size:8.5px;color:#545e6c;letter-spacing:.22em;margin-top:2px}
+#projPill{
+  height:38px;padding:0 14px;border-radius:999px;font-size:12px;font-weight:650;
+  background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);
+  box-shadow:none;color:#d7deea;
+}
+#projPill .dot{width:6px;height:6px;box-shadow:0 0 8px rgba(120,220,180,.8)}
+#projPill .tx small{font-size:8.5px;color:#4f5967;letter-spacing:.1em}
+
+/* workspace segmented control */
+#topbar{
+  background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);
+  padding:4px;border-radius:999px;box-shadow:inset 0 1px 2px rgba(0,0,0,.25);
+}
+.vchip{
+  height:38px;padding:0 14px 0 9px;gap:7px;border-radius:999px;
+  font-size:11.5px;font-weight:650;color:#96a1b1;border:1px solid transparent;
+}
+.vchip i{font-size:8.5px;font-weight:800;color:#4f5a6a;letter-spacing:.1em}
+.vchip .cd{width:5px;height:5px;background:#2c3340}
+.vchip:hover{color:#e6ebf2;background:rgba(255,255,255,.045)}
+.vchip.on{
+  color:#fff;border-color:rgba(255,255,255,.16);box-shadow:none;
+  background:rgba(255,255,255,.1);
+}
+.vchip.on i{color:#9ec2ff}
+.vchip.on .cd{background:#a6c8ff;box-shadow:0 0 7px rgba(150,195,255,.9)}
+
+/* top actions: one white CTA, everything else quiet */
+#appActions{gap:8px}
+.abtn{
+  height:40px;padding:0 15px;border-radius:12px;font-size:12px;font-weight:650;
+  border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02);
+  color:#aeb8c7;box-shadow:none;
+}
+.abtn:hover{background:rgba(255,255,255,.055);color:#fff;border-color:rgba(255,255,255,.12)}
+.abtn.learn{background:transparent;border-color:rgba(255,255,255,.06);color:#cdd6e2}
+.abtn.learn:hover{color:#fff}
+.abtn.icon{width:40px;padding:0}
+.abtn.primary{
+  background:#fff;color:#0a0c11;font-weight:750;
+  border:1px solid rgba(255,255,255,.95);
+  box-shadow:0 10px 26px rgba(0,0,0,.35),inset 0 1px 0 #fff;
+}
+.abtn.primary:hover{background:#f2f5f9;color:#0a0c11}
+.abtn.primary svg,.abtn svg{color:currentColor}
+
+/* --------------------------- 5 · SIDE PANELS ---------------------------- */
+#sideNav,.inspector{
+  border-radius:22px;
+  background:linear-gradient(180deg,rgba(13,16,22,.74),rgba(8,10,14,.62));
+  border:1px solid rgba(255,255,255,.06);
+  backdrop-filter:blur(30px) saturate(1.4);-webkit-backdrop-filter:blur(30px) saturate(1.4);
+  box-shadow:0 26px 70px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.04);
+}
+.phead{padding:0 10px 8px}
+.phead .t{font-size:10px;font-weight:800;color:#4f5a69;letter-spacing:.24em}
+.phead .s{font-size:10.5px;font-weight:650;color:#798493}
+.phead .more{color:#4b5564}
+
+/* side scroll, groups */
+.scroll{scrollbar-color:#2a3140 transparent;padding:2px 4px}
+details.group{border-radius:16px}
+details.group>summary{min-height:44px;padding:2px 10px;gap:10px;border-radius:13px}
+details.group>summary .gn{font-size:12.5px;font-weight:700;color:#e7ecf3}
+details.group>summary .gc{
+  font-size:9px;font-weight:700;color:#6c7686;padding:3px 9px;border-radius:999px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.05);
+}
+details.group>summary .gv{color:#5a6575}
+details.group>summary:hover{background:rgba(255,255,255,.025)}
+details.group[open]{background:rgba(255,255,255,.018);border-color:rgba(255,255,255,.045)}
+details.group>.gbody{padding:4px 6px 12px;gap:4px}
+details.group>summary .gi{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);
+  color:#cfd7e3;box-shadow:none;border-radius:11px;
+}
+details.group>summary .gi svg{color:inherit}
+
+/* rows */
+.vrow{min-height:46px;border-radius:12px;gap:10px;padding:4px 9px}
+.vrow:hover{background:rgba(255,255,255,.03)}
+.vrow .vt{
+  width:27px;height:27px;border-radius:9px;font-size:0;line-height:0;
+  background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.05);color:#aab4c2;
+}
+.vrow .vt svg{width:14px;height:14px}
+.vrow .vn b{font-size:12.5px;font-weight:650;color:#e2e8f0}
+.vrow .vn span{font-size:9.5px;color:#596474}
+.vrow .vtag{font-size:8.5px!important;color:#4e5a6a!important;font-weight:700!important;letter-spacing:.08em}
+.vrow.on{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.09)}
+.vrow.on .vt{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.12);color:#fff}
+.vrow.on .vn b{color:#fff}
+.vrow.on .vn span{color:#8b96a6}
+.vrow.on .tick{background:#fff;color:#0a0c11;width:17px;height:17px}
+.vrow.on .tick svg{width:10px;height:10px;stroke:#0a0c11}
+
+/* asset / look tiles */
+.pill-grid{gap:7px}
+.tile{
+  border-radius:14px;border:1px solid rgba(255,255,255,.05);
+  background:rgba(255,255,255,.015);padding:11px 9px;
+}
+.tile:hover{border-color:rgba(255,255,255,.1)}
+.tile .tt-ic{
+  height:34px;font-size:0;line-height:0;margin-bottom:7px;border-radius:10px;
+  background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.05);
+  color:#c3ccd9;
+}
+.tile .tt-ic svg{width:16px;height:16px}
+.tile b{font-size:11px;font-weight:650;color:#cdd5e0}
+.tile span{font-size:9px;color:#5b6575}
+.inspector .tile .tt-ic{color:#cfd8e5}
+
+/* tags & favourite stars */
+.tag{
+  font-size:10.5px;font-weight:650;padding:6px 12px;border-radius:999px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);color:#cdd5e0;
+  display:inline-flex;align-items:center;gap:6px;
+}
+.tag b{font-size:9px;color:#5a6575}
+.tag svg{width:10px;height:10px;color:#d8b45c;fill:#d8b45c;stroke:none}
+
+/* projects */
+.proj-row{gap:10px;padding:7px 8px;border-radius:12px;border-color:rgba(255,255,255,.045);background:rgba(255,255,255,.015)}
+.proj-row:hover{background:rgba(255,255,255,.035);border-color:rgba(255,255,255,.08)}
+.proj-th{
+  width:32px;height:32px;border-radius:10px;font-size:0;line-height:0;flex:0 0 auto;
+  display:grid;place-items:center;
+  background:linear-gradient(160deg,rgba(255,255,255,.07),rgba(255,255,255,.015));
+  border:1px solid rgba(255,255,255,.06);color:#e8edf4;
+}
+.proj-th i.mono{font-style:normal;font-weight:800;font-size:12px;letter-spacing:-.01em;color:#e9eef5}
+.proj-row .pi b{font-size:12px;font-weight:650;color:#e1e7ef}
+.proj-row .pi span{font-size:9.5px;color:#5a6574}
+.proj-row .live{font-size:8px;border-color:rgba(140,220,190,.22);color:#9fdcbd;letter-spacing:.14em}
+
+/* private footer */
+.side-foot{border-top:1px solid rgba(255,255,255,.045);padding:12px 8px 2px}
+.side-foot .lock{
+  width:28px;height:28px;border-radius:9px;font-size:0;line-height:0;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);color:#9fdcbd;
+}
+.side-foot .lock svg{width:13px;height:13px}
+.side-foot b{font-size:11px;color:#d7dde7;font-weight:650}
+.side-foot span{font-size:9.5px;color:#576170}
+
+/* --------------------------- 6 · INSPECTOR ------------------------------ */
+details.card{border-radius:18px;background:transparent;border:1px solid transparent;box-shadow:none}
+details.card[open]{background:rgba(255,255,255,.025);border-color:rgba(255,255,255,.05)}
+details.card>summary{min-height:50px;padding:4px 13px;border-radius:16px;gap:11px}
+details.card>summary .ci{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);
+  box-shadow:none;color:#cdd6e2;border-radius:11px;
+}
+details.card>summary .ct b{font-size:13px;font-weight:700;letter-spacing:0}
+details.card>summary .ct span{font-size:9px;color:#5b6676}
+details.card>summary:hover{background:rgba(255,255,255,.02)}
+details.card>summary .chev{color:#4f5a6a;font-size:11px}
+details.card[open]>summary::after{background:rgba(255,255,255,.05)}
+.cbody{padding:4px 15px 15px;gap:13px}
+.field label{font-size:10px;font-weight:750;color:#6f7a8b;letter-spacing:.06em;margin-bottom:7px}
+.row-chips{gap:6px}
+.rchip{
+  height:38px;padding:0 14px;border-radius:11px;
+  border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);
+  font:600 11.5px var(--font);color:#c2cad7;
+}
+.rchip:hover{background:rgba(255,255,255,.045);color:#eef1f6}
+.rchip.on{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.18);color:#fff;box-shadow:none}
+.slider .track{background:#1b212c}
+.slider .track em{background:#f4f6fa;border:1px solid rgba(255,255,255,.25);box-shadow:0 2px 8px rgba(0,0,0,.55)}
+.slider b{font-size:11px;color:#c9d1dd}
+.switch span{font-size:11.5px;font-weight:650;color:#c2cad7}
+.switch .knob{background:rgba(255,255,255,.08)}
+.switch .knob.on{background:#fff;box-shadow:none}
+.switch .knob.on em{background:#0a0c11;left:22px}
+.mat-row{gap:10px;padding:7px 9px;border-radius:13px}
+.mat-row.on{background:rgba(255,255,255,.055);border-color:rgba(255,255,255,.09)}
+.mat-row .sw{width:32px;height:32px;border-radius:10px;border-color:rgba(255,255,255,.1)}
+.mat-row .mn b{font-size:12px;font-weight:650;color:#e0e6ee}
+.mat-row .mn span{font-size:9.5px;color:#5b6575}
+.mat-row:hover{background:rgba(255,255,255,.025)}
+.micro{gap:6px}
+.micro .m{
+  border-radius:11px;border-color:rgba(255,255,255,.05);background:rgba(255,255,255,.02);
+  font-size:9px;color:#5d6878;
+}
+.micro .m b{font-size:11px;color:#d9e0e9;margin-bottom:2px}
+.sub{font-size:10px;color:#5b6575;line-height:1.5}
+#btnDoExport svg{width:15px;height:15px}
+
+/* --------------------------- 7 · DOCK + TRAYS --------------------------- */
+#dock{
+  bottom:16px;padding:6px 8px;border-radius:999px;gap:2px;
+  background:rgba(9,12,17,.68);
+  border:1px solid rgba(255,255,255,.07);
+  backdrop-filter:blur(28px) saturate(1.35);-webkit-backdrop-filter:blur(28px) saturate(1.35);
+  box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);
+}
+.dk-btn{
+  min-width:64px;height:54px;border-radius:16px;gap:3px;padding:0 9px;
+  font-size:9.5px;font-weight:700;letter-spacing:.02em;color:#7a8595;
+}
+.dk-btn svg{width:19px;height:19px}
+.dk-btn:hover{color:#e6ecf4;background:rgba(255,255,255,.04)}
+.dk-btn:active{transform:scale(.96)}
+#tlSelect:checked ~ #dock label[for=tlSelect],
+#tlCam:checked   ~ #dock label[for=tlCam],
+#tlLight:checked ~ #dock label[for=tlLight],
+#tlMat:checked   ~ #dock label[for=tlMat],
+#tlFloor:checked ~ #dock label[for=tlFloor],
+#tlRender:checked~ #dock label[for=tlRender]{
+  color:#fff;background:rgba(255,255,255,.1);
+  border-color:rgba(255,255,255,.16);box-shadow:none;
+}
+#dock .sep{height:34px;background:rgba(255,255,255,.05);margin:0 3px}
+/* preset tray = quiet glass sheet above dock */
+.trays{
+  background:rgba(10,13,18,.74);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:20px;padding:12px 14px;
+  backdrop-filter:blur(28px) saturate(1.35);-webkit-backdrop-filter:blur(28px) saturate(1.35);
+  box-shadow:0 26px 70px rgba(0,0,0,.55);
+}
+.tray{gap:8px}
+.tray .tray-lbl{font-size:8.5px;font-weight:800;letter-spacing:.22em;color:#525d6d}
+.pr-tile{width:106px;border-radius:16px;border-color:rgba(255,255,255,.05);background:rgba(255,255,255,.02);box-shadow:none}
+.pr-tile .thumb{height:52px;border-bottom-color:rgba(255,255,255,.05)}
+.pr-tile .tt{font-size:9.5px;font-weight:650;color:#a9b3c1;padding:8px 6px}
+.pr-tile.on{border-color:rgba(255,255,255,.2);box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+.pr-tile.on .tt{color:#fff}
+
+/* --------------------------- 8 · STAGE HUD ------------------------------ */
+.cv-toggle{
+  top:14px;padding:3px;border-radius:999px;gap:2px;
+  background:rgba(7,9,13,.5);border:1px solid rgba(255,255,255,.06);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:none;
+}
+.cv-toggle label{height:32px;padding:0 14px;font-size:11px;font-weight:650;color:#7e899a;border-radius:999px}
+.cv-toggle label:hover{color:#dbe2ec}
+#stDemo:checked ~ .cv-toggle label[for=stDemo],
+#stEmpty:checked ~ .cv-toggle label[for=stEmpty]{
+  background:#fff;color:#0a0c11;box-shadow:none;font-weight:750;
+}
+.cv-tag{
+  top:14px;left:14px;height:34px;padding:0 13px;gap:8px;border-radius:999px;
+  font-size:11px;font-weight:650;color:#b6c0ce;
+  background:rgba(7,9,13,.5);border:1px solid rgba(255,255,255,.06);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+}
+.cv-tag .dot{width:6px;height:6px;box-shadow:0 0 8px rgba(120,220,180,.7)}
+.cv-tag b{color:#d6e4ff;font-weight:750}
+.cv-status{top:14px;right:14px;gap:5px}
+.cv-status .pill{
+  height:30px;padding:0 11px;font-size:10.5px;font-weight:650;color:#8792a3;
+  background:rgba(7,9,13,.5);border:1px solid rgba(255,255,255,.06);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+}
+.cv-status .pill.on{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.16);color:#fff}
+.cv-hint{
+  font-size:11px;color:#6b7686;letter-spacing:.02em;
+  background:rgba(7,9,13,.42);border:1px solid rgba(255,255,255,.05);
+  padding:6px 14px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.cv-legend{font-size:9.5px;letter-spacing:.16em;color:#545f6f}
+
+/* scrollbars, focus */
+.scroll::-webkit-scrollbar-thumb{background:#232b38;border-radius:99px}
+:focus-visible{outline:1.5px solid rgba(150,195,255,.55);outline-offset:2px}
+::selection{background:rgba(106,165,255,.25)}
+
+/* touch/fine refinement */
+button,label{cursor:pointer}
+
+/* -------------------- 9 · NARROW / PORTRAIT TABLETS -------------------- */
+@media (max-width:1240px){
+  #topStrip{column-gap:12px;padding:8px 14px}
+}
+@media (max-width:980px){
+  .vchip{height:36px;padding:0 12px 0 8px}
+  #soLogo{width:38px;height:38px}
+  .abtn{height:38px;font-size:11.5px}
+  .abtn.icon{width:38px}
+  .rchip{height:36px;padding:0 12px}
+  .dk-btn{min-width:48px;height:52px}
+}
+@media (max-width:640px){
+  .dk-btn{min-width:46px;font-size:0;gap:0}
+  .dk-btn svg{width:21px;height:21px}
+  .abtn span{display:none}
+}
+/* Static premium-shell extras: baked SVG sizing + inline alignment polish.
+   (The locked static shell stays pure HTML/CSS — no JS here.) */
+.abtn svg{width:14px;height:14px;flex:0 0 auto}
+#tbExport svg{width:12px;height:12px}
+#btnDoExport svg{width:15px;height:15px;vertical-align:-2px;flex:0 0 auto}
+#soLogo svg{width:22px;height:22px}
+.vrow .tick svg{width:10px;height:10px;display:block;margin:auto}
+.proj-th svg,.dz-ic svg{width:26px;height:26px}
+.dz-act svg{width:13px;height:13px;flex:0 0 auto}
+#sideNav .tile .tt-ic svg{width:15px;height:15px}
+.inspector .tt-ic svg{width:16px;height:16px}
+.tag svg{flex:0 0 auto;display:block}
+button abbr,label abbr{text-decoration:none}
+
+
+/* ================================================================
+   TYPE SCALE (premium skin) — three levels + Honor Pad floor.
+   Display: 13.5-16 · Body: 13+ · Meta: 10.5 desk / 11.5+ pad.
+   ================================================================ */
+#soTitle{font-size:16px;letter-spacing:-.015em}
+#soTag{font-size:9px;letter-spacing:.22em}
+.vchip{font-size:12.5px;font-weight:650}
+details.group>summary .gn{font-size:13.5px}
+details.group>summary .gc{font-size:9.5px}
+.vrow .vn b{font-size:13px}
+.vrow .vn span{font-size:10.5px}
+.proj-row .pi b{font-size:13px}
+.proj-row .pi span{font-size:10.5px}
+.tile b{font-size:12px;font-weight:650}
+.tile span{font-size:10px}
+.tag{font-size:12px}
+details.card>summary .ct b{font-size:13.5px}
+details.card>summary .ct span{font-size:10px}
+.field label{font-size:11px;letter-spacing:.05em}
+.rchip{font-size:12.5px}
+.mat-row .mn b{font-size:13px}
+.mat-row .mn span{font-size:10px}
+.micro .m b{font-size:11.5px}
+.micro .m{font-size:9.5px}
+.abtn{font-size:13px;font-weight:700}
+.dk-btn{font-size:10px;font-weight:800}
+.tray .tray-lbl{font-size:9px}
+.tray-row .rchip,.tray .pr-tile .tt{font-size:12px}
+.cv-toggle label{font-size:12px}
+.cv-tag{font-size:12px}
+.cv-status .pill{font-size:11.5px}
+.cv-hint{font-size:12px}
+.cv-legend{font-size:9.5px}
+.phead .t{font-size:10.5px}
+.phead .s{font-size:12px}
+.side-foot b{font-size:12.5px}
+.side-foot span{font-size:10.5px}
+/* honor pad readability floor */
+@media (max-width:1240px) and (orientation:landscape), (max-width:900px){
+  .vrow .vn span,.proj-row .pi span,.tile span,.mat-row .mn span,
+  details.card>summary .ct span,.side-foot span,.phead .s{font-size:11.5px}
+  .vrow .vn b,.proj-row .pi b,.mat-row .mn b,.tile b{font-size:13.5px}
+  .rchip{font-size:13px}
+  .abtn{font-size:13px}
+  .tag{font-size:12.5px}
+  .field label{font-size:11.5px}
+}

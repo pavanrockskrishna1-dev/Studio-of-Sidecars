@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final Ultimate Viewer - Individual Part Editing</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+        #canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            cursor: crosshair;
+        }
+        #canvas.drag-mode {
+            cursor: move;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            max-width: 400px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 100;
+        }
+        .controls::-webkit-scrollbar {
+            width: 8px;
+        }
+        .controls::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        .controls::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .controls h2 {
+            margin: 0 0 15px 0;
+            font-size: 20px;
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .section:first-of-type {
+            border-top: none;
+            margin-top: 0;
+        }
+        .section h3 {
+            font-size: 14px;
+            color: #ff6b35;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .file-input label {
+            display: block;
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: 600;
+            transition: transform 0.2s;
+            margin-bottom: 10px;
+        }
+        .file-input label:hover {
+            transform: translateY(-2px);
+        }
+        .file-input input {
+            display: none;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px 0;
+            width: 100%;
+            font-weight: 500;
+            transition: background 0.2s;
+            font-size: 14px;
+        }
+        .btn:hover:not(:disabled) {
+            background: #1d4ed8;
+        }
+        .btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .btn-danger {
+            background: #dc2626;
+        }
+        .btn-danger:hover:not(:disabled) {
+            background: #b91c1c;
+        }
+        .btn-success {
+            background: #16a34a;
+        }
+        .btn-success:hover:not(:disabled) {
+            background: #15803d;
+        }
+        .btn-purple {
+            background: #8b5cf6;
+        }
+        .btn-purple:hover:not(:disabled) {
+            background: #7c3aed;
+        }
+        .btn-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .parts-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 10px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 8px;
+        }
+        .parts-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .parts-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .parts-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+        .part-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 6px 0;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+        .part-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 107, 53, 0.3);
+        }
+        .part-item.selected {
+            border-color: #ff6b35;
+            background: rgba(255, 107, 53, 0.15);
+        }
+        .part-item.highlighted {
+            border-color: #fbbf24;
+            background: rgba(251, 191, 36, 0.15);
+        }
+        .part-name {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        .part-info {
+            font-size: 11px;
+            color: #999;
+        }
+        .part-color-preview {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+        input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            margin: 8px 0;
+        }
+        label {
+            color: #ccc;
+            font-size: 13px;
+            display: block;
+            margin-top: 12px;
+            margin-bottom: 4px;
+        }
+        select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        .color-picker-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+            margin: 10px 0;
+        }
+        .color-preset {
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+            font-size: 11px;
+        }
+        .color-preset:hover {
+            border-color: #ff6b35;
+            transform: scale(1.05);
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: #999;
+            font-size: 13px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 400px;
+            z-index: 100;
+        }
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            font-size: 13px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 100;
+        }
+        .stats-item {
+            margin: 5px 0;
+        }
+        .placeholder {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #666;
+            font-size: 18px;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .placeholder-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin: 8px 0;
+        }
+        .slider-value {
+            color: #ff6b35;
+            font-weight: 600;
+            font-size: 12px;
+            text-align: right;
+            margin-top: -4px;
+            margin-bottom: 8px;
+        }
+        .notification {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 20px 30px;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            z-index: 1000;
+            border: 2px solid #16a34a;
+            display: none;
+        }
+        .notification.show {
+            display: block;
+            animation: fadeInOut 2s;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+        }
+        .mode-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(139, 92, 246, 0.95);
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            z-index: 1000;
+            pointer-events: none;
+            display: none;
+        }
+        .highlight-effect {
+            animation: highlightPulse 1s;
+        }
+        @keyframes highlightPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="controls">
+        <h2>🎨 Final Ultimate Viewer</h2>
+        
+        <!-- Add Models -->
+        <div class="section">
+            <h3>➕ Add Models</h3>
+            <div class="file-input">
+                <label for="file">📁 Add GLB Files</label>
+                <input type="file" id="file" accept=".glb,.gltf" multiple>
+            </div>
+        </div>
+        
+        <!-- Capture Tools -->
+        <div class="section">
+            <h3>📸 Capture Tools</h3>
+            <div class="btn-grid">
+                <button class="btn btn-success" id="screenshotBtn">📷 Screenshot</button>
+                <button class="btn btn-success" id="screenshot4kBtn">📷 4K</button>
+            </div>
+            <button class="btn btn-danger" id="recordBtn">⏺️ Start Recording</button>
+            <button class="btn" id="stopRecordBtn" style="display: none;">⏹️ Stop & Download</button>
+            <div id="recordingStatus" style="color: #ff6b35; font-size: 12px; margin-top: 8px; display: none;">
+                ⏺️ Recording... <span id="recordTime">0:00</span>
+            </div>
+        </div>
+        
+        <!-- Part Selection Mode -->
+        <div class="section" id="partSelectionSection" style="display: none;">
+            <h3>🎯 Individual Parts</h3>
+            <button class="btn btn-purple" id="partSelectModeBtn">🖱️ Click to Select Parts</button>
+            <button class="btn" id="exitPartSelectBtn" style="display: none;">❌ Exit Part Selection</button>
+            <p style="font-size: 11px; color: #999; margin-top: 8px;">
+                Click "Click to Select Parts" then click any part of your model to select it!
+            </p>
+            
+            <div id="partsList" style="display: none;">
+                <label style="margin-top: 15px;">All Parts in Model:</label>
+                <div class="parts-list" id="partsListContainer"></div>
+                <button class="btn btn-success" id="selectAllParts">✓ Select All Parts</button>
+                <button class="btn" id="deselectAllParts">✗ Deselect All</button>
+            </div>
+        </div>
+        
+        <!-- Selected Part Controls -->
+        <div class="section" id="selectedPartSection" style="display: none;">
+            <h3>🎨 Edit Part: <span id="selectedPartName">None</span></h3>
+            
+            <label>Part Color:</label>
+            <input type="color" id="partColor" value="#ff6b35">
+            
+            <div class="color-picker-group">
+                <div class="color-preset" style="background: #ff6b35;" data-color="#ff6b35">🔥</div>
+                <div class="color-preset" style="background: #dc2626;" data-color="#dc2626">🔴</div>
+                <div class="color-preset" style="background: #2563eb;" data-color="#2563eb">🔵</div>
+                <div class="color-preset" style="background: #16a34a;" data-color="#16a34a">🟢</div>
+                <div class="color-preset" style="background: #fbbf24;" data-color="#fbbf24">🟡</div>
+                <div class="color-preset" style="background: #8b5cf6;" data-color="#8b5cf6">🟣</div>
+                <div class="color-preset" style="background: #ffffff;" data-color="#ffffff">⚪</div>
+                <div class="color-preset" style="background: #000000;" data-color="#000000">⚫</div>
+                <div class="color-preset" style="background: #e5e5e5;" data-color="#e5e5e5">⚪</div>
+                <div class="color-preset" style="background: #92400e;" data-color="#92400e">🟤</div>
+                <div class="color-preset" style="background: #f97316;" data-color="#f97316">🟧</div>
+                <div class="color-preset" style="background: #06b6d4;" data-color="#06b6d4">🔷</div>
+            </div>
+            
+            <label>Material Type:</label>
+            <select id="partMaterialType">
+                <option value="standard">🎨 Standard</option>
+                <option value="glossy">✨ Glossy</option>
+                <option value="metallic">🔩 Metallic</option>
+                <option value="chrome">💎 Chrome</option>
+                <option value="plastic">🧴 Plastic</option>
+                <option value="emissive">💡 Glowing</option>
+                <option value="matte">🎭 Matte</option>
+            </select>
+            
+            <label>Metalness:</label>
+            <input type="range" id="partMetalness" min="0" max="1" step="0.1" value="0">
+            <div class="slider-value" id="partMetalnessValue">0.0</div>
+            
+            <label>Roughness:</label>
+            <input type="range" id="partRoughness" min="0" max="1" step="0.1" value="0.5">
+            <div class="slider-value" id="partRoughnessValue">0.5</div>
+            
+            <div class="btn-grid">
+                <button class="btn" id="resetPartColor">🔄 Reset Color</button>
+                <button class="btn" id="applyToAllBtn">📋 Apply to All</button>
+            </div>
+        </div>
+        
+        <!-- Scene Controls -->
+        <div class="section">
+            <h3>🌅 Scene</h3>
+            <label>Environment:</label>
+            <select id="envSelect">
+                <option value="studio">🏢 Studio</option>
+                <option value="sunset">🌅 Sunset</option>
+                <option value="warehouse">🏭 Warehouse</option>
+                <option value="night">🌃 Night</option>
+                <option value="beach">🏖️ Beach</option>
+                <option value="forest">🌲 Forest</option>
+            </select>
+            
+            <label>Background:</label>
+            <input type="color" id="bgColor" value="#1a1a1a">
+            
+            <button class="btn" id="resetCamera">🔄 Reset Camera</button>
+        </div>
+    </div>
+    
+    <div class="stats">
+        <div class="stats-item">📦 <strong>Models:</strong> <span id="statsModelCount">0</span></div>
+        <div class="stats-item">🔧 <strong>Parts:</strong> <span id="statsPartsCount">0</span></div>
+        <div class="stats-item">🎯 <strong>Selected:</strong> <span id="statsSelected">None</span></div>
+    </div>
+    
+    <div class="info">
+        💡 <strong>Part Selection Mode:</strong><br>
+        • Click "Click to Select Parts"<br>
+        • Then click any part of your model<br>
+        • Change color of individual parts!<br>
+        • View all parts in the list
+    </div>
+    
+    <div class="placeholder" id="placeholder">
+        <div class="placeholder-icon">🎨</div>
+        <div>Ultimate Part Editor<br>
+        <small style="color: #999; font-size: 14px;">Select & color individual parts!</small></div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+    <div class="mode-indicator" id="modeIndicator">🖱️ PART SELECTION - Click any part</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // DOM Elements
+        const canvas = document.getElementById('canvas');
+        const fileInput = document.getElementById('file');
+        const placeholder = document.getElementById('placeholder');
+        const screenshotBtn = document.getElementById('screenshotBtn');
+        const screenshot4kBtn = document.getElementById('screenshot4kBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        const stopRecordBtn = document.getElementById('stopRecordBtn');
+        const partSelectModeBtn = document.getElementById('partSelectModeBtn');
+        const exitPartSelectBtn = document.getElementById('exitPartSelectBtn');
+        const modeIndicator = document.getElementById('modeIndicator');
+        const partSelectionSection = document.getElementById('partSelectionSection');
+        const selectedPartSection = document.getElementById('selectedPartSection');
+        const partsListContainer = document.getElementById('partsListContainer');
+        const partsList = document.getElementById('partsList');
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 6, 8);
+
+        const renderer = new THREE.WebGLRenderer({ 
+            canvas, 
+            antialias: true,
+            preserveDrawingBuffer: true 
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.shadowMap.enabled = true;
+
+        // Controls
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+
+        // Lighting
+        const ambLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 10, 5);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const pointLight1 = new THREE.PointLight(0xffffff, 0.5);
+        pointLight1.position.set(-5, 5, -5);
+        scene.add(pointLight1);
+
+        const pointLight2 = new THREE.PointLight(0xffffff, 0.3);
+        pointLight2.position.set(5, 3, -5);
+        scene.add(pointLight2);
+
+        // Ground
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(100, 100),
+            new THREE.ShadowMaterial({ opacity: 0.3 })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Model & Part management
+        let currentModel = null;
+        let allMeshes = [];
+        let selectedPart = null;
+        let isPartSelectionMode = false;
+        let originalMaterials = new Map();
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        const loader = new GLTFLoader();
+
+        // Notification
+        function showNotification(message) {
+            const notif = document.getElementById('notification');
+            notif.textContent = message;
+            notif.classList.add('show');
+            setTimeout(() => notif.classList.remove('show'), 2000);
+        }
+
+        // Screenshot
+        screenshotBtn.addEventListener('click', () => {
+            renderer.render(scene, camera);
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `Bike_${Date.now()}.png`;
+                link.click();
+                URL.revokeObjectURL(url);
+                showNotification('✅ Screenshot saved!');
+            });
+        });
+
+        // 4K Screenshot
+        screenshot4kBtn.addEventListener('click', () => {
+            const oldWidth = renderer.domElement.width;
+            const oldHeight = renderer.domElement.height;
+            
+            renderer.setSize(3840, 2160, false);
+            renderer.render(scene, camera);
+            
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `Bike_4K_${Date.now()}.png`;
+                link.click();
+                URL.revokeObjectURL(url);
+                showNotification('✅ 4K Screenshot saved!');
+                
+                renderer.setSize(oldWidth, oldHeight, false);
+            });
+        });
+
+        // Video recording
+        let mediaRecorder;
+        let recordedChunks = [];
+        let recordStartTime;
+        let recordInterval;
+
+        recordBtn.addEventListener('click', async () => {
+            try {
+                const stream = canvas.captureStream(30);
+                mediaRecorder = new MediaRecorder(stream, { 
+                    mimeType: 'video/webm;codecs=vp9',
+                    videoBitsPerSecond: 8000000
+                });
+                
+                recordedChunks = [];
+                
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        recordedChunks.push(e.data);
+                    }
+                };
+                
+                mediaRecorder.start();
+                recordBtn.style.display = 'none';
+                stopRecordBtn.style.display = 'block';
+                document.getElementById('recordingStatus').style.display = 'block';
+                
+                recordStartTime = Date.now();
+                recordInterval = setInterval(() => {
+                    const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    document.getElementById('recordTime').textContent = 
+                        `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }, 1000);
+                
+                showNotification('⏺️ Recording started!');
+            } catch (err) {
+                alert('Recording not supported. Try Chrome or Edge!');
+            }
+        });
+
+        stopRecordBtn.addEventListener('click', () => {
+            mediaRecorder.stop();
+            clearInterval(recordInterval);
+            
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `Bike_Video_${Date.now()}.webm`;
+                link.click();
+                URL.revokeObjectURL(url);
+                
+                recordBtn.style.display = 'block';
+                stopRecordBtn.style.display = 'none';
+                document.getElementById('recordingStatus').style.display = 'none';
+                showNotification('✅ Video saved!');
+            };
+        });
+
+        // Load models
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                
+                loader.load(url, (gltf) => {
+                    if (currentModel) {
+                        scene.remove(currentModel);
+                    }
+                    
+                    const model = gltf.scene;
+                    currentModel = model;
+                    allMeshes = [];
+                    originalMaterials.clear();
+                    
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 4 / maxDim;
+                    
+                    model.scale.multiplyScalar(scale);
+                    model.position.sub(center.multiplyScalar(scale));
+                    model.position.y = 0;
+                    
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            allMeshes.push(child);
+                            
+                            // Store original material
+                            originalMaterials.set(child.uuid, child.material.clone());
+                        }
+                    });
+                    
+                    scene.add(model);
+                    placeholder.style.display = 'none';
+                    partSelectionSection.style.display = 'block';
+                    
+                    updateStats();
+                    populatePartsList();
+                    
+                    URL.revokeObjectURL(url);
+                    showNotification(`✅ Model loaded! ${allMeshes.length} parts found`);
+                });
+            }
+            
+            fileInput.value = '';
+        });
+
+        // Populate parts list
+        function populatePartsList() {
+            partsListContainer.innerHTML = '';
+            
+            allMeshes.forEach((mesh, index) => {
+                const item = document.createElement('div');
+                item.className = 'part-item';
+                
+                const partName = mesh.name || mesh.parent?.name || `Part ${index + 1}`;
+                const color = '#' + mesh.material.color.getHexString();
+                
+                item.innerHTML = `
+                    <div class="part-name">
+                        ${partName}
+                        <span class="part-color-preview" style="background: ${color};"></span>
+                    </div>
+                    <div class="part-info">Type: ${mesh.geometry.type}</div>
+                `;
+                
+                item.addEventListener('click', () => {
+                    selectPart(mesh);
+                });
+                
+                item.addEventListener('mouseenter', () => {
+                    highlightPart(mesh);
+                    item.classList.add('highlighted');
+                });
+                
+                item.addEventListener('mouseleave', () => {
+                    unhighlightPart(mesh);
+                    item.classList.remove('highlighted');
+                });
+                
+                partsListContainer.appendChild(item);
+            });
+            
+            partsList.style.display = 'block';
+        }
+
+        // Part selection mode
+        partSelectModeBtn.addEventListener('click', () => {
+            isPartSelectionMode = true;
+            controls.enabled = false;
+            partSelectModeBtn.style.display = 'none';
+            exitPartSelectBtn.style.display = 'block';
+            modeIndicator.style.display = 'block';
+            canvas.style.cursor = 'crosshair';
+            showNotification('🖱️ Click any part to select it');
+        });
+
+        exitPartSelectBtn.addEventListener('click', () => {
+            isPartSelectionMode = false;
+            controls.enabled = true;
+            exitPartSelectBtn.style.display = 'none';
+            partSelectModeBtn.style.display = 'block';
+            modeIndicator.style.display = 'none';
+            canvas.style.cursor = 'default';
+        });
+
+        // Mouse click for part selection
+        canvas.addEventListener('click', (event) => {
+            if (!isPartSelectionMode || !currentModel) return;
+            
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(allMeshes, false);
+            
+            if (intersects.length > 0) {
+                const clickedMesh = intersects[0].object;
+                selectPart(clickedMesh);
+                showNotification(`✅ Selected: ${clickedMesh.name || 'Part'}`);
+            }
+        });
+
+        // Select part
+        function selectPart(mesh) {
+            // Deselect previous
+            if (selectedPart && selectedPart !== mesh) {
+                unhighlightPart(selectedPart);
+            }
+            
+            selectedPart = mesh;
+            highlightPart(mesh);
+            
+            selectedPartSection.style.display = 'block';
+            const partName = mesh.name || mesh.parent?.name || 'Unknown Part';
+            document.getElementById('selectedPartName').textContent = partName;
+            
+            // Update color picker to current color
+            const currentColor = '#' + mesh.material.color.getHexString();
+            document.getElementById('partColor').value = currentColor;
+            
+            // Update material sliders
+            document.getElementById('partMetalness').value = mesh.material.metalness || 0;
+            document.getElementById('partRoughness').value = mesh.material.roughness || 0.5;
+            document.getElementById('partMetalnessValue').textContent = (mesh.material.metalness || 0).toFixed(1);
+            document.getElementById('partRoughnessValue').textContent = (mesh.material.roughness || 0.5).toFixed(1);
+            
+            updateStats();
+            updatePartsListSelection();
+        }
+
+        // Highlight part
+        function highlightPart(mesh) {
+            if (!mesh.userData.originalEmissive) {
+                mesh.userData.originalEmissive = mesh.material.emissive ? mesh.material.emissive.clone() : new THREE.Color(0x000000);
+                mesh.userData.originalEmissiveIntensity = mesh.material.emissiveIntensity || 0;
+            }
+            mesh.material.emissive = new THREE.Color(0xfbbf24);
+            mesh.material.emissiveIntensity = 0.3;
+        }
+
+        // Unhighlight part
+        function unhighlightPart(mesh) {
+            if (mesh.userData.originalEmissive) {
+                mesh.material.emissive = mesh.userData.originalEmissive;
+                mesh.material.emissiveIntensity = mesh.userData.originalEmissiveIntensity;
+            }
+        }
+
+        // Update parts list selection
+        function updatePartsListSelection() {
+            const items = partsListContainer.querySelectorAll('.part-item');
+            items.forEach((item, index) => {
+                if (allMeshes[index] === selectedPart) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        // Update stats
+        function updateStats() {
+            document.getElementById('statsModelCount').textContent = currentModel ? '1' : '0';
+            document.getElementById('statsPartsCount').textContent = allMeshes.length;
+            const partName = selectedPart ? (selectedPart.name || 'Part') : 'None';
+            document.getElementById('statsSelected').textContent = partName;
+        }
+
+        // Part color change
+        document.getElementById('partColor').addEventListener('input', (e) => {
+            if (selectedPart) {
+                selectedPart.material.color.set(e.target.value);
+                populatePartsList(); // Update color preview
+            }
+        });
+
+        // Color presets for parts
+        document.querySelectorAll('.color-preset').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const color = btn.getAttribute('data-color');
+                if (selectedPart) {
+                    document.getElementById('partColor').value = color;
+                    selectedPart.material.color.set(color);
+                    populatePartsList();
+                }
+            });
+        });
+
+        // Part material type
+        document.getElementById('partMaterialType').addEventListener('change', (e) => {
+            if (!selectedPart) return;
+            const type = e.target.value;
+            
+            switch(type) {
+                case 'standard':
+                    selectedPart.material.metalness = 0;
+                    selectedPart.material.roughness = 0.5;
+                    break;
+                case 'glossy':
+                    selectedPart.material.metalness = 0;
+                    selectedPart.material.roughness = 0.1;
+                    break;
+                case 'metallic':
+                    selectedPart.material.metalness = 1;
+                    selectedPart.material.roughness = 0.3;
+                    break;
+                case 'chrome':
+                    selectedPart.material.metalness = 1;
+                    selectedPart.material.roughness = 0.05;
+                    break;
+                case 'plastic':
+                    selectedPart.material.metalness = 0;
+                    selectedPart.material.roughness = 0.4;
+                    break;
+                case 'matte':
+                    selectedPart.material.metalness = 0;
+                    selectedPart.material.roughness = 1;
+                    break;
+                case 'emissive':
+                    selectedPart.material.emissive = selectedPart.material.color.clone();
+                    selectedPart.material.emissiveIntensity = 0.5;
+                    break;
+            }
+            
+            document.getElementById('partMetalness').value = selectedPart.material.metalness;
+            document.getElementById('partRoughness').value = selectedPart.material.roughness;
+            document.getElementById('partMetalnessValue').textContent = selectedPart.material.metalness.toFixed(1);
+            document.getElementById('partRoughnessValue').textContent = selectedPart.material.roughness.toFixed(1);
+        });
+
+        // Metalness
+        document.getElementById('partMetalness').addEventListener('input', (e) => {
+            if (selectedPart) {
+                const value = parseFloat(e.target.value);
+                selectedPart.material.metalness = value;
+                document.getElementById('partMetalnessValue').textContent = value.toFixed(1);
+            }
+        });
+
+        // Roughness
+        document.getElementById('partRoughness').addEventListener('input', (e) => {
+            if (selectedPart) {
+                const value = parseFloat(e.target.value);
+                selectedPart.material.roughness = value;
+                document.getElementById('partRoughnessValue').textContent = value.toFixed(1);
+            }
+        });
+
+        // Reset part color
+        document.getElementById('resetPartColor').addEventListener('click', () => {
+            if (selectedPart) {
+                const original = originalMaterials.get(selectedPart.uuid);
+                if (original) {
+                    selectedPart.material.color.copy(original.color);
+                    selectedPart.material.metalness = original.metalness;
+                    selectedPart.material.roughness = original.roughness;
+                    
+                    const color = '#' + selectedPart.material.color.getHexString();
+                    document.getElementById('partColor').value = color;
+                    document.getElementById('partMetalness').value = original.metalness;
+                    document.getElementById('partRoughness').value = original.roughness;
+                    document.getElementById('partMetalnessValue').textContent = original.metalness.toFixed(1);
+                    document.getElementById('partRoughnessValue').textContent = original.roughness.toFixed(1);
+                    
+                    populatePartsList();
+                    showNotification('🔄 Part color reset');
+                }
+            }
+        });
+
+        // Apply to all parts
+        document.getElementById('applyToAllBtn').addEventListener('click', () => {
+            if (selectedPart && confirm('Apply this color and material to ALL parts?')) {
+                const color = selectedPart.material.color.clone();
+                const metalness = selectedPart.material.metalness;
+                const roughness = selectedPart.material.roughness;
+                
+                allMeshes.forEach(mesh => {
+                    mesh.material.color.copy(color);
+                    mesh.material.metalness = metalness;
+                    mesh.material.roughness = roughness;
+                });
+                
+                populatePartsList();
+                showNotification('✅ Applied to all parts!');
+            }
+        });
+
+        // Select all parts
+        document.getElementById('selectAllParts').addEventListener('click', () => {
+            allMeshes.forEach(mesh => {
+                mesh.material.emissive = new THREE.Color(0xfbbf24);
+                mesh.material.emissiveIntensity = 0.2;
+            });
+            showNotification('✓ All parts highlighted');
+            setTimeout(() => {
+                allMeshes.forEach(mesh => {
+                    mesh.material.emissive = new THREE.Color(0x000000);
+                    mesh.material.emissiveIntensity = 0;
+                });
+            }, 2000);
+        });
+
+        // Deselect all
+        document.getElementById('deselectAllParts').addEventListener('click', () => {
+            if (selectedPart) {
+                unhighlightPart(selectedPart);
+            }
+            selectedPart = null;
+            selectedPartSection.style.display = 'none';
+            updateStats();
+            updatePartsListSelection();
+        });
+
+        // Environment
+        const environments = {
+            studio: 0xffffff,
+            sunset: 0xff8844,
+            warehouse: 0x444444,
+            night: 0x1a1a2e,
+            beach: 0x87ceeb,
+            forest: 0x88aa66
+        };
+
+        document.getElementById('envSelect').addEventListener('change', (e) => {
+            scene.background = new THREE.Color(environments[e.target.value]);
+        });
+
+        document.getElementById('bgColor').addEventListener('input', (e) => {
+            scene.background = new THREE.Color(e.target.value);
+        });
+
+        // Reset camera
+        document.getElementById('resetCamera').addEventListener('click', () => {
+            camera.position.set(8, 6, 8);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        });
+
+        // Animation
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

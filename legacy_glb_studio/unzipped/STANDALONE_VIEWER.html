@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BBQ Bike 3D Viewer - Standalone</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+        #canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            max-width: 320px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .controls h2 {
+            margin: 0 0 15px 0;
+            font-size: 20px;
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .file-input {
+            margin: 15px 0;
+        }
+        .file-input label {
+            display: block;
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        .file-input label:hover {
+            transform: translateY(-2px);
+        }
+        .file-input input {
+            display: none;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px 0;
+            width: 100%;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #1d4ed8;
+        }
+        .btn-stop {
+            background: #dc2626;
+        }
+        .btn-stop:hover {
+            background: #b91c1c;
+        }
+        select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            margin: 10px 0;
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: #999;
+            font-size: 13px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .placeholder {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #666;
+            font-size: 18px;
+        }
+        .placeholder-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="controls">
+        <h2>🚴 BBQ Bike Viewer</h2>
+        <div class="file-input">
+            <label for="file">
+                📁 Choose GLB File
+            </label>
+            <input type="file" id="file" accept=".glb,.gltf">
+        </div>
+        
+        <div id="modelControls" style="display: none;">
+            <label style="color: #ccc; font-size: 13px; display: block; margin-top: 15px;">Environment:</label>
+            <select id="envSelect">
+                <option value="studio">Studio</option>
+                <option value="sunset">Sunset</option>
+                <option value="warehouse">Warehouse</option>
+                <option value="forest">Forest</option>
+                <option value="night">Night</option>
+            </select>
+            
+            <button class="btn" id="rotateBtn">▶️ Auto Rotate</button>
+            <button class="btn btn-stop" id="stopBtn" style="display: none;">⏸️ Stop Rotation</button>
+        </div>
+    </div>
+    
+    <div class="info">
+        💡 Drag to rotate • Scroll to zoom • Right-click to pan
+    </div>
+    
+    <div class="placeholder" id="placeholder">
+        <div class="placeholder-icon">🚴</div>
+        <div>Upload your BBQ Bike or Coffee Bike .glb file to begin</div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+        const canvas = document.getElementById('canvas');
+        const fileInput = document.getElementById('file');
+        const envSelect = document.getElementById('envSelect');
+        const rotateBtn = document.getElementById('rotateBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const modelControls = document.getElementById('modelControls');
+        const placeholder = document.getElementById('placeholder');
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(5, 3, 5);
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1;
+        renderer.shadowMap.enabled = true;
+
+        // Controls
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 2;
+        controls.maxDistance = 50;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 5, 5);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 0.5);
+        pointLight.position.set(-5, 5, -5);
+        scene.add(pointLight);
+
+        // Environment
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+        // Ground
+        const groundGeometry = new THREE.PlaneGeometry(100, 100);
+        const groundMaterial = new THREE.ShadowMaterial({ opacity: 0.3 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -1;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        let model = null;
+        let autoRotate = false;
+
+        // Load model
+        const loader = new GLTFLoader();
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                
+                // Remove old model
+                if (model) {
+                    scene.remove(model);
+                }
+
+                loader.load(url, (gltf) => {
+                    model = gltf.scene;
+                    
+                    // Center and scale model
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 4 / maxDim;
+                    
+                    model.scale.multiplyScalar(scale);
+                    model.position.sub(center.multiplyScalar(scale));
+                    model.position.y = 0;
+                    
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    
+                    scene.add(model);
+                    placeholder.style.display = 'none';
+                    modelControls.style.display = 'block';
+                    
+                    URL.revokeObjectURL(url);
+                }, undefined, (error) => {
+                    console.error('Error loading model:', error);
+                    alert('Error loading model. Please make sure it\'s a valid .glb or .gltf file.');
+                });
+            }
+        });
+
+        // Environment change
+        const environments = {
+            studio: 0xffffff,
+            sunset: 0xff8844,
+            warehouse: 0x444444,
+            forest: 0x88aa66,
+            night: 0x1a1a2e
+        };
+
+        envSelect.addEventListener('change', (e) => {
+            scene.background = new THREE.Color(environments[e.target.value]);
+        });
+
+        // Auto rotate
+        rotateBtn.addEventListener('click', () => {
+            autoRotate = true;
+            rotateBtn.style.display = 'none';
+            stopBtn.style.display = 'block';
+        });
+
+        stopBtn.addEventListener('click', () => {
+            autoRotate = false;
+            stopBtn.style.display = 'none';
+            rotateBtn.style.display = 'block';
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (model && autoRotate) {
+                model.rotation.y += 0.005;
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

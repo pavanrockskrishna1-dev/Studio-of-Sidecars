@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BBQ Bike 3D Viewer - Enhanced</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+        #canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            max-width: 340px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .controls::-webkit-scrollbar {
+            width: 8px;
+        }
+        .controls::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        .controls::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .controls h2 {
+            margin: 0 0 15px 0;
+            font-size: 20px;
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .section:first-of-type {
+            border-top: none;
+            margin-top: 0;
+        }
+        .section h3 {
+            font-size: 14px;
+            color: #ff6b35;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .file-input label {
+            display: block;
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: 600;
+            transition: transform 0.2s;
+            margin-bottom: 10px;
+        }
+        .file-input label:hover {
+            transform: translateY(-2px);
+        }
+        .file-input input {
+            display: none;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px 0;
+            width: 100%;
+            font-weight: 500;
+            transition: background 0.2s;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background: #1d4ed8;
+        }
+        .btn-stop {
+            background: #dc2626;
+        }
+        .btn-stop:hover {
+            background: #b91c1c;
+        }
+        .btn-success {
+            background: #16a34a;
+        }
+        .btn-success:hover {
+            background: #15803d;
+        }
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            margin: 8px 0;
+        }
+        label {
+            color: #ccc;
+            font-size: 13px;
+            display: block;
+            margin-top: 12px;
+            margin-bottom: 4px;
+        }
+        .slider-value {
+            color: #ff6b35;
+            font-weight: 600;
+            font-size: 12px;
+            text-align: right;
+            margin-top: -4px;
+            margin-bottom: 8px;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            flex: 1;
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: #999;
+            font-size: 13px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 340px;
+        }
+        .placeholder {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #666;
+            font-size: 18px;
+            z-index: 1;
+        }
+        .placeholder-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        .preset-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin: 8px 0;
+        }
+        .preset-btn {
+            padding: 8px;
+            font-size: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .preset-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #ff6b35;
+        }
+        .preset-btn.active {
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            border-color: #ff6b35;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="controls">
+        <h2>🚴 Enhanced 3D Viewer</h2>
+        
+        <!-- File Upload -->
+        <div class="file-input">
+            <label for="file">
+                📁 Choose GLB File
+            </label>
+            <input type="file" id="file" accept=".glb,.gltf">
+        </div>
+        
+        <div id="modelControls" style="display: none;">
+            
+            <!-- Quick Actions -->
+            <div class="section">
+                <h3>⚡ Quick Actions</h3>
+                <button class="btn" id="rotateBtn">▶️ Auto Rotate</button>
+                <button class="btn btn-stop" id="stopBtn" style="display: none;">⏸️ Stop Rotation</button>
+                <button class="btn btn-success" id="resetBtn">🔄 Reset Camera</button>
+            </div>
+            
+            <!-- Environment Presets -->
+            <div class="section">
+                <h3>🌅 Environments (10 Options)</h3>
+                <select id="envSelect">
+                    <option value="studio">🏢 Studio - Clean White</option>
+                    <option value="sunset">🌅 Sunset - Warm Golden</option>
+                    <option value="warehouse">🏭 Warehouse - Industrial</option>
+                    <option value="forest">🌲 Forest - Natural Green</option>
+                    <option value="night">🌃 Night - Dark Blue</option>
+                    <option value="dawn">🌄 Dawn - Soft Pink</option>
+                    <option value="city">🏙️ City - Urban Gray</option>
+                    <option value="beach">🏖️ Beach - Ocean Blue</option>
+                    <option value="desert">🏜️ Desert - Sandy Orange</option>
+                    <option value="arctic">❄️ Arctic - Ice White</option>
+                </select>
+            </div>
+            
+            <!-- Background Color -->
+            <div class="section">
+                <h3>🎨 Background Color</h3>
+                <label>Custom Background:</label>
+                <input type="color" id="bgColor" value="#1a1a1a">
+                <div class="preset-grid">
+                    <button class="preset-btn" data-color="#1a1a1a">⬛ Dark Gray</button>
+                    <button class="preset-btn" data-color="#000000">⬛ Black</button>
+                    <button class="preset-btn" data-color="#ffffff">⬜ White</button>
+                    <button class="preset-btn" data-color="#ff6b35">🟧 Orange</button>
+                    <button class="preset-btn" data-color="#2563eb">🟦 Blue</button>
+                    <button class="preset-btn" data-color="#16a34a">🟩 Green</button>
+                </div>
+            </div>
+            
+            <!-- Camera Angles -->
+            <div class="section">
+                <h3>📷 Camera Presets</h3>
+                <div class="preset-grid">
+                    <button class="preset-btn" id="camFront">⬆️ Front</button>
+                    <button class="preset-btn" id="camBack">⬇️ Back</button>
+                    <button class="preset-btn" id="camLeft">⬅️ Left</button>
+                    <button class="preset-btn" id="camRight">➡️ Right</button>
+                    <button class="preset-btn" id="camTop">⬆️ Top</button>
+                    <button class="preset-btn" id="cam45">↗️ 45° Angle</button>
+                </div>
+            </div>
+            
+            <!-- Lighting Controls -->
+            <div class="section">
+                <h3>💡 Lighting</h3>
+                <label>Main Light Intensity:</label>
+                <input type="range" id="lightIntensity" min="0" max="3" step="0.1" value="1">
+                <div class="slider-value" id="lightValue">1.0</div>
+                
+                <label>Ambient Light:</label>
+                <input type="range" id="ambientLight" min="0" max="2" step="0.1" value="0.5">
+                <div class="slider-value" id="ambientValue">0.5</div>
+                
+                <label>Light Position:</label>
+                <select id="lightPosition">
+                    <option value="front">Front Light</option>
+                    <option value="back">Back Light</option>
+                    <option value="top" selected>Top Light</option>
+                    <option value="side">Side Light</option>
+                </select>
+            </div>
+            
+            <!-- Rotation Speed -->
+            <div class="section">
+                <h3>🔄 Rotation Speed</h3>
+                <label>Auto-Rotate Speed:</label>
+                <input type="range" id="rotateSpeed" min="0.001" max="0.02" step="0.001" value="0.005">
+                <div class="slider-value" id="speedValue">0.005</div>
+            </div>
+            
+            <!-- Display Options -->
+            <div class="section">
+                <h3>👁️ Display Options</h3>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showShadows" checked>
+                    <label for="showShadows">Show Shadows</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showGrid">
+                    <label for="showGrid">Show Grid</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showGround" checked>
+                    <label for="showGround">Show Ground Plane</label>
+                </div>
+            </div>
+            
+            <!-- Model Scale -->
+            <div class="section">
+                <h3>📏 Model Size</h3>
+                <label>Scale:</label>
+                <input type="range" id="modelScale" min="0.5" max="2" step="0.1" value="1">
+                <div class="slider-value" id="scaleValue">1.0x</div>
+            </div>
+            
+            <!-- Quality Settings -->
+            <div class="section">
+                <h3>⚙️ Quality</h3>
+                <select id="quality">
+                    <option value="low">🔋 Low - Faster</option>
+                    <option value="medium" selected>⚡ Medium - Balanced</option>
+                    <option value="high">💎 High - Better Quality</option>
+                </select>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="info">
+        💡 <strong>Controls:</strong> Drag to rotate • Scroll to zoom • Right-click to pan<br>
+        📱 <strong>Tip:</strong> Use screen record (Win+G or Cmd+Shift+5) to capture videos!
+    </div>
+    
+    <div class="placeholder" id="placeholder">
+        <div class="placeholder-icon">🚴</div>
+        <div>Upload your BBQ Bike or Coffee Bike .glb file<br>to start creating Instagram content!</div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // DOM Elements
+        const canvas = document.getElementById('canvas');
+        const fileInput = document.getElementById('file');
+        const envSelect = document.getElementById('envSelect');
+        const bgColor = document.getElementById('bgColor');
+        const rotateBtn = document.getElementById('rotateBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const modelControls = document.getElementById('modelControls');
+        const placeholder = document.getElementById('placeholder');
+        const lightIntensity = document.getElementById('lightIntensity');
+        const ambientLight = document.getElementById('ambientLight');
+        const lightPosition = document.getElementById('lightPosition');
+        const rotateSpeed = document.getElementById('rotateSpeed');
+        const showShadows = document.getElementById('showShadows');
+        const showGrid = document.getElementById('showGrid');
+        const showGround = document.getElementById('showGround');
+        const modelScale = document.getElementById('modelScale');
+        const quality = document.getElementById('quality');
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(5, 3, 5);
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1;
+        renderer.shadowMap.enabled = true;
+
+        // Controls
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 2;
+        controls.maxDistance = 50;
+
+        // Lighting
+        const ambLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(5, 5, 5);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 0.5);
+        pointLight.position.set(-5, 5, -5);
+        scene.add(pointLight);
+
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        fillLight.position.set(-3, 2, -3);
+        scene.add(fillLight);
+
+        // Ground
+        const groundGeometry = new THREE.PlaneGeometry(100, 100);
+        const groundMaterial = new THREE.ShadowMaterial({ opacity: 0.3 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -1;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Grid
+        const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+        gridHelper.position.y = -0.99;
+        gridHelper.visible = false;
+        scene.add(gridHelper);
+
+        let model = null;
+        let autoRotate = false;
+        let rotationSpeed = 0.005;
+        let modelGroup = new THREE.Group();
+        scene.add(modelGroup);
+
+        // Environment colors
+        const environments = {
+            studio: { bg: 0xffffff, ambient: 0.8, dir: 1.2 },
+            sunset: { bg: 0xff8844, ambient: 0.6, dir: 1.5 },
+            warehouse: { bg: 0x444444, ambient: 0.4, dir: 0.8 },
+            forest: { bg: 0x88aa66, ambient: 0.7, dir: 1.0 },
+            night: { bg: 0x1a1a2e, ambient: 0.2, dir: 0.5 },
+            dawn: { bg: 0xffb6c1, ambient: 0.6, dir: 1.0 },
+            city: { bg: 0x808080, ambient: 0.5, dir: 0.9 },
+            beach: { bg: 0x87ceeb, ambient: 0.8, dir: 1.3 },
+            desert: { bg: 0xffa500, ambient: 0.7, dir: 1.4 },
+            arctic: { bg: 0xe0f0ff, ambient: 0.9, dir: 1.1 }
+        };
+
+        // Load model
+        const loader = new GLTFLoader();
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                
+                if (model) {
+                    modelGroup.remove(model);
+                }
+
+                loader.load(url, (gltf) => {
+                    model = gltf.scene;
+                    
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 4 / maxDim;
+                    
+                    model.scale.multiplyScalar(scale);
+                    model.position.sub(center.multiplyScalar(scale));
+                    model.position.y = 0;
+                    
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    
+                    modelGroup.add(model);
+                    placeholder.style.display = 'none';
+                    modelControls.style.display = 'block';
+                    
+                    URL.revokeObjectURL(url);
+                }, undefined, (error) => {
+                    console.error('Error loading model:', error);
+                    alert('Error loading model. Please make sure it\'s a valid .glb or .gltf file.');
+                });
+            }
+        });
+
+        // Environment change
+        envSelect.addEventListener('change', (e) => {
+            const env = environments[e.target.value];
+            scene.background = new THREE.Color(env.bg);
+            ambLight.intensity = env.ambient;
+            dirLight.intensity = env.dir;
+        });
+
+        // Background color
+        bgColor.addEventListener('input', (e) => {
+            scene.background = new THREE.Color(e.target.value);
+        });
+
+        // Color presets
+        document.querySelectorAll('.preset-btn[data-color]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const color = btn.getAttribute('data-color');
+                bgColor.value = color;
+                scene.background = new THREE.Color(color);
+            });
+        });
+
+        // Camera presets
+        document.getElementById('camFront').addEventListener('click', () => {
+            camera.position.set(0, 3, 8);
+            controls.target.set(0, 0, 0);
+        });
+        document.getElementById('camBack').addEventListener('click', () => {
+            camera.position.set(0, 3, -8);
+            controls.target.set(0, 0, 0);
+        });
+        document.getElementById('camLeft').addEventListener('click', () => {
+            camera.position.set(-8, 3, 0);
+            controls.target.set(0, 0, 0);
+        });
+        document.getElementById('camRight').addEventListener('click', () => {
+            camera.position.set(8, 3, 0);
+            controls.target.set(0, 0, 0);
+        });
+        document.getElementById('camTop').addEventListener('click', () => {
+            camera.position.set(0, 10, 0.1);
+            controls.target.set(0, 0, 0);
+        });
+        document.getElementById('cam45').addEventListener('click', () => {
+            camera.position.set(6, 4, 6);
+            controls.target.set(0, 0, 0);
+        });
+
+        // Reset camera
+        resetBtn.addEventListener('click', () => {
+            camera.position.set(5, 3, 5);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        });
+
+        // Light controls
+        lightIntensity.addEventListener('input', (e) => {
+            dirLight.intensity = parseFloat(e.target.value);
+            document.getElementById('lightValue').textContent = e.target.value;
+        });
+
+        ambientLight.addEventListener('input', (e) => {
+            ambLight.intensity = parseFloat(e.target.value);
+            document.getElementById('ambientValue').textContent = e.target.value;
+        });
+
+        lightPosition.addEventListener('change', (e) => {
+            switch(e.target.value) {
+                case 'front':
+                    dirLight.position.set(0, 5, 10);
+                    break;
+                case 'back':
+                    dirLight.position.set(0, 5, -10);
+                    break;
+                case 'top':
+                    dirLight.position.set(5, 10, 5);
+                    break;
+                case 'side':
+                    dirLight.position.set(10, 5, 0);
+                    break;
+            }
+        });
+
+        // Rotation controls
+        rotateBtn.addEventListener('click', () => {
+            autoRotate = true;
+            rotateBtn.style.display = 'none';
+            stopBtn.style.display = 'block';
+        });
+
+        stopBtn.addEventListener('click', () => {
+            autoRotate = false;
+            stopBtn.style.display = 'none';
+            rotateBtn.style.display = 'block';
+        });
+
+        rotateSpeed.addEventListener('input', (e) => {
+            rotationSpeed = parseFloat(e.target.value);
+            document.getElementById('speedValue').textContent = e.target.value;
+        });
+
+        // Display options
+        showShadows.addEventListener('change', (e) => {
+            renderer.shadowMap.enabled = e.target.checked;
+            ground.material.opacity = e.target.checked ? 0.3 : 0;
+        });
+
+        showGrid.addEventListener('change', (e) => {
+            gridHelper.visible = e.target.checked;
+        });
+
+        showGround.addEventListener('change', (e) => {
+            ground.visible = e.target.checked;
+        });
+
+        // Model scale
+        modelScale.addEventListener('input', (e) => {
+            const scale = parseFloat(e.target.value);
+            modelGroup.scale.set(scale, scale, scale);
+            document.getElementById('scaleValue').textContent = scale.toFixed(1) + 'x';
+        });
+
+        // Quality
+        quality.addEventListener('change', (e) => {
+            switch(e.target.value) {
+                case 'low':
+                    renderer.setPixelRatio(1);
+                    break;
+                case 'medium':
+                    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                    break;
+                case 'high':
+                    renderer.setPixelRatio(window.devicePixelRatio);
+                    break;
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (modelGroup && autoRotate) {
+                modelGroup.rotation.y += rotationSpeed;
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

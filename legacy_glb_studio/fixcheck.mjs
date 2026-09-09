@@ -1,0 +1,14 @@
+import { chromium } from 'playwright-core';
+const http=await import('http'); const fs=await import('fs'); const path=await import('path');
+const server=http.createServer((req,res)=>{let p=path.join('/home/user/webtest',req.url.split('?')[0]); if(!fs.existsSync(p)){res.statusCode=404;res.end();return;} res.setHeader('content-type','text/html'); res.end(fs.readFileSync(p));});
+await new Promise(r=>server.listen(8919,'127.0.0.1',r));
+const browser=await chromium.launch({headless:true,args:['--enable-unsafe-swiftshader','--use-angle=swiftshader','--ignore-gpu-blocklist']});
+const page=await (await browser.newContext({viewport:{width:1280,height:800}})).newPage();
+const logs=[]; page.on('console',m=>{const t=m.text(); if(/warn|error/i.test(t)) logs.push(t.slice(0,200));});
+await page.goto('http://127.0.0.1:8919/adv_fix1.html',{waitUntil:'domcontentloaded'});
+await page.waitForTimeout(2000);
+await page.setInputFiles('#file','/home/user/unzipped/test-model.glb');
+await page.waitForTimeout(5000);
+await page.screenshot({path:'/home/user/shots/adv_fix1.png'});
+console.log('console notes:', logs.slice(0,5).join(' | ')||'none');
+await browser.close(); server.close();
