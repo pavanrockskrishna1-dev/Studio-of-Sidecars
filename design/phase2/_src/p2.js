@@ -68,7 +68,7 @@ function applyCamera(name,flash){
   } else {
     fr.style.transform='translate3d('+p.tx+'%, '+p.ty+'%,0) scale('+p.s+')';
     fr.style.transition='transform 1.1s '+ease.out;
-    if(cur) cur.classList.add('drift');
+    if(cur) cur.classList.remove('drift');
   }
   if(flash){
     document.body.classList.add('p2-cam');
@@ -359,12 +359,13 @@ function wire(){
   const fr0=$('.p2s-frame'), par0=$('.p2s-par');
   const cv2=$('.canvas');
   if(cv2&&fr0&&par0&&matchMedia('(pointer:fine)').matches){
-    fr0.classList.add('p2-par');
+    // Do not enable parallax at boot. It is opt-in on actual pointer movement.
     let raf=null;
     cv2.addEventListener('pointermove',e=>{
       const r=cv2.getBoundingClientRect();
       const lx=(e.clientX-r.left-r.width/2)/(r.width/2), ly=(e.clientY-r.top-r.height/2)/(r.height/2);
       if(S.cam==='Orbit spin') return;
+      // Background remains static; pointer movement must not shift the environment.
       if(raf) cancelAnimationFrame(raf);
       raf=requestAnimationFrame(()=>{
         par0.style.setProperty('--p2-px',(lx*-1.15).toFixed(3)+'%');
@@ -398,7 +399,7 @@ function boot(){
       '</div>'+
       '<div class="p2-camframe"><div class="out" style="width:min(66%,780px);height:min(74%,600px)"><span class="cl" style="position:absolute;left:50%;top:calc(100% + 12px);transform:translateX(-50%);font:700 9px var(--font);letter-spacing:.18em;color:#bcd2f5;white-space:nowrap"></span></div></div>'+
       '<div class="p2-rsafe"><div class="box"></div></div>';
-    const cur0=$('#p2Cur'); cur0.src=ENVS[0].src; cur0.classList.add('drift');
+    const cur0=$('#p2Cur'); cur0.src=ENVS[0].src; cur0.classList.remove('drift');
   }
   wire();
   quiet=true;

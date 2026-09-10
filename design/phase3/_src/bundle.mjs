@@ -1,15 +1,28 @@
 /* Phase 3 · esbuild bundler — wraps the modular engine (ESM) + three into one IIFE.
-   Run: NODE_PATH=/tmp/p3build/node_modules node design/phase3/_src/bundle.mjs   */
+   Run from anywhere:  node design/phase3/_src/bundle.mjs
+   (or `npm run bundle` from design/phase3).
+   Requires `npm install` in design/phase3 first (pinned toolchain:
+   three r170 + esbuild, see ../package.json).
+   All paths resolve relative to this file and the pinned toolchain —
+   no machine-specific absolute paths. Output is scratch (../_build/,
+   gitignored);
+   build_phase3.py consumes it to assemble the release artifact. */
 import { createRequire } from 'module';
-const require = createRequire('/tmp/p3build/index.js');
+import { mkdirSync, statSync, writeFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const here = dirname(fileURLToPath(import.meta.url)); // .../design/phase3/_src
+const ROOT = dirname(here);                            // .../design/phase3
+const require = createRequire(join(ROOT, 'package.json'));
 const esbuild = require('esbuild');
-import { writeFileSync } from 'fs';
 
-const NPM = '/tmp/p3build/node_modules';
-const entry = '/home/user/design/phase3/engine/app.js';
-const out = '/tmp/p3engine.js';
+const entry = join(ROOT, 'engine', 'app.js');
+const outDir = join(ROOT, '_build');
+const out = join(outDir, 'p3engine.js');
+mkdirSync(outDir, { recursive: true });
 
-const result = await esbuild.build({
+await esbuild.build({
   entryPoints: [entry],
   bundle: true,
   minify: !process.env.DEBUG,
@@ -18,8 +31,9 @@ const result = await esbuild.build({
   target: ['esnext', 'chrome120', 'safari16'],
   outfile: out,
   logLevel: 'warning',
-  nodePaths: [NPM],
+  nodePaths: [join(ROOT, 'node_modules')],
   define: { 'process.env.NODE_ENV': '"production"' },
 });
-writeFileSync(out + '.meta', JSON.stringify({ bytes: result ? 0 : 0 }));
-console.log('bundled ->', out, require('fs').statSync(out).size, 'bytes');
+const bytes = statSync(out).size;
+writeFileSync(out + '.meta', JSON.stringify({ bytes, entry, builtAt: new Date().toISOString() }) + '\n');
+console.log('bundled ->', out, bytes, 'bytes');

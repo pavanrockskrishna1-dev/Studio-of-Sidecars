@@ -205,17 +205,12 @@ body.p2-rsafe-on .p2-rsafe .box{opacity:1}
 }
 
 /* ================================================================
-   rev A · stage rig: parallax wrapper, cinematic drift & orbit,
+   rev A · stage rig: user-driven parallax and orbit,
    sheen sweep, safe/rim flash states. (Phase-1 chrome untouched)
    ================================================================ */
 .p2s-par{position:absolute;inset:-2.6%;transform:translate3d(0,0,0);
   transition:transform .55s cubic-bezier(.22,.8,.3,1)}
 .p2s-frame.p2-par .p2s-par{transform:translate3d(var(--p2-px,0),var(--p2-py,0),0)}
-.p2s-img.drift{animation:p2-drift 46s ease-in-out infinite alternate}
-@keyframes p2-drift{
-  from{transform:scale(1.004) translate3d(0,0,0)}
-  to{transform:scale(1.055) translate3d(-1.15%,.75%,0)}
-}
 .p2s-frame.p2-orbit{animation:p2-orbit 17s cubic-bezier(.65,.05,.36,1) infinite}
 @keyframes p2-orbit{
   0%,100%{transform:perspective(1500px) rotateY(-7deg) scale(1.02)}
@@ -223,6 +218,7 @@ body.p2-rsafe-on .p2-rsafe .box{opacity:1}
 }
 .on-switch .p2s-sheen{opacity:1;transform:translateY(6%)}
 #p2Prev{transition:opacity var(--p2-t-slow) var(--p2-ease-out),transform .9s var(--p2-ease-out)}
+.p2s *, .p2s *::before, .p2s *::after{animation:none!important;transition:none!important;will-change:auto!important}
 .p2s-slot.flash{border-color:var(--p2-mat-c,#7fb1ff);box-shadow:0 0 0 2px rgba(127,177,255,.18),0 0 34px rgba(47,123,255,.12)}
 .p2s-slot.flash::after{content:"";position:absolute;inset:0;border-radius:50%;opacity:0;
   background:radial-gradient(60% 60% at 50% 42%,rgba(255,255,255,.16),transparent 78%);

@@ -16,9 +16,9 @@ SRC   = os.path.join(ROOT, '_src')
 INP   = os.path.join(ROOT, '..', 'redesign', 'studio_sidecars_premium_finish.html')
 OUT   = os.path.join(ROOT, 'studio_sidecars_phase3.html')
 CSS   = os.path.join(SRC, 'p3.css')
-JS    = '/tmp/p3engine.js'
+JS    = os.path.join(ROOT, '_build', 'p3engine.js')
 if not os.path.exists(JS):
-    raise SystemExit('bundle missing — run bundle.mjs first')
+    raise SystemExit('bundle missing — run `node _src/bundle.mjs` (or `npm run bundle`) from design/phase3 first')
 
 def body_of(html):
     a = html.find('<html'); b = html.find('<body', a); e = html.rfind('</body>') + len('</body>')

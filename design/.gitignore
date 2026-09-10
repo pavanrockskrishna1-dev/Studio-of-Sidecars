@@ -5,6 +5,8 @@
 # deps / runtimes / caches
 node_modules/
 package-lock.json
+# ...except the Phase 3 pinned toolchain lockfile, which IS canonical
+!phase3/package-lock.json
 .pwlibs/
 ms-playwright/
 playwright/
@@ -24,6 +26,7 @@ venv/
 _tmp_*
 tmp_*
 scratch/
+_build/
 *.bak
 *~
 
