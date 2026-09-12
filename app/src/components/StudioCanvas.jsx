@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { PRODUCTS } from "../products/registry";
 
-const MODEL_PATH = "/models/the_kop_refined.glb";
 const FOV = 45;
 
-function StudioStage() {
+function StudioStage({ product }) {
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef(null);
 
@@ -23,7 +23,7 @@ function StudioStage() {
     };
   }, [scene, gl]);
 
-  const { scene: modelScene } = useGLTF(MODEL_PATH);
+  const { scene: modelScene } = useGLTF(product.modelPath);
 
   // Deterministic framing: measure the loaded model, fit camera + floor to it
   const fit = useMemo(() => {
@@ -45,9 +45,17 @@ function StudioStage() {
   }, [modelScene, gl]);
 
   useEffect(() => {
-    // Product-shot angle: slightly below model center, pulled back toward the camera
-    const dir = new THREE.Vector3(0.35, -0.1, 1).normalize();
-    camera.position.copy(fit.center).addScaledVector(dir, fit.distance);
+    // Product-shot angle: slightly below model center. The offset scales with
+    // model HEIGHT (not camera distance) so it reads the same at any scale —
+    // a hero angle for a bike, a level eye-line for an aircraft.
+    const dy = -0.1 * fit.size.y;
+    const horiz = Math.sqrt(fit.distance * fit.distance - dy * dy);
+    const dirH = new THREE.Vector2(0.35, 1).normalize();
+    camera.position.set(
+      fit.center.x + dirH.x * horiz,
+      fit.center.y + dy,
+      fit.center.z + dirH.y * horiz
+    );
     camera.far = fit.distance * 10 + 10;
     camera.updateProjectionMatrix();
     camera.lookAt(fit.center);
@@ -56,6 +64,18 @@ function StudioStage() {
       controlsRef.current.update();
     }
   }, [fit, camera]);
+
+  // R3F's Suspense boundary hides previously-committed scenes via
+  // hideInstance(), which writes visible=false onto the model object itself.
+  // With loader-cached GLBs the object outlives its hiding instance (the
+  // instance is deleted when the next product commits, so unhideInstance
+  // never runs) — and the next mount of the same product resurrects a
+  // silently hidden model. While this stage renders this product, assert
+  // ownership of its visibility every frame (a one-shot effect is not
+  // enough: the hide can land asynchronously after mount).
+  useFrame(() => {
+    if (!modelScene.visible) modelScene.visible = true;
+  });
 
   return (
     <>
@@ -73,7 +93,7 @@ function StudioStage() {
         <meshStandardMaterial color="#1a1a1a" />
       </mesh>
 
-      {/* Coffee Bike Model */}
+      {/* Active product model */}
       <primitive object={modelScene} />
 
       <OrbitControls
@@ -86,7 +106,7 @@ function StudioStage() {
   );
 }
 
-export default function StudioCanvas() {
+export default function StudioCanvas({ product = PRODUCTS[0] }) {
   return (
     <Canvas
       camera={{ fov: FOV, near: 0.1, far: 500, position: [0, 2, 5] }}
@@ -97,7 +117,8 @@ export default function StudioCanvas() {
         zIndex: 0,
       }}
     >
-      <StudioStage />
+      {/* key=product.id: switching products remounts the stage cleanly */}
+      <StudioStage key={product.id} product={product} />
     </Canvas>
   );
 }
