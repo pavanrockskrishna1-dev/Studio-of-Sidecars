@@ -352,10 +352,13 @@ function StudioStage({
         <primitive object={modelScene} />
       </group>
 
+      {/* Left-drag orbits, right-drag pans, wheel zooms. No auto-rotate and no
+          damping inertia: the camera must stop the instant the pointer is
+          released (continuous orbit is reserved for an explicit future
+          Auto-Rotate feature). */}
       <OrbitControls
         ref={controlsRef}
-        autoRotate
-        autoRotateSpeed={1}
+        enableDamping={false}
         enableZoom
       />
     </>
