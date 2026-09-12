@@ -201,6 +201,11 @@ export default function StudioControls({
         background: "rgba(5,5,5,0.4)",
         backdropFilter: "blur(8px)",
         border: "1px solid rgba(255,255,255,0.1)",
+        // Never let the panel grow past the viewport: on short windows the
+        // CAMERA section would otherwise overflow off-screen and become
+        // unreachable. Cap the height and scroll the panel internally instead.
+        maxHeight: "calc(100vh - 20px)",
+        overflowY: "auto",
       }}
     >
       <Row
