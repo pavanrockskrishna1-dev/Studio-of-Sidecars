@@ -1,0 +1,46 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #050505;
+  color: white;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.studio {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+}
+
+.logo {
+  letter-spacing: 8px;
+  font-size: 14px;
+  color: #ff8c2a;
+}
+
+h1 {
+  font-size: 56px;
+  font-weight: 700;
+}
+
+p {
+  color: #9f9f9f;
+  font-size: 20px;
+}
+
+button {
+  padding: 16px 34px;
+  border: none;
+  border-radius: 12px;
+  background: #ff8c2a;
+  color: black;
+  font-weight: bold;
+  cursor: pointer;
+}
