@@ -1,0 +1,18 @@
+{
+  "name": "studio-sidecars-phase3",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Phase 3 Live GLB Engine — pinned build/test toolchain (three r170). Build output is studio_sidecars_phase3.html.",
+  "type": "commonjs",
+  "scripts": {
+    "bundle": "node _src/bundle.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "playwright-core": "1.49.1",
+    "three": "0.170.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

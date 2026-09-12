@@ -1,0 +1,41 @@
+{
+  "order": [
+    "hero",
+    "bg_01",
+    "bg_02",
+    "bg_03",
+    "bg_04",
+    "bg_05",
+    "bg_06",
+    "bg_07",
+    "bg_08",
+    "bg_09",
+    "bg_10"
+  ],
+  "names": {
+    "hero": "Propeller & Pistons Loft",
+    "bg_01": "Vintage Garage Studio",
+    "bg_02": "Coal & Fire Forge",
+    "bg_03": "Royal Enfield Heritage Workshop",
+    "bg_04": "Aviation Heritage Hangar",
+    "bg_05": "Industrial Steel Factory",
+    "bg_06": "Midnight Black Commercial Studio",
+    "bg_07": "Luxury Brick Loft Museum",
+    "bg_08": "Coffee Roastery Workshop",
+    "bg_09": "Matte White Photography Studio",
+    "bg_10": "Marble Luxury Showroom"
+  },
+  "moods": {
+    "hero": "planes × bikes · collector loft · default",
+    "bg_01": "warm tungsten · amber on charcoal",
+    "bg_02": "blacksmith forge · furnace glow",
+    "bg_03": "heritage · green & brass",
+    "bg_04": "riveted hangar · light shafts",
+    "bg_05": "steel hall · cool + warm lamps",
+    "bg_06": "black cyc · single beam",
+    "bg_07": "brick loft · brass track",
+    "bg_08": "copper roaster · warm haze",
+    "bg_09": "matte white cyc",
+    "bg_10": "marble · cove light"
+  }
+}
