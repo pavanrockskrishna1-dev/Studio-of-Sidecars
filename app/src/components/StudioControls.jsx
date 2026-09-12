@@ -116,7 +116,17 @@ function PresetThumb({ thumb }) {
 }
 
 // Camera presets — compact visual cards (thumbnail + name), one-click apply.
-function CameraRow({ activePresetId, onPreset }) {
+// Mission 7.2 (Save Custom View): once a view is saved, one extra "Custom"
+// card appears beside the built-ins (same card language, bookmark glyph);
+// the ghost pill below snapshots the current camera as that Custom view.
+function CameraRow({
+  activePresetId,
+  onPreset,
+  hasCustomView,
+  onSaveCustomView,
+}) {
+  const [hoverSave, setHoverSave] = useState(false);
+  const customActive = activePresetId === "custom";
   return (
     <div>
       <div
@@ -174,7 +184,91 @@ function CameraRow({ activePresetId, onPreset }) {
             </button>
           );
         })}
+        {hasCustomView && (
+          <button
+            key="custom"
+            data-testid="custom-view-card"
+            title="Restore saved custom view"
+            onClick={() => onPreset("custom")}
+            style={{
+              fontFamily: "inherit",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 2,
+              padding: "5px 2px 4px",
+              borderRadius: 8,
+              border: `1px solid ${
+                customActive ? "rgba(232,181,77,0.9)" : "rgba(255,255,255,0.18)"
+              }`,
+              background: customActive
+                ? "rgba(232,181,77,0.14)"
+                : "rgba(10,10,10,0.5)",
+              cursor: "pointer",
+            }}
+          >
+            <svg
+              width="44"
+              height="26"
+              viewBox="0 0 48 30"
+              aria-hidden="true"
+              style={{ display: "block" }}
+            >
+              {/* bookmark glyph — the saved-view slot */}
+              <path
+                d="M18 6.5 h12 v17 l-6 -4.6 l-6 4.6 z"
+                fill="rgba(232,181,77,0.18)"
+                stroke="rgba(232,181,77,0.75)"
+              />
+            </svg>
+            <span
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.03em",
+                color: customActive ? GOLD : "rgba(255,255,255,0.82)",
+                lineHeight: 1.1,
+              }}
+            >
+              Custom
+            </span>
+          </button>
+        )}
       </div>
+      <button
+        data-testid="save-custom-view"
+        title="Save the current camera view as the Custom view"
+        onClick={onSaveCustomView}
+        onMouseEnter={() => setHoverSave(true)}
+        onMouseLeave={() => setHoverSave(false)}
+        style={{
+          fontFamily: "inherit",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 5,
+          width: "100%",
+          marginTop: 4,
+          fontSize: 9,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          padding: "5px 8px",
+          borderRadius: 999,
+          border: "1px solid rgba(255,255,255,0.18)",
+          background: hoverSave ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.04)",
+          color: "rgba(255,255,255,0.85)",
+          cursor: "pointer",
+        }}
+      >
+        <svg width="9" height="10" viewBox="0 0 12 13" aria-hidden="true">
+          <path
+            d="M2.5 1 h7 v11 l-3.5 -2.7 l-3.5 2.7 z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+          />
+        </svg>
+        Save Custom View
+      </button>
     </div>
   );
 }
@@ -234,6 +328,8 @@ export default function StudioControls({
   activePresetId,
   onCameraPreset,
   onCaptureShot,
+  hasCustomView,
+  onSaveCustomView,
 }) {
   return (
     <div
@@ -269,7 +365,12 @@ export default function StudioControls({
         activeId={productId}
         onSelect={onProductSelect}
       />
-      <CameraRow activePresetId={activePresetId} onPreset={onCameraPreset} />
+      <CameraRow
+        activePresetId={activePresetId}
+        onPreset={onCameraPreset}
+        hasCustomView={hasCustomView}
+        onSaveCustomView={onSaveCustomView}
+      />
       <CaptureRow onCapture={onCaptureShot} />
     </div>
   );

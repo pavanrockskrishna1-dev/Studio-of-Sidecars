@@ -132,6 +132,8 @@ function StudioStage({
   onSelect,
   onClear,
   cameraRequest,
+  customView,
+  cameraApiRef,
 }) {
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef(null);
@@ -220,18 +222,29 @@ function StudioStage({
   // Only the camera changes: model transform, environment and selection are
   // left untouched. Framing is recomputed from the model bounds so presets
   // adapt to any model size (Coffee Bike or C172) automatically.
+  // Mission 7.2 (Save Custom View): the transient id "custom" restores the
+  // session's single saved view (exact camera position + orbit target)
+  // through this same request flow — no second camera state system.
   useEffect(() => {
     if (!cameraRequest || !cameraRequest.id) return undefined;
-    const preset = getCameraPreset(cameraRequest.id);
-    if (!preset) return undefined;
-    const aspect = gl.domElement.clientWidth / gl.domElement.clientHeight;
-    const { position, target } = computeCameraShot(
-      fit,
-      preset,
-      product.frontAz ?? 0,
-      aspect,
-      FOV
-    );
+    let position;
+    let target;
+    if (cameraRequest.id === "custom") {
+      if (!customView) return undefined;
+      position = new THREE.Vector3().fromArray(customView.position);
+      target = new THREE.Vector3().fromArray(customView.target);
+    } else {
+      const preset = getCameraPreset(cameraRequest.id);
+      if (!preset) return undefined;
+      const aspect = gl.domElement.clientWidth / gl.domElement.clientHeight;
+      ({ position, target } = computeCameraShot(
+        fit,
+        preset,
+        product.frontAz ?? 0,
+        aspect,
+        FOV
+      ));
+    }
     camera.position.copy(position);
     camera.far = fit.distance * 10 + 10;
     camera.updateProjectionMatrix();
@@ -241,7 +254,25 @@ function StudioStage({
       controlsRef.current.update();
     }
     return undefined;
-  }, [cameraRequest, fit, camera, gl]);
+  }, [cameraRequest, customView, fit, camera, gl]);
+
+  // Mission 7.2 (Save Custom View) — exposes the LIVE camera position and
+  // OrbitControls target so the App can snapshot the exact current view.
+  // Read-only: saving never moves the camera or touches any other state.
+  useEffect(() => {
+    if (!cameraApiRef) return undefined;
+    cameraApiRef.current = {
+      readView: () => ({
+        position: camera.position.toArray(),
+        target: controlsRef.current
+          ? controlsRef.current.target.toArray()
+          : [0, 0, 0],
+      }),
+    };
+    return () => {
+      cameraApiRef.current = null;
+    };
+  }, [cameraApiRef, camera]);
 
   // R3F's Suspense boundary hides previously-committed scenes via
   // hideInstance(), which writes visible=false onto the model object itself.
@@ -406,6 +437,8 @@ export default function StudioCanvas({
   environment = ENVIRONMENTS[0],
   cameraRequest = null,
   captureRef = null,
+  customView = null,
+  cameraApiRef = null,
 }) {
   const [selection, setSelection] = useState(null);
   const [transform, setTransform] = useState({ ...DEFAULT_TRANSFORM });
@@ -458,6 +491,8 @@ export default function StudioCanvas({
           onSelect={handleSelect}
           onClear={handleClear}
           cameraRequest={cameraRequest}
+          customView={customView}
+          cameraApiRef={cameraApiRef}
         />
         <CaptureBridge captureRef={captureRef} />
       </Canvas>

@@ -16,6 +16,14 @@ export default function App() {
   const [cameraRequest, setCameraRequest] = useState({ id: null, seq: 0 });
   const [prevProductId, setPrevProductId] = useState(productId);
 
+  // Mission 7.2 (Save Custom View) — the single session-only custom view
+  // slot: { position: [x,y,z], target: [x,y,z] } snapshotted from the live
+  // camera + OrbitControls target. Lives purely in React state: never in
+  // localStorage, never on disk, gone on refresh. Cleared together with the
+  // camera request when the product switches; environment swaps keep it.
+  const [customView, setCustomView] = useState(null);
+  const cameraApiRef = useRef(null);
+
   // Mission 8 (Capture Shot Foundation) — the capture function is registered
   // by the CaptureBridge inside the existing Canvas (same renderer, same
   // scene). One shot at a time; every object URL is revoked as soon as it is
@@ -30,13 +38,28 @@ export default function App() {
 
   // Reset the camera request in the same render pass as a product switch so the
   // incoming model gets its default hero framing (no camera-state leakage).
+  // The saved Custom View belongs to the outgoing model's session framing, so
+  // it is cleared in the same pass.
   if (prevProductId !== productId) {
     setPrevProductId(productId);
     setCameraRequest({ id: null, seq: 0 });
+    setCustomView(null);
   }
 
   const handleCameraPreset = (id) =>
     setCameraRequest((prev) => ({ id, seq: prev.seq + 1 }));
+
+  // Mission 7.2 (Save Custom View) — snapshot the exact current camera
+  // position + orbit target (read-only), then route a "custom" request
+  // through the same transient-request flow the built-in presets use so the
+  // Custom card reads as the active view immediately after saving. Saving
+  // again simply overwrites the single slot.
+  const handleSaveCustomView = useCallback(() => {
+    const api = cameraApiRef.current;
+    if (!api) return;
+    setCustomView(api.readView());
+    setCameraRequest((prev) => ({ id: "custom", seq: prev.seq + 1 }));
+  }, []);
 
   const handleCaptureShot = useCallback(async () => {
     const capture = captureRef.current;
@@ -86,6 +109,8 @@ export default function App() {
         environment={environment}
         cameraRequest={cameraRequest}
         captureRef={captureRef}
+        customView={customView}
+        cameraApiRef={cameraApiRef}
       />
       <StudioControls
         environmentId={environment.id}
@@ -95,6 +120,8 @@ export default function App() {
         activePresetId={cameraRequest.id}
         onCameraPreset={handleCameraPreset}
         onCaptureShot={handleCaptureShot}
+        hasCustomView={customView !== null}
+        onSaveCustomView={handleSaveCustomView}
       />
       <CapturePreview shot={shot} onClose={handleCloseShot} />
       <Hero />
