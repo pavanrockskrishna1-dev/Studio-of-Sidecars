@@ -22,6 +22,21 @@ const OUTLINE_EXPAND = 1.015; // thin inverted-hull silhouette
 const RING_OPACITY = 0.95;
 const CLICK_MOVE_TOLERANCE = 5; // px — below this a pointerup reads as a click
 
+// Mission 6 (Transform Foundation) — the original transform reference. The
+// transform layer is a wrapper group starting at identity, so identity is the
+// exact original placement/rotation/scale of every model.
+const DEFAULT_TRANSFORM = Object.freeze({
+  x: 0,
+  y: 0,
+  z: 0,
+  rx: 0, // degrees (Euler XYZ)
+  ry: 0,
+  rz: 0,
+  s: 1, // uniform scale
+});
+
+const degToRad = THREE.MathUtils.degToRad;
+
 // Collect every visible mesh into a plain array FIRST. Never create outline
 // shells while iterating a live Object3D.children array — that traversal bug
 // (mutating the scene graph mid-iteration) was the previous implementation's
@@ -34,21 +49,24 @@ function collectModelMeshes(root) {
   return meshes;
 }
 
-// Build one inverted-hull shell per collected mesh. Shells SHARE the model's
-// geometry (so geometry is never disposed here) but each owns a fresh material
-// that the caller disposes when selection clears. Expanding about the model's
-// bounding-box center keeps the whole silhouette concentric.
-function buildOutlineShells(meshes, center) {
-  const expand = OUTLINE_EXPAND;
-  const shells = [];
+// Build one inverted-hull shell per collected mesh, expressed in the transform
+// group's LOCAL space so the outline follows the model when it is transformed.
+// Shells SHARE the model's geometry (so geometry is never disposed here) but
+// each owns a fresh material that the caller disposes when selection clears.
+function buildOutlineShells(meshes, center, parent) {
+  parent.updateWorldMatrix(true, false);
+  const invParent = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+  const m = new THREE.Matrix4();
   const pos = new THREE.Vector3();
   const quat = new THREE.Quaternion();
   const scale = new THREE.Vector3();
   const offset = new THREE.Vector3();
+  const shells = [];
 
   for (const mesh of meshes) {
     mesh.updateWorldMatrix(true, false);
-    mesh.matrixWorld.decompose(pos, quat, scale);
+    m.copy(mesh.matrixWorld).premultiply(invParent);
+    m.decompose(pos, quat, scale);
     offset.copy(pos).sub(center);
     const shell = new THREE.Mesh(
       mesh.geometry,
@@ -61,17 +79,18 @@ function buildOutlineShells(meshes, center) {
         toneMapped: false,
       })
     );
-    shell.position.copy(center).addScaledVector(offset, expand);
+    shell.position.copy(center).addScaledVector(offset, OUTLINE_EXPAND);
     shell.quaternion.copy(quat);
-    shell.scale.copy(scale).multiplyScalar(expand);
+    shell.scale.copy(scale).multiplyScalar(OUTLINE_EXPAND);
     shells.push(shell);
   }
   return shells;
 }
 
-function StudioStage({ product, environment, selected, onSelect, onClear }) {
+function StudioStage({ product, environment, transform, selected, onSelect, onClear }) {
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef(null);
+  const transformRef = useRef(null);
 
   // Local PBR environment (RoomEnvironment via PMREM — no network, no HDR download)
   useEffect(() => {
@@ -171,22 +190,25 @@ function StudioStage({ product, environment, selected, onSelect, onClear }) {
   }, [modelScene]);
 
   // Selection outline — built imperatively from the collected mesh list (never
-  // while walking live children arrays), and fully disposed on clear/unmount.
+  // while walking live children arrays), parented to the transform group so it
+  // follows transforms, and fully disposed on clear/unmount.
   useEffect(() => {
     if (!selected) return undefined;
-    const shells = buildOutlineShells(modelMeshes, fit.center);
+    const parent = transformRef.current;
+    if (!parent) return undefined;
+    const shells = buildOutlineShells(modelMeshes, fit.center, parent);
     const group = new THREE.Group();
     group.name = "selection-outline";
     group.add(...shells);
-    scene.add(group);
+    parent.add(group);
     return () => {
-      scene.remove(group);
+      parent.remove(group);
       for (const shell of shells) {
         shell.material.dispose();
       }
       // Shell geometry is shared with the model — intentionally not disposed.
     };
-  }, [selected, modelMeshes, fit.center, scene]);
+  }, [selected, modelMeshes, fit.center]);
 
   // Click-to-select / click-empty-to-clear with drag guards.
   useEffect(() => {
@@ -214,6 +236,9 @@ function StudioStage({ product, environment, selected, onSelect, onClear }) {
 
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
+      // Refresh world matrices (incl. the transform group) so raycasts always
+      // hit the model where it currently is, even right after a transform.
+      modelScene.updateWorldMatrix(true, true);
       ndc.set(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1
@@ -236,7 +261,7 @@ function StudioStage({ product, environment, selected, onSelect, onClear }) {
       el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("pointerup", onPointerUp);
     };
-  }, [gl, camera, modelMeshes, product.name, fit.size, onSelect, onClear]);
+  }, [gl, camera, modelMeshes, modelScene, product.name, fit.size, onSelect, onClear]);
 
   return (
     <>
@@ -280,8 +305,16 @@ function StudioStage({ product, environment, selected, onSelect, onClear }) {
         />
       </mesh>
 
-      {/* Active product model */}
-      <primitive object={modelScene} />
+      {/* Transform layer — applies only to the selected model's wrapper group.
+          Identity === the model's exact original transform (reset reference). */}
+      <group
+        ref={transformRef}
+        position={[transform.x, transform.y, transform.z]}
+        rotation={[degToRad(transform.rx), degToRad(transform.ry), degToRad(transform.rz)]}
+        scale={[transform.s, transform.s, transform.s]}
+      >
+        <primitive object={modelScene} />
+      </group>
 
       <OrbitControls
         ref={controlsRef}
@@ -298,17 +331,30 @@ export default function StudioCanvas({
   environment = ENVIRONMENTS[0],
 }) {
   const [selection, setSelection] = useState(null);
+  const [transform, setTransform] = useState({ ...DEFAULT_TRANSFORM });
   const [selectionProductId, setSelectionProductId] = useState(product.id);
 
-  // Reset selection in the same render pass as a product switch so the
-  // inspector/outline never flash stale data onto the incoming model.
+  // Reset selection AND transform state in the same render pass as a product
+  // switch, so nothing leaks from one model to another and the inspector never
+  // flashes stale data onto the incoming model.
   if (selectionProductId !== product.id) {
     setSelectionProductId(product.id);
     setSelection(null);
+    setTransform({ ...DEFAULT_TRANSFORM });
   }
 
   const handleSelect = useCallback((info) => setSelection(info), []);
+  // Clearing selection leaves the model where it is — it must not corrupt or
+  // unexpectedly modify the current transform.
   const handleClear = useCallback(() => setSelection(null), []);
+  const handleTransformChange = useCallback(
+    (patch) => setTransform((prev) => ({ ...prev, ...patch })),
+    []
+  );
+  const handleResetTransform = useCallback(
+    () => setTransform({ ...DEFAULT_TRANSFORM }),
+    []
+  );
 
   return (
     <>
@@ -326,6 +372,7 @@ export default function StudioCanvas({
           key={product.id}
           product={product}
           environment={environment}
+          transform={transform}
           selected={selection !== null}
           onSelect={handleSelect}
           onClear={handleClear}
@@ -335,6 +382,9 @@ export default function StudioCanvas({
         <SelectionInspector
           name={selection.name}
           size={selection.size}
+          transform={transform}
+          onTransformChange={handleTransformChange}
+          onResetTransform={handleResetTransform}
           onClear={handleClear}
         />
       )}
