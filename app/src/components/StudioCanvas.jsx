@@ -63,8 +63,9 @@ function StudioStage({ product, environment }) {
     const distV = size.y / 2 / Math.tan(vFov / 2);
     const distH =
       Math.hypot(size.x, size.z) / 2 / Math.tan(hFov / 2);
-    // 0.8 => model fills ~80% of frame
-    const distance = Math.max(distV, distH) / 0.8;
+    // 0.7 => model fills ~70% of frame: comfortable product framing with
+    // clear space around it (incl. the top-right controls panel).
+    const distance = Math.max(distV, distH) / 0.7;
     const footprintRadius = Math.hypot(size.x, size.z) / 2;
     return { center, size, distance, footprintRadius, floorY: box.min.y };
   }, [modelScene, gl]);
