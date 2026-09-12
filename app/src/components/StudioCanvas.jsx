@@ -12,6 +12,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { PRODUCTS } from "../products/registry";
 import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
+import { computeCameraShot, getCameraPreset } from "../camera/presets";
 
 const FOV = 45;
 
@@ -87,7 +88,15 @@ function buildOutlineShells(meshes, center, parent) {
   return shells;
 }
 
-function StudioStage({ product, environment, transform, selected, onSelect, onClear }) {
+function StudioStage({
+  product,
+  environment,
+  transform,
+  selected,
+  onSelect,
+  onClear,
+  cameraRequest,
+}) {
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef(null);
   const transformRef = useRef(null);
@@ -170,6 +179,33 @@ function StudioStage({ product, environment, transform, selected, onSelect, onCl
       controlsRef.current.update();
     }
   }, [fit, camera]);
+
+  // Camera preset — move the camera to a product-shot viewpoint on request.
+  // Only the camera changes: model transform, environment and selection are
+  // left untouched. Framing is recomputed from the model bounds so presets
+  // adapt to any model size (Coffee Bike or C172) automatically.
+  useEffect(() => {
+    if (!cameraRequest || !cameraRequest.id) return undefined;
+    const preset = getCameraPreset(cameraRequest.id);
+    if (!preset) return undefined;
+    const aspect = gl.domElement.clientWidth / gl.domElement.clientHeight;
+    const { position, target } = computeCameraShot(
+      fit,
+      preset,
+      product.frontAz ?? 0,
+      aspect,
+      FOV
+    );
+    camera.position.copy(position);
+    camera.far = fit.distance * 10 + 10;
+    camera.updateProjectionMatrix();
+    camera.lookAt(target);
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(target);
+      controlsRef.current.update();
+    }
+    return undefined;
+  }, [cameraRequest, fit, camera, gl]);
 
   // R3F's Suspense boundary hides previously-committed scenes via
   // hideInstance(), which writes visible=false onto the model object itself.
@@ -329,6 +365,7 @@ function StudioStage({ product, environment, transform, selected, onSelect, onCl
 export default function StudioCanvas({
   product = PRODUCTS[0],
   environment = ENVIRONMENTS[0],
+  cameraRequest = null,
 }) {
   const [selection, setSelection] = useState(null);
   const [transform, setTransform] = useState({ ...DEFAULT_TRANSFORM });
@@ -376,6 +413,7 @@ export default function StudioCanvas({
           selected={selection !== null}
           onSelect={handleSelect}
           onClear={handleClear}
+          cameraRequest={cameraRequest}
         />
       </Canvas>
       {selection && (
