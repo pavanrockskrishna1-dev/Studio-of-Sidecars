@@ -1,6 +1,5 @@
 # ---- dependencies & package caches ----
 node_modules/
-package-lock.json
 
 # ---- Playwright / Chromium runtimes & caches ----
 .pwlibs/
