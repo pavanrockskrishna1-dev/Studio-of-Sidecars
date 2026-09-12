@@ -9,6 +9,7 @@ export const PRODUCTS = [
   {
     id: "coffee-bike",
     name: "Coffee Bike",
+    label: "Coffee Bike",
     modelPath: "/models/the_kop_refined.glb",
   },
   {
@@ -17,6 +18,7 @@ export const PRODUCTS = [
     // upgrade — nothing else needs to change.
     id: "cessna-172",
     name: "Cessna 172",
+    label: "Cessna 172",
     modelPath: "/models/cessna-172.glb",
   },
 ];

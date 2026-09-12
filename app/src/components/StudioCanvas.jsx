@@ -4,10 +4,11 @@ import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { PRODUCTS } from "../products/registry";
+import { ENVIRONMENTS } from "../environments/registry";
 
 const FOV = 45;
 
-function StudioStage({ product }) {
+function StudioStage({ product, environment }) {
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef(null);
 
@@ -24,6 +25,30 @@ function StudioStage({ product }) {
   }, [scene, gl]);
 
   const { scene: modelScene } = useGLTF(product.modelPath);
+
+  // Environment background — locked library rule: applying an environment
+  // changes ONLY the background (lighting, camera, and model stay untouched).
+  // The photographic backdrops contain their own display platform, so the
+  // 3D floor disc is hidden while one is active (see <mesh visible=...>).
+  useEffect(() => {
+    let disposed = false;
+    let texture = null;
+    const loader = new THREE.TextureLoader();
+    loader.load(environment.file, (tex) => {
+      if (disposed) {
+        tex.dispose();
+        return;
+      }
+      tex.colorSpace = THREE.SRGBColorSpace;
+      texture = tex;
+      scene.background = tex;
+    });
+    return () => {
+      disposed = true;
+      if (texture) texture.dispose();
+      scene.background = null;
+    };
+  }, [scene, environment]);
 
   // Deterministic framing: measure the loaded model, fit camera + floor to it
   const fit = useMemo(() => {
@@ -84,8 +109,11 @@ function StudioStage({ product }) {
       <directionalLight position={[4, 6, 5]} intensity={2.5} />
       <directionalLight position={[-6, 2, -4]} intensity={1.0} color={0xffd2a1} />
 
-      {/* Floor anchored to the model's actual base (was hardcoded at y=-1.2) */}
+      {/* Floor anchored to the model's actual base (was hardcoded at y=-1.2).
+          Hidden while a photographic environment is active — its backdrop
+          already contains the circular display platform. */}
       <mesh
+        visible={!environment.file}
         rotation={[-Math.PI / 2, 0, 0]}
         position={[fit.center.x, fit.floorY, fit.center.z]}
       >
@@ -106,7 +134,10 @@ function StudioStage({ product }) {
   );
 }
 
-export default function StudioCanvas({ product = PRODUCTS[0] }) {
+export default function StudioCanvas({
+  product = PRODUCTS[0],
+  environment = ENVIRONMENTS[0],
+}) {
   return (
     <Canvas
       camera={{ fov: FOV, near: 0.1, far: 500, position: [0, 2, 5] }}
@@ -118,7 +149,7 @@ export default function StudioCanvas({ product = PRODUCTS[0] }) {
       }}
     >
       {/* key=product.id: switching products remounts the stage cleanly */}
-      <StudioStage key={product.id} product={product} />
+      <StudioStage key={product.id} product={product} environment={environment} />
     </Canvas>
   );
 }
