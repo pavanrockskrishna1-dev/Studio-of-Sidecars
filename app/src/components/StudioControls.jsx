@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ENVIRONMENTS } from "../environments/registry";
 import { PRODUCTS } from "../products/registry";
 import { CAMERA_PRESETS } from "../camera/presets";
@@ -178,6 +179,53 @@ function CameraRow({ activePresetId, onPreset }) {
   );
 }
 
+// Mission 8 (Capture Shot Foundation) — one compact gold action beneath the
+// CAMERA presets. It captures the live WebGL presentation exactly as shown
+// (environment, model, transform, camera, selection) and changes nothing.
+function CaptureRow({ onCapture }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      data-testid="capture-shot"
+      title="Capture the current view as a PNG"
+      onClick={onCapture}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        fontFamily: "inherit",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: "0.14em",
+        textTransform: "uppercase",
+        padding: "6px 10px",
+        borderRadius: 999,
+        border: "1px solid rgba(232,181,77,0.35)",
+        background: hover ? "rgba(232,181,77,0.18)" : "rgba(232,181,77,0.06)",
+        color: GOLD,
+        cursor: "pointer",
+      }}
+    >
+      {/* shutter glyph */}
+      <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+        <circle
+          cx="6"
+          cy="6"
+          r="4.6"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.2"
+        />
+        <circle cx="6" cy="6" r="2" fill="currentColor" />
+      </svg>
+      Capture Shot
+    </button>
+  );
+}
+
 export default function StudioControls({
   environmentId,
   onEnvironmentSelect,
@@ -185,6 +233,7 @@ export default function StudioControls({
   onProductSelect,
   activePresetId,
   onCameraPreset,
+  onCaptureShot,
 }) {
   return (
     <div
@@ -221,6 +270,7 @@ export default function StudioControls({
         onSelect={onProductSelect}
       />
       <CameraRow activePresetId={activePresetId} onPreset={onCameraPreset} />
+      <CaptureRow onCapture={onCaptureShot} />
     </div>
   );
 }

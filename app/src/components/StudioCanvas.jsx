@@ -88,6 +88,42 @@ function buildOutlineShells(meshes, center, parent) {
   return shells;
 }
 
+// Mission 8 (Capture Shot Foundation) — capture reuses THIS renderer, exactly
+// as-is: one synchronous gl.render (the same call the frame loop makes, so the
+// PNG matches the current camera/environment/model/transform/selection
+// presentation) followed by a PNG encode of the live WebGL canvas via toBlob.
+// It never reads or writes scene state, never moves the camera, never starts
+// animation, and never creates a second rendering pipeline.
+function CaptureBridge({ captureRef }) {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    if (!captureRef) return undefined;
+    captureRef.current = () => {
+      gl.render(scene, camera);
+      return new Promise((resolve, reject) => {
+        gl.domElement.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve({
+                blob,
+                width: gl.domElement.width,
+                height: gl.domElement.height,
+              });
+            } else {
+              reject(new Error("Capture failed: canvas produced no image"));
+            }
+          },
+          "image/png"
+        );
+      });
+    };
+    return () => {
+      captureRef.current = null;
+    };
+  }, [captureRef, gl, scene, camera]);
+  return null;
+}
+
 function StudioStage({
   product,
   environment,
@@ -369,6 +405,7 @@ export default function StudioCanvas({
   product = PRODUCTS[0],
   environment = ENVIRONMENTS[0],
   cameraRequest = null,
+  captureRef = null,
 }) {
   const [selection, setSelection] = useState(null);
   const [transform, setTransform] = useState({ ...DEFAULT_TRANSFORM });
@@ -400,6 +437,10 @@ export default function StudioCanvas({
     <>
       <Canvas
         camera={{ fov: FOV, near: 0.1, far: 500, position: [0, 2, 5] }}
+        // preserveDrawingBuffer keeps the rendered frame readable after the
+        // compositor swaps, so Capture Shot can PNG-encode the exact current
+        // presentation at any moment. No visual or scene-state change.
+        gl={{ preserveDrawingBuffer: true }}
         style={{
           position: "fixed",
           inset: 0,
@@ -418,6 +459,7 @@ export default function StudioCanvas({
           onClear={handleClear}
           cameraRequest={cameraRequest}
         />
+        <CaptureBridge captureRef={captureRef} />
       </Canvas>
       {selection && (
         <SelectionInspector
