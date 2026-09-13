@@ -1,6 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Icon from "./icons";
-import { ASSET_COUNT, LIBRARY_GROUPS } from "./content";
+import { GROUP_DEFS, buildLibraryGroups } from "./content";
+import ImportPanel from "./ImportPanel";
+import { hydrateRuntimeAssets, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { BBQ_PACK } from "./bbqPack";
 import AssetGrid from "./AssetLibrary";
 import AssetPreview from "./AssetPreview";
@@ -71,9 +73,21 @@ export default function CreatorSidebar({
   selection = {},
   onSelect,
 }) {
+  // Mission 10E — rehydrate persisted imports once, then rebuild the library
+  // groups whenever the runtime registry mirrors something new in or out.
+  const runtimeVersion = useRuntimeAssets();
+  useEffect(() => {
+    hydrateRuntimeAssets();
+  }, []);
+  // useRuntimeAssets() above re-renders this component on every registry
+  // change, so a plain rebuild here is always current — no memo needed.
+  void runtimeVersion;
+  const groups = buildLibraryGroups();
+  const assetCount = groups.reduce((n, g) => n + g.items.length, 0);
+
   // disclosure state only — asset state belongs to the engine
   const [open, setOpen] = useState(() =>
-    Object.fromEntries(LIBRARY_GROUPS.map((g) => [g.id, Boolean(g.open)]))
+    Object.fromEntries(GROUP_DEFS.map((g) => [g.id, Boolean(g.open)]))
   );
   // the pack section's disclosure is shell state too; the pack itself is
   // read-only artwork, so there is nothing to select and no bridge to wire
@@ -103,7 +117,7 @@ export default function CreatorSidebar({
     >
       <div className="sos-side-head">
         <span className="sos-eyebrow">Creator</span>
-        <span className="sos-meta">{ASSET_COUNT} assets</span>
+        <span className="sos-meta">{assetCount} assets</span>
         <button
           type="button"
           className="sos-collapse"
@@ -117,7 +131,21 @@ export default function CreatorSidebar({
       </div>
 
       <div className="sos-side-scroll">
-        {LIBRARY_GROUPS.map((group) => (
+        <section className="sos-group" data-open="true">
+          <button type="button" className="sos-group-head" aria-expanded="true" data-testid="ui-group-import">
+            <span className="sos-tile" aria-hidden="true">
+              <Icon name="upload" size={16} />
+            </span>
+            <span className="sos-group-txt">
+              <span className="sos-group-name">Import Assets</span>
+              <span className="sos-group-sub">GLB · glTF · HDR · EXR — stored on this device</span>
+            </span>
+          </button>
+          <div className="sos-group-body">
+            <ImportPanel collapsed={collapsed} />
+          </div>
+        </section>
+        {groups.map((group) => (
           <SidebarGroup
             key={group.id}
             group={group}

@@ -1428,3 +1428,82 @@
     transition: none;
   }
 }
+
+/* ==========================================================================
+   Mission 10E (Asset Import Manager) — import panel, library tools, card
+   actions. Same glass/radius/type language as the rest of the shell; every
+   surface stays inside the sidebar's internal scroll, nothing is fixed.
+   ========================================================================== */
+.sos-import { display: flex; flex-direction: column; gap: 8px; padding: 2px; }
+.sos-drop {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 14px 10px; border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.6); text-align: center;
+}
+.sos-drop[data-over] { border-color: rgba(232, 181, 77, 0.6); background: rgba(232, 181, 77, 0.08); color: #e8b54d; }
+.sos-drop-txt { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.sos-btn {
+  font: inherit; font-size: 10px; letter-spacing: 0.08em; padding: 5px 10px;
+  border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05); color: rgba(255, 255, 255, 0.85); cursor: pointer;
+}
+.sos-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.sos-btn-gold { border-color: rgba(232, 181, 77, 0.5); background: rgba(232, 181, 77, 0.12); color: #e8b54d; }
+.sos-progress { position: relative; height: 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.sos-progress > span { position: absolute; inset: 0 auto 0 0; background: rgba(232, 181, 77, 0.55); transition: width 0.25s ease; }
+.sos-progress > em {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-style: normal; font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255, 255, 255, 0.85);
+}
+.sos-msgs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.sos-msgs li { font-size: 9.5px; line-height: 1.35; letter-spacing: 0.02em; padding-left: 8px; border-left: 2px solid rgba(255, 255, 255, 0.25); color: rgba(255, 255, 255, 0.65); }
+.sos-msgs li[data-level="error"] { border-color: #e06c5a; color: #f0a294; }
+.sos-msgs li[data-level="warn"] { border-color: #e8b54d; color: #ecd09a; }
+.sos-msgs li[data-level="success"] { border-color: #7fd6a4; color: #b5e8cb; }
+.sos-meta-edit { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); }
+.sos-field { display: flex; flex-direction: column; gap: 3px; }
+.sos-field > em { font-style: normal; font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); }
+.sos-field input, .sos-field select, .sos-search {
+  font: inherit; font-size: 11px; color: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px; padding: 5px 8px; width: 100%;
+}
+.sos-meta-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.sos-lib-tools { display: flex; flex-direction: column; gap: 5px; margin-bottom: 6px; }
+.sos-search::placeholder { color: rgba(255, 255, 255, 0.35); }
+.sos-lib-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.sos-chip {
+  font: inherit; font-size: 8.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.03); color: rgba(255, 255, 255, 0.55);
+}
+.sos-chip[data-on] { border-color: rgba(232, 181, 77, 0.55); background: rgba(232, 181, 77, 0.14); color: #e8b54d; }
+.sos-asset-wrap { position: relative; }
+.sos-asset-tools { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; }
+.sos-star {
+  font: inherit; font-size: 11px; line-height: 1; width: 20px; height: 20px; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.7); cursor: pointer;
+}
+.sos-star[data-on] { color: #e8b54d; border-color: rgba(232, 181, 77, 0.5); }
+.sos-tag-imp { border-color: rgba(127, 214, 164, 0.5); color: #7fd6a4; }
+.sos-cardmenu {
+  position: absolute; z-index: 5; top: 26px; right: 4px; display: flex; flex-direction: column; gap: 2px;
+  min-width: 132px; padding: 5px; border-radius: 10px;
+  background: rgba(10, 10, 10, 0.92); border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.sos-cardmenu button, .sos-cardmenu label {
+  font: inherit; font-size: 10px; text-align: left; padding: 5px 7px; border-radius: 7px;
+  border: 0; background: transparent; color: rgba(255, 255, 255, 0.8); cursor: pointer;
+}
+.sos-cardmenu button:hover, .sos-cardmenu label:hover { background: rgba(255, 255, 255, 0.08); }
+.sos-rename { display: flex; gap: 4px; padding: 3px; }
+.sos-rename input { font: inherit; font-size: 10px; flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 6px; color: #fff; padding: 3px 5px; }
+.sos-thumbview {
+  position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; gap: 8px;
+  align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.7); cursor: zoom-out;
+}
+.sos-thumbview img { max-width: min(70vw, 560px); max-height: 60vh; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.16); background: repeating-conic-gradient(rgba(255,255,255,0.06) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px; }

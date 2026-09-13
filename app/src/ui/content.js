@@ -54,12 +54,29 @@ function productCards() {
     ...PRODUCTS.map((p) => ({
       id: p.id,
       name: p.name,
-      category: PRODUCT_CATEGORY[p.id] || "In the studio",
-      icon: PRODUCT_ICON[p.id] || "cube",
+      category: PRODUCT_CATEGORY[p.id] || p.category || "In the studio",
+      icon: PRODUCT_ICON[p.id] || (p.source === "imported" ? "upload" : "cube"),
+      // Mission 10E: imported products carry their generated thumbnail and
+      // provenance on the registry entry itself, so the card shows the real
+      // preview and the filters can tell imported from built-in.
+      thumb: p.thumbUrl || null,
+      source: p.source || "built-in",
+      importedAt: p.importedAt || 0,
     })),
     ...PRODUCT_PLACEHOLDERS.map((p) => ({ ...p, placeholder: true })),
   ];
 }
+
+// Mission 10E (Feature 8) — gallery categories. Presentation-only chrome:
+// built-in ids map to the library's category names, imported environments
+// carry the category chosen at import time on their registry entry.
+const ENV_CATEGORY = {
+  "propeller-pistons-loft": "Coffee Lifestyle",
+  "vintage-garage-studio": "Studio",
+  "coal-and-fire-forge": "Outdoor",
+  "royal-enfield-heritage-workshop": "Studio",
+  "aviation-heritage-hangar": "Aviation",
+};
 
 function environmentCards() {
   return ENVIRONMENTS.map((env) => ({
@@ -69,9 +86,12 @@ function environmentCards() {
     // (`o.label ?? o.name`) — so a card never ellipsizes at 118px, and the
     // full name still carries in the tooltip.
     short: env.label ?? env.name,
-    category: env.mood,
-    thumb: env.file,
+    category: ENV_CATEGORY[env.id] || env.category || "Studio",
+    mood: env.mood,
+    thumb: env.thumbUrl || env.file,
     tag: env.hero ? "hero" : null,
+    source: env.source || "built-in",
+    importedAt: env.importedAt || 0,
   }));
 }
 
@@ -81,7 +101,10 @@ function environmentCards() {
  * `items` are derived from the registries on every module load, and the count
  * a group header shows is therefore always the engine's real count.
  */
-export const LIBRARY_GROUPS = [
+// Mission 10E — groups are now BUILT on demand: the runtime registry mirrors
+// imported assets into the same registry arrays, so a fresh build picks them
+// up without any module reload. GROUP_DEFS keeps the stable ids/open state.
+export const GROUP_DEFS = [
   {
     id: "products",
     name: "Products",
@@ -89,18 +112,23 @@ export const LIBRARY_GROUPS = [
     icon: "cube",
     kind: "product",
     open: true,
-    items: productCards(),
   },
   {
     id: "backgrounds",
     name: "Studio Backgrounds",
-    sub: "locked library",
+    sub: "built-in + imported",
     icon: "frame",
     kind: "environment",
     open: true,
-    items: environmentCards(),
   },
 ];
+
+export function buildLibraryGroups() {
+  const cards = { product: productCards(), environment: environmentCards() };
+  return GROUP_DEFS.map((def) => ({ ...def, items: cards[def.kind] }));
+}
+
+export const LIBRARY_GROUPS = buildLibraryGroups();
 
 export const ASSET_COUNT = LIBRARY_GROUPS.reduce((n, g) => n + g.items.length, 0);
 
