@@ -1,0 +1,1022 @@
+/* ==========================================================================
+   Studio of Sidecars — Creator UI Shell  (Agent #2 · UI ONLY)
+   --------------------------------------------------------------------------
+   Rebuild of the creator interface from the locked design mockup
+   (design/exports/artboard_desktop_1440x900.png + design/redesign/
+   REDESIGN_SPEC.md "Premium Finish" pass).
+
+   This stylesheet owns the chrome only. It never targets engine internals:
+   every rule is namespaced under `.sos-` and the shell is mounted as a
+   sibling of <App/> (see src/main.jsx), so the Studio engine, its canvas,
+   camera presets, transform/selection inspectors and Capture Shot keep their
+   own markup, styles and z-order untouched.
+
+   Geometry contract with the engine (measured, not assumed):
+     · StudioCanvas   <canvas>        fixed inset 0            z-index  0
+     · StudioControls  panel          fixed top/right 10       z-index 10
+     · SelectionInspector             fixed top/left  14       z-index 20
+     · CapturePreview  lightbox       fixed                    z-index 40
+   → the shell floats at z-index 8 (above the stage, below every engine
+     overlay) and reserves the top-right column plus the top-left strip so
+     engine panels never sit on top of the new UI.
+   ========================================================================== */
+
+.sos-shell {
+  /* --- materials (design/redesign tokens: deeper room, glass that is glass) */
+  --sos-bg: #05060a;
+  --sos-glass: rgba(14, 17, 23, 0.62);
+  --sos-glass-2: rgba(10, 12, 17, 0.74);
+  --sos-glass-3: rgba(255, 255, 255, 0.045);
+  --sos-line: rgba(255, 255, 255, 0.075);
+  --sos-line-2: rgba(255, 255, 255, 0.13);
+  --sos-hair: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+
+  /* accent: the LIVE app accent (engine gold, used by the selection outline,
+     the active camera card and Capture Shot) — not the mockup's blue, so one
+     screen never carries two accent systems. Per the redesign spec the accent
+     is reserved for state (dot / active tint / focus), never used as fill. */
+  --sos-acc: #e8b54d;
+  --sos-acc-soft: rgba(232, 181, 77, 0.14);
+
+  --sos-text: rgba(255, 255, 255, 0.92);
+  --sos-text-2: rgba(255, 255, 255, 0.6);
+  --sos-text-3: rgba(255, 255, 255, 0.38);
+
+  /* --- radii / elevation / motion */
+  --sos-r-lg: 26px;
+  --sos-r-md: 20px;
+  --sos-r-sm: 12px;
+  --sos-shadow: 0 20px 54px rgba(0, 0, 0, 0.52);
+  --sos-blur: blur(28px) saturate(1.4);
+  --sos-fast: 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  --sos-settle: 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* --- layout: fixed columns, viewport stays the primary surface */
+  --sos-edge: 10px;
+  --sos-rail-w: 300px; /* right inspector column (engine panel is 284 wide) */
+  --sos-side-w: 260px; /* left creator sidebar — the mockup measures 260 */
+  --sos-head-h: 54px;
+  --sos-tabs-h: 52px;
+  /* the engine's Studio Controls panel owns the top-right column; chrome stops
+     short of it. Measured at runtime (--sos-engine-col), with this fallback. */
+  --sos-engine-col: 304px;
+  --sos-gutter: max(calc(var(--sos-rail-w) + 12px), var(--sos-engine-col));
+  --sos-top-a: calc(var(--sos-edge) + var(--sos-head-h) + 8px); /* tabs */
+  --sos-top-b: calc(var(--sos-top-a) + var(--sos-tabs-h) + 10px); /* panels */
+
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none; /* the stage stays fully draggable between panels */
+  font-family: Inter, "Space Grotesk", system-ui, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--sos-text);
+  text-align: left;
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+}
+
+.sos-shell * {
+  box-sizing: border-box;
+}
+
+/* one shared glass material for every floating surface */
+.sos-panel {
+  pointer-events: auto;
+  background: var(--sos-glass);
+  -webkit-backdrop-filter: var(--sos-blur);
+  backdrop-filter: var(--sos-blur);
+  border: 1px solid var(--sos-line);
+  box-shadow: var(--sos-shadow);
+  border-radius: var(--sos-r-md);
+}
+
+/* ---------------------------------------------------------------- type tiers
+   One eyebrow (10px caps), one body (12.5px), one meta (9.5px) — the mockup's
+   ladder, so no panel needs four competing sizes. */
+.sos-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--sos-text-3);
+  font-weight: 500;
+}
+
+.sos-meta {
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  color: var(--sos-text-3);
+}
+
+/* =============================================================== TOP HEADER */
+.sos-topbar {
+  position: absolute;
+  top: var(--sos-edge);
+  left: var(--sos-edge);
+  right: var(--sos-gutter);
+  height: var(--sos-head-h);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px;
+  border-radius: 999px;
+}
+
+.sos-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding-left: 5px;
+}
+
+/* the only "lit" object in the header (redesign spec §1) */
+.sos-brand-tile {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: #0d0f14;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.sos-brand-txt {
+  min-width: 0;
+}
+
+.sos-brand-name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.sos-brand-tag {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--sos-text-3);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.sos-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--sos-line);
+  flex: none;
+}
+
+/* current environment / workspace read-out */
+.sos-env {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 12px 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sos-line);
+}
+
+.sos-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sos-acc);
+  box-shadow: 0 0 0 3px var(--sos-acc-soft);
+  flex: none;
+}
+
+.sos-env-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sos-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sos-env-sub {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sos-text-3);
+  white-space: nowrap;
+}
+
+.sos-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding-right: 5px;
+}
+
+.sos-btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background var(--sos-fast), border-color var(--sos-fast),
+    color var(--sos-fast), transform var(--sos-fast);
+}
+
+.sos-btn:active {
+  transform: translateY(1px);
+}
+
+.sos-btn-primary {
+  background: rgba(255, 255, 255, 0.94);
+  color: #0b0d12;
+}
+
+.sos-btn-primary:hover {
+  background: #fff;
+}
+
+.sos-btn-ghost {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sos-text);
+  border-color: var(--sos-line-2);
+}
+
+.sos-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.sos-icon-btn {
+  font: inherit;
+  width: 30px;
+  height: 30px;
+  /* App.css declares `button { padding: 16px 34px }` globally; a fixed 30px
+     circle has to cancel it or the glyph is pushed out of the box. */
+  padding: 0;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--sos-text-2);
+  background: transparent;
+  border: 1px solid var(--sos-line);
+  transition: color var(--sos-fast), background var(--sos-fast);
+}
+
+.sos-icon-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.sos-btn:focus-visible,
+.sos-icon-btn:focus-visible,
+.sos-tab:focus-visible,
+.sos-group-head:focus-visible,
+.sos-row:focus-visible,
+.sos-card-head:focus-visible {
+  outline: 2px solid var(--sos-acc);
+  outline-offset: 2px;
+}
+
+/* ============================================================ VERSION TABS */
+.sos-tabs-wrap {
+  position: absolute;
+  top: var(--sos-top-a);
+  left: var(--sos-edge);
+  right: var(--sos-gutter);
+  height: var(--sos-tabs-h);
+  display: flex;
+  justify-content: center; /* floats, as in the mockup */
+}
+
+.sos-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--sos-tabs-h);
+  padding: 5px;
+  border-radius: 999px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sos-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.sos-tab {
+  font: inherit;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sos-text-3);
+  white-space: nowrap;
+  cursor: default;
+  transition: color var(--sos-fast), background var(--sos-fast);
+}
+
+.sos-tab b {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-size: 10.5px;
+  opacity: 0.75;
+}
+
+.sos-tab[aria-selected="true"] {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--sos-line-2);
+  box-shadow: var(--sos-hair);
+}
+
+.sos-tab .sos-tab-dot {
+  display: none;
+}
+
+.sos-tab-name-sm {
+  display: none;
+}
+
+.sos-tab[aria-selected="true"] .sos-tab-dot {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--sos-acc);
+}
+
+/* ========================================================= LEFT SIDEBAR */
+.sos-side {
+  position: absolute;
+  left: var(--sos-edge);
+  top: var(--sos-top-b);
+  bottom: var(--sos-edge);
+  width: var(--sos-side-w);
+  display: flex;
+  flex-direction: column;
+  /* Makes room for the engine's selection inspector. `--sos-dodge` is the
+     measured bottom edge of that panel (see useFloatingPanelBottom); clamped to
+     keep the panel at least ~200px tall on short windows, and eased so the
+     dodge reads as an intentional gesture rather than a jump. */
+  top: max(var(--sos-top-b), min(var(--sos-dodge, 0px), calc(100vh - 200px)));
+  transition: top var(--sos-settle);
+}
+
+.sos-side-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sos-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 6px;
+}
+
+.sos-group {
+  border-radius: var(--sos-r-sm);
+}
+
+.sos-group-head {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--sos-r-sm);
+  background: transparent;
+  color: var(--sos-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--sos-fast), border-color var(--sos-fast);
+}
+
+.sos-group-head:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sos-group[data-open="true"] > .sos-group-head {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--sos-line);
+}
+
+.sos-tile {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--sos-text-2);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sos-line);
+}
+
+.sos-group[data-open="true"] .sos-tile {
+  color: var(--sos-acc);
+  background: var(--sos-acc-soft);
+  border-color: rgba(232, 181, 77, 0.28);
+}
+
+.sos-group-txt {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sos-group-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  display: block;
+}
+
+.sos-group-sub {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sos-text-3);
+  margin-top: 2px;
+}
+
+.sos-count {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--sos-text-2);
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.sos-chev {
+  color: var(--sos-text-3);
+  flex: none;
+  transition: transform var(--sos-fast);
+}
+
+.sos-group[data-open="true"] .sos-chev {
+  transform: rotate(90deg);
+}
+
+.sos-group-body {
+  padding: 2px 0 6px 14px;
+  margin-left: 8px;
+  border-left: 1px solid var(--sos-line);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* placeholder rows: present for the interface, inert by design */
+.sos-row {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 5px 8px 5px 4px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--sos-text-2);
+  text-align: left;
+  cursor: default;
+  transition: background var(--sos-fast), color var(--sos-fast);
+}
+
+.sos-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sos-text);
+}
+
+.sos-row-ico {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sos-text-3);
+}
+
+.sos-row-name {
+  font-size: 12px;
+  color: var(--sos-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sos-row-sub {
+  display: block;
+  font-size: 9.5px;
+  color: var(--sos-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sos-row-thumb {
+  width: 30px;
+  height: 20px;
+  flex: none;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid var(--sos-line);
+  background: #0a0c10;
+}
+
+.sos-row .sos-tag {
+  margin-left: auto;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sos-acc);
+  opacity: 0.9;
+  flex: none;
+}
+
+/* pinned footer — Private Workspace */
+.sos-side-foot {
+  flex: none;
+  margin: 6px 8px 8px;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: var(--sos-r-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--sos-line);
+}
+
+.sos-side-foot .sos-row-ico {
+  color: var(--sos-acc);
+  background: var(--sos-acc-soft);
+}
+
+/* ========================================================== RIGHT RAIL */
+.sos-rail {
+  position: absolute;
+  right: var(--sos-edge);
+  /* the engine's shoot-controls panel is docked in this column first — the
+     rail parks directly beneath it (same measured-dodge rule as the sidebar) */
+  top: max(var(--sos-top-b), min(var(--sos-dodge, 0px), calc(100vh - 190px)));
+  bottom: var(--sos-edge);
+  width: var(--sos-rail-w);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: top var(--sos-settle);
+}
+
+.sos-rail-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 8px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sos-rail-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 2px;
+}
+
+.sos-chips {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.sos-chip {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  padding: 3px 7px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 999px;
+  color: var(--sos-text-2);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sos-line);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.sos-chip[data-live="true"] {
+  color: var(--sos-acc);
+  background: var(--sos-acc-soft);
+  border-color: rgba(232, 181, 77, 0.28);
+}
+
+/* inspector cards — exclusive accordion, exactly as the mockup */
+.sos-card {
+  border-radius: var(--sos-r-sm);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--sos-line);
+  overflow: hidden;
+  flex: none;
+}
+
+.sos-card[data-open="true"] {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--sos-line-2);
+}
+
+.sos-card-head {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 5px 9px;
+  background: transparent;
+  border: 0;
+  color: var(--sos-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.sos-card-body {
+  padding: 0 9px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sos-label {
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sos-text-3);
+}
+
+.sos-frow {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+/* visual mirror of the engine's preset set — inert by contract */
+/* six engine presets, sized to sit on ONE row inside the rail: the camera card
+   then fits a 900px-tall stage without the other three sections scrolling away */
+.sos-pchip {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 4px 5px;
+  border-radius: 9px;
+  color: var(--sos-text-2);
+  background: rgba(10, 12, 16, 0.5);
+  border: 1px solid var(--sos-line);
+  white-space: nowrap;
+}
+
+.sos-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Distance + Height share a row: the camera card then clears a 900px stage
+   with all four inspector sections in view (no hidden-by-scroll sections). */
+.sos-fields {
+  display: flex;
+  gap: 6px;
+}
+
+.sos-fields > .sos-field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.sos-field-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sos-field-val {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sos-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.sos-slider {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sos-slider i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--sos-acc);
+  opacity: 0.85;
+}
+
+.sos-slider b {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+
+.sos-switchrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sos-switch {
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--sos-line);
+  position: relative;
+  flex: none;
+}
+
+.sos-switch b {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.sos-hint {
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--sos-text-3);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.sos-hint svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--sos-acc);
+  opacity: 0.75;
+}
+
+.sos-rail-foot {
+  flex: none;
+  padding: 4px 11px 6px;
+  border-top: 1px solid var(--sos-line);
+  text-align: right;
+}
+
+/* =========================================================== COLLAPSED RAILS
+   Both rails can shrink to a 68px icon strip — the mockup's compact tier — so
+   the stage can always be handed room back on a narrow window. */
+.sos-collapse {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  /* App.css carries a scaffold-wide `button { padding: 16px 34px }` — a 26px
+     icon button has to opt out of it explicitly or it overflows the panel. */
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sos-text-3);
+  cursor: pointer;
+  transition: color var(--sos-fast), background var(--sos-fast),
+    border-color var(--sos-fast);
+}
+
+.sos-collapse:hover {
+  color: var(--sos-text);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--sos-line);
+}
+
+.sos-collapse:focus-visible {
+  outline: 2px solid var(--sos-acc);
+  outline-offset: 2px;
+}
+
+.sos-collapse svg {
+  transition: transform var(--sos-fast);
+}
+
+.sos-side .sos-collapse svg {
+  transform: rotate(180deg);
+}
+
+.sos-shell[data-rail-min="true"] .sos-collapse svg {
+  transform: rotate(180deg);
+}
+
+/* --- left rail as icons --- */
+.sos-shell[data-side-min="true"] {
+  --sos-side-w: 68px;
+}
+
+.sos-shell[data-side-min="true"] .sos-side-head {
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.sos-shell[data-side-min="true"] .sos-side-head .sos-eyebrow,
+.sos-shell[data-side-min="true"] .sos-side-head .sos-meta,
+.sos-shell[data-side-min="true"] .sos-group-txt,
+.sos-shell[data-side-min="true"] .sos-count,
+.sos-shell[data-side-min="true"] .sos-group-body {
+  display: none;
+}
+
+.sos-shell[data-side-min="true"] .sos-group-head {
+  justify-content: center;
+  gap: 0;
+  min-height: 44px;
+  padding: 6px 0;
+}
+
+.sos-shell[data-side-min="true"] .sos-side-foot {
+  justify-content: center;
+}
+
+.sos-shell[data-side-min="true"] .sos-side-foot span:not(.sos-row-ico) {
+  display: none;
+}
+
+/* --- right rail as icons --- */
+.sos-shell[data-rail-min="true"] {
+  --sos-rail-w: 68px;
+}
+
+.sos-shell[data-rail-min="true"] .sos-rail-head {
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.sos-shell[data-rail-min="true"] .sos-chips,
+.sos-shell[data-rail-min="true"] .sos-card-body,
+.sos-shell[data-rail-min="true"] .sos-rail-foot {
+  display: none;
+}
+
+.sos-shell[data-rail-min="true"] .sos-card-head {
+  justify-content: center;
+  gap: 0;
+  min-height: 44px;
+  padding: 6px 0;
+}
+
+.sos-shell[data-rail-min="true"] .sos-group-txt,
+.sos-shell[data-rail-min="true"] .sos-chev {
+  display: none;
+}
+
+/* =========================================================== RESPONSIVE
+   The mockup's compact tier: rails shrink, then hand the viewport back. */
+@media (max-width: 1320px) {
+  .sos-shell {
+    --sos-rail-w: 288px;
+    --sos-side-w: 240px;
+  }
+
+  /* compressed labels: a chip is never cut off, per the mockup's rule */
+  .sos-tab-name {
+    display: none;
+  }
+
+  .sos-tab-name-sm {
+    display: inline;
+  }
+}
+
+@media (max-width: 1140px) {
+  .sos-shell {
+    --sos-side-w: 216px;
+    --sos-rail-w: 284px; /* flush with the engine panel's column */
+  }
+
+  .sos-brand-tag,
+  .sos-env-sub {
+    display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  /* narrow windows: the 3D stage wins, chrome steps back */
+  .sos-side {
+    display: none;
+  }
+
+  .sos-tab-name,
+  .sos-tab-name-sm {
+    display: none;
+  }
+
+  .sos-tab {
+    padding: 0 12px;
+  }
+}
+
+@media (max-width: 820px) {
+  .sos-shell {
+    --sos-head-h: 50px;
+  }
+
+  /* the rail hands the whole stage back, but the engine panel is still fixed
+     in that corner — the chrome keeps reserving its column regardless */
+  .sos-rail,
+  .sos-divider,
+  .sos-env {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sos-shell *,
+  .sos-shell {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}
+
+/* thin, quiet scrollbars — internal scrolling only when a panel needs it */
+.sos-side-scroll::-webkit-scrollbar,
+.sos-rail-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sos-side-scroll::-webkit-scrollbar-thumb,
+.sos-rail-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.sos-side-scroll,
+.sos-rail-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
