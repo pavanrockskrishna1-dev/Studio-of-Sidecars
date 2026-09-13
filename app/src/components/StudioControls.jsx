@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ENVIRONMENTS } from "../environments/registry";
 import { PRODUCTS } from "../products/registry";
+import { EXPORT_PRESETS, EXPORT_SCALES } from "../capture/exportOptions";
 import { CAMERA_PRESETS } from "../camera/presets";
 import { LIGHTING_CONTROLS } from "../lighting/profiles";
 
@@ -351,6 +352,146 @@ function LightingRow({ lighting, onLightingChange }) {
   );
 }
 
+// Mission 10C (Presentation Studio) — compact export options beneath the
+// Capture Shot action: background, resolution and presentation framing.
+// Same visual language as the Lighting row (micro-uppercase label + inline
+// segmented controls). Presentation only: the values live in App state and
+// are consumed by the existing single capture pipeline — no second path.
+function SegButton({ testId, active, disabled, onClick, children }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      data-testid={testId}
+      aria-pressed={active}
+      aria-disabled={disabled || undefined}
+      onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        fontFamily: "inherit",
+        fontSize: 9,
+        letterSpacing: "0.08em",
+        padding: "4px 8px",
+        borderRadius: 999,
+        border: active
+          ? "1px solid rgba(232,181,77,0.55)"
+          : "1px solid rgba(255,255,255,0.16)",
+        background: active
+          ? "rgba(232,181,77,0.16)"
+          : hover && !disabled
+            ? "rgba(255,255,255,0.1)"
+            : "rgba(255,255,255,0.03)",
+        color: active
+          ? GOLD
+          : disabled
+            ? "rgba(255,255,255,0.28)"
+            : "rgba(255,255,255,0.75)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ExportOptions({ exportOpts, onChange }) {
+  const presetActive = exportOpts.presetId !== "current";
+  const labelStyle = {
+    fontSize: 9,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.5)",
+  };
+  return (
+    <div
+      data-testid="export-options"
+      style={{ display: "flex", flexDirection: "column", gap: 5 }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+        }}
+      >
+        <span style={labelStyle}>Background</span>
+        <span style={{ display: "flex", gap: 4 }}>
+          <SegButton
+            testId="cap-bg-studio"
+            active={exportOpts.background === "studio"}
+            onClick={() => onChange({ background: "studio" })}
+          >
+            Studio
+          </SegButton>
+          <SegButton
+            testId="cap-bg-transparent"
+            active={exportOpts.background === "transparent"}
+            onClick={() => onChange({ background: "transparent" })}
+          >
+            Transparent
+          </SegButton>
+        </span>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+        }}
+      >
+        <span style={labelStyle}>Resolution</span>
+        <span style={{ display: "flex", gap: 4 }}>
+          {EXPORT_SCALES.map((sc) => (
+            <SegButton
+              key={sc}
+              testId={`cap-res-${sc}`}
+              active={!presetActive && exportOpts.scale === sc}
+              disabled={presetActive}
+              onClick={() => onChange({ scale: sc })}
+            >
+              {sc}×
+            </SegButton>
+          ))}
+        </span>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+        }}
+      >
+        <span style={labelStyle}>Format</span>
+        <select
+          data-testid="cap-format"
+          value={exportOpts.presetId}
+          onChange={(e) => onChange({ presetId: e.target.value })}
+          style={{
+            fontFamily: "inherit",
+            fontSize: 10,
+            color: "rgba(255,255,255,0.8)",
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.16)",
+            borderRadius: 8,
+            padding: "3px 6px",
+            maxWidth: 150,
+          }}
+        >
+          {EXPORT_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.width > 0 ? `${p.label} · ${p.width}×${p.height}` : p.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 // Mission 8 (Capture Shot Foundation) — one compact gold action beneath the
 // CAMERA presets. It captures the live WebGL presentation exactly as shown
 // (environment, model, transform, camera, selection) and changes nothing.
@@ -410,9 +551,12 @@ export default function StudioControls({
   onSaveCustomView,
   lighting,
   onLightingChange,
+  exportOpts,
+  onExportOptsChange,
 }) {
   return (
     <div
+      data-studio-controls=""
       style={{
         position: "fixed",
         top: 10,
@@ -453,6 +597,9 @@ export default function StudioControls({
       />
       <LightingRow lighting={lighting} onLightingChange={onLightingChange} />
       <CaptureRow onCapture={onCaptureShot} />
+      {exportOpts && onExportOptsChange ? (
+        <ExportOptions exportOpts={exportOpts} onChange={onExportOptsChange} />
+      ) : null}
     </div>
   );
 }

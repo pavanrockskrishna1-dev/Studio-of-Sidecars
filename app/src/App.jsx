@@ -6,7 +6,9 @@ import CapturePreview from "./components/CapturePreview";
 import { getProduct } from "./products/registry";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "./environments/registry";
 import { getLightingProfile } from "./lighting/profiles";
+import { DEFAULT_EXPORT_OPTS, exportFilename } from "./capture/exportOptions";
 import "./App.css";
+import "./export/export.css";
 
 export default function App() {
   const [productId, setProductId] = useState("coffee-bike");
@@ -24,6 +26,12 @@ export default function App() {
   // camera request when the product switches; environment swaps keep it.
   const [customView, setCustomView] = useState(null);
   const cameraApiRef = useRef(null);
+
+  // Mission 10C (Presentation Studio) — export options for Capture Shot:
+  // background (studio | transparent), resolution scale (1x/2x/4x on the
+  // current view) and presentation framing preset. Session-only React state;
+  // the defaults reproduce the pre-10C capture exactly.
+  const [exportOpts, setExportOpts] = useState(DEFAULT_EXPORT_OPTS);
 
   // Mission 9 (Lighting Foundation) — live lighting state for the Studio
   // renderer. Starts from (and resets to) the environment's tuned profile on
@@ -80,6 +88,10 @@ export default function App() {
     setCameraRequest((prev) => ({ id: "custom", seq: prev.seq + 1 }));
   }, []);
 
+  const handleExportOptsChange = useCallback((patch) => {
+    setExportOpts((prev) => ({ ...prev, ...patch }));
+  }, []);
+
   const handleCaptureShot = useCallback(async () => {
     const capture = captureRef.current;
     // One capture in flight at a time: a double click must not race two
@@ -87,13 +99,18 @@ export default function App() {
     // object URL the preview is still showing).
     if (!capture || capturingRef.current) return;
     capturingRef.current = true;
+    // Mission 10C — hide every UI surface for the duration of the export
+    // render (CSS visibility via body[data-exporting], no reflow), let the
+    // hidden state paint once, then restore immediately afterwards.
+    document.body.dataset.exporting = "true";
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
     try {
-      const { blob, width, height } = await capture();
+      const { blob, width, height } = await capture(exportOpts);
       const next = {
         url: URL.createObjectURL(blob),
         width,
         height,
-        filename: "studio-capture.png",
+        filename: exportFilename(exportOpts),
       };
       if (shotRef.current) URL.revokeObjectURL(shotRef.current.url);
       shotRef.current = next;
@@ -101,9 +118,10 @@ export default function App() {
     } catch (err) {
       console.error("Capture Shot failed:", err);
     } finally {
+      delete document.body.dataset.exporting;
       capturingRef.current = false;
     }
-  }, []);
+  }, [exportOpts]);
 
   const handleCloseShot = useCallback(() => {
     if (shotRef.current) {
@@ -144,6 +162,8 @@ export default function App() {
         onSaveCustomView={handleSaveCustomView}
         lighting={lighting}
         onLightingChange={handleLightingChange}
+        exportOpts={exportOpts}
+        onExportOptsChange={handleExportOptsChange}
       />
       <CapturePreview shot={shot} onClose={handleCloseShot} />
       <Hero />

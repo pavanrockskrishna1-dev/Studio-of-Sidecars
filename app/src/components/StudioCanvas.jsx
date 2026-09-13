@@ -14,6 +14,7 @@ import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
 import { computeCameraShot, getCameraPreset } from "../camera/presets";
 import { DEFAULT_LIGHTING } from "../lighting/profiles";
+import { computeExportSize } from "../capture/exportOptions";
 
 const FOV = 45;
 
@@ -95,21 +96,70 @@ function buildOutlineShells(meshes, center, parent) {
 // presentation) followed by a PNG encode of the live WebGL canvas via toBlob.
 // It never reads or writes scene state, never moves the camera, never starts
 // animation, and never creates a second rendering pipeline.
+// Mission 10C (Presentation Studio) — the export frame is drawn by THIS same
+// renderer at the exact target size: the drawing buffer is resized without
+// touching the CSS layout (updateStyle=false), the projection is refit to the
+// target aspect while the camera position/orientation — the framing — stays
+// exactly as the live view shows it, and for transparent exports the backdrop
+// is dropped and the clear alpha zeroed so the PNG carries a real alpha
+// channel (lights, tone mapping and the ShadowMaterial contact shadow all
+// keep rendering, so lighting and shadows survive into the transparent PNG).
+// Every renderer mutation is reverted afterwards and one frame is re-rendered
+// at the live size so the on-screen presentation never flashes.
+function renderExportFrame(gl, scene, camera, width, height, transparent) {
+  const prevPixelRatio = gl.getPixelRatio();
+  const prevSize = gl.getSize(new THREE.Vector2());
+  const prevAspect = camera.aspect;
+  const prevBackground = scene.background;
+  const prevClearAlpha = gl.getClearAlpha();
+  gl.setPixelRatio(1);
+  gl.setSize(width, height, false);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+  if (transparent) {
+    scene.background = null;
+    gl.setClearAlpha(0);
+  }
+  // Shadows come from the on-demand shadow map: ask for one clean update so
+  // the export carries the same contact shadow the live view shows.
+  gl.shadowMap.needsUpdate = true;
+  gl.render(scene, camera);
+  return () => {
+    gl.setPixelRatio(prevPixelRatio);
+    gl.setSize(prevSize.x, prevSize.y, false);
+    camera.aspect = prevAspect;
+    camera.updateProjectionMatrix();
+    scene.background = prevBackground;
+    gl.setClearAlpha(prevClearAlpha);
+    gl.shadowMap.needsUpdate = true;
+    gl.render(scene, camera);
+  };
+}
+
 function CaptureBridge({ captureRef }) {
   const { gl, scene, camera } = useThree();
   useEffect(() => {
     if (!captureRef) return undefined;
-    captureRef.current = () => {
-      gl.render(scene, camera);
+    captureRef.current = (opts = {}) => {
+      const [width, height] = computeExportSize(
+        gl.domElement.width,
+        gl.domElement.height,
+        opts
+      );
+      const restore = renderExportFrame(
+        gl,
+        scene,
+        camera,
+        width,
+        height,
+        opts.background === "transparent"
+      );
       return new Promise((resolve, reject) => {
         gl.domElement.toBlob(
           (blob) => {
+            restore();
             if (blob) {
-              resolve({
-                blob,
-                width: gl.domElement.width,
-                height: gl.domElement.height,
-              });
+              resolve({ blob, width, height });
             } else {
               reject(new Error("Capture failed: canvas produced no image"));
             }

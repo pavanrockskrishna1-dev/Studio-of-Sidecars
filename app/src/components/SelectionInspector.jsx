@@ -130,6 +130,7 @@ export default function SelectionInspector({
     <div
       role="dialog"
       aria-label="Selected model"
+      data-selection-inspector=""
       style={{
         position: "fixed",
         top: 14,
