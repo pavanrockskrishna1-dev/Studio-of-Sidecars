@@ -1,6 +1,7 @@
 import { ENVIRONMENTS } from "../environments/registry";
 import { PRODUCTS } from "../products/registry";
 import { CAMERA_PRESETS } from "../camera/presets";
+import { BBQ_CARD_THUMB } from "./bbqPack";
 
 /* ==========================================================================
    Creator UI content (Agent #2 · UI ONLY)
@@ -41,8 +42,11 @@ const PRODUCT_ICON = { "coffee-bike": "bike", "cessna-172": "plane" };
 // Announced but not shipped. Deliberately NOT a registry entry: no id in
 // PRODUCTS, no modelPath, nothing the engine could load — so the card can
 // only ever render as the inert placeholder the sidebar already uses.
+// Mission 10B adds artwork for it (a still rendered from the pack's own GLB),
+// which changes how the card looks and nothing about what it is: still no id in
+// PRODUCTS, no modelPath, still inert in the grid.
 export const PRODUCT_PLACEHOLDERS = [
-  { id: "bbq-bike", name: "BBQ Bike", icon: "flame" },
+  { id: "bbq-bike", name: "BBQ Bike", icon: "flame", thumb: BBQ_CARD_THUMB },
 ];
 
 function productCards() {

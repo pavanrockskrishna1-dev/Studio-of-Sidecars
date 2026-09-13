@@ -29,6 +29,12 @@ import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "../environments/registry
 const DODGE_GAP = 10;
 const COLUMN_GAP = 10;
 
+// What the chrome needs left in its own column to be worth showing expanded:
+// its head, one usable card and the pinned footer. Below that the panel steps
+// down to its icon strip on its own — the engine's column is never covered.
+const RAIL_MIN_ROOM = 132;
+const SIDE_MIN_ROOM = 168;
+
 // The design package's own compact tier: below this width the rails shrink to
 // icon strips so the stage keeps priority (Phase-1 keeps 96px icon rails on a
 // portrait tablet). Users can override either rail at any size.
@@ -58,11 +64,19 @@ export default function StudioShell() {
   const shoot = useFloatingPanelRect("shoot-controls");
   const selection = useFloatingPanelRect("selection-inspector");
   const narrow = useNarrow();
-  // undefined = follow the breakpoint, boolean = user override
+  // undefined = follow the layout, boolean = user override
   const [sideMin, setSideMin] = useState();
   const [railMin, setRailMin] = useState();
-  const sideCollapsed = sideMin ?? narrow;
-  const railCollapsed = railMin ?? narrow;
+
+  // Room left in each chrome column after the engine panel it dodges. A panel
+  // that grew taller than the window leaves less than a card here, and the old
+  // height clamp answered that by sliding *up* over the engine; the honest
+  // answer is to step down to the icon strip and give the engine the column.
+  const railRoom = shoot ? shoot.vh - shoot.bottom - COLUMN_GAP : Infinity;
+  const sideRoom = selection ? selection.vh - selection.bottom - DODGE_GAP : Infinity;
+  const sideCollapsed = sideMin ?? (narrow || sideRoom < SIDE_MIN_ROOM);
+  const railShift = railRoom < RAIL_MIN_ROOM;
+  const railCollapsed = railMin ?? (narrow || railShift);
 
   // The engine panel's column is reserved at its REAL width, so a header
   // action can never slide underneath it on a narrower window.
@@ -76,6 +90,9 @@ export default function StudioShell() {
       data-sos-shell=""
       data-side-min={sideCollapsed || undefined}
       data-rail-min={railCollapsed || undefined}
+      // the engine owns this column outright when no usable strip fits under
+      // it; the rail then stands just left of that column, still reachable
+      data-rail-shift={railShift || undefined}
       style={style}
     >
       <TopHeader environment={environment} />

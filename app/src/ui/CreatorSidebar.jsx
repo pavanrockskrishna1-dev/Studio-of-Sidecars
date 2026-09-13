@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
 import Icon from "./icons";
 import { ASSET_COUNT, LIBRARY_GROUPS } from "./content";
+import { BBQ_PACK } from "./bbqPack";
 import AssetGrid from "./AssetLibrary";
+import AssetPreview from "./AssetPreview";
 
 /* ==========================================================================
    Left creator sidebar — the Asset Library (Agent #2 · UI ONLY)
@@ -73,6 +75,9 @@ export default function CreatorSidebar({
   const [open, setOpen] = useState(() =>
     Object.fromEntries(LIBRARY_GROUPS.map((g) => [g.id, Boolean(g.open)]))
   );
+  // the pack section's disclosure is shell state too; the pack itself is
+  // read-only artwork, so there is nothing to select and no bridge to wire
+  const [packOpen, setPackOpen] = useState(true);
 
   // Collapsed: a tile is an "expand and open this collection" shortcut, so the
   // icon rail is still a way in rather than a dead strip.
@@ -123,6 +128,38 @@ export default function CreatorSidebar({
             onSelect={(id) => onSelect?.(group.kind, id)}
           />
         ))}
+
+        <section className="sos-group" data-open={packOpen}>
+          <button
+            type="button"
+            className="sos-group-head"
+            aria-expanded={collapsed ? undefined : packOpen}
+            data-testid="ui-group-bbq-pack"
+            title={
+              collapsed
+                ? `${BBQ_PACK.name} — expand the creator panel`
+                : `${BBQ_PACK.name} — ${BBQ_PACK.tag.toLowerCase()}: ${
+                    BBQ_PACK.views.length + BBQ_PACK.references.length + BBQ_PACK.materials.length
+                  } stills`
+            }
+            onClick={() => (collapsed ? onCollapse?.() : setPackOpen((v) => !v))}
+          >
+            <span className="sos-tile" aria-hidden="true">
+              <Icon name="flame" size={16} />
+            </span>
+            <span className="sos-group-txt">
+              <span className="sos-group-name">{BBQ_PACK.name}</span>
+              <span className="sos-group-sub">{BBQ_PACK.sub}</span>
+            </span>
+            <span className="sos-tag">{BBQ_PACK.tag}</span>
+            <Icon name="chevron" size={13} className="sos-chev" />
+          </button>
+          {packOpen ? (
+            <div className="sos-group-body" data-layout="grid">
+              <AssetPreview collapsed={collapsed} />
+            </div>
+          ) : null}
+        </section>
       </div>
 
       <div className="sos-side-foot">

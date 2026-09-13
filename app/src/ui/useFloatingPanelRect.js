@@ -46,7 +46,11 @@ const read = (el) => {
   if (!el) return null;
   const r = el.getBoundingClientRect();
   if (r.width < MIN_SIZE || r.height < MIN_SIZE) return null;
-  return { bottom: Math.round(r.bottom), width: Math.round(r.width) };
+  // `vh` travels with the panel bottom on purpose: the room the chrome has left
+  // is vh - bottom, so the two must always come from the same measurement tick.
+  // (A separate resize listener can lag one frame behind, and the shell then
+  // parks itself in 22px of space it believes is 132px.)
+  return { bottom: Math.round(r.bottom), width: Math.round(r.width), vh: Math.round(window.innerHeight) };
 };
 
 export default function useFloatingPanelRect(panel) {
@@ -63,7 +67,7 @@ export default function useFloatingPanelRect(panel) {
 
     const publish = (next) => {
       const same = (!next && !last) || (next && last &&
-        next.bottom === last.bottom && next.width === last.width);
+        next.bottom === last.bottom && next.width === last.width && next.vh === last.vh);
       if (same) return;          // unrelated engine DOM churn must not re-render the shell
       last = next;
       setRect(next);

@@ -378,10 +378,18 @@
   display: flex;
   flex-direction: column;
   /* Makes room for the engine's selection inspector. `--sos-dodge` is the
-     measured bottom edge of that panel (see useFloatingPanelBottom); clamped to
-     keep the panel at least ~200px tall on short windows, and eased so the
-     dodge reads as an intentional gesture rather than a jump. */
-  top: max(var(--sos-top-b), min(var(--sos-dodge, 0px), calc(100vh - 200px)));
+     measured bottom edge of that panel (see useFloatingPanelRect), eased so the
+     dodge reads as an intentional gesture rather than a jump.
+
+     There is deliberately no "keep me at least N px tall" clamp any more: when
+     the engine panel grew (Mission 10C added the export section) that clamp was
+     allowing the chrome to sit *up* over the engine's column on short windows —
+     a 695px panel on an 800px viewport meant the top of this panel was being
+     painted underneath it. The measured dodge is now honoured exactly, and
+     StudioShell collapses the panel to its icon strip when what is left is too
+     short to be useful, so the engine is never covered at any size. */
+  top: max(var(--sos-top-b), var(--sos-dodge, 0px));
+  min-height: 0;
   transition: top var(--sos-settle);
 }
 
@@ -733,8 +741,10 @@
   position: absolute;
   right: var(--sos-edge);
   /* the engine's shoot-controls panel is docked in this column first — the
-     rail parks directly beneath it (same measured-dodge rule as the sidebar) */
-  top: max(var(--sos-top-b), min(var(--sos-dodge, 0px), calc(100vh - 190px)));
+     rail parks directly beneath it (same measured-dodge rule as the sidebar):
+     exactly where the engine's bottom edge is, never above it */
+  top: max(var(--sos-top-b), var(--sos-dodge, 0px));
+  min-height: 0;
   bottom: var(--sos-edge);
   width: var(--sos-rail-w);
   display: flex;
@@ -1047,6 +1057,17 @@
   --sos-rail-w: 68px;
 }
 
+/* No usable room under a tall engine panel (it grows mid-session: saving a
+   custom view adds a row) — so instead of being crushed inside that column,
+   the collapsed strip stands to the left of it and keeps its full height.
+   Never covers the engine, never covers the sidebar, stays reachable. */
+.sos-shell[data-rail-shift="true"] .sos-rail {
+  top: var(--sos-top-b);
+  right: calc(var(--sos-engine-col, 0px) + 12px);
+  bottom: var(--sos-edge);
+  min-height: 0;
+}
+
 .sos-shell[data-rail-min="true"] .sos-rail-head {
   justify-content: center;
   padding: 8px 0 4px;
@@ -1156,4 +1177,254 @@
 .sos-rail-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+/* ============================================ BBQ BIKE UI PACK (Mission 10B)
+   Read-only artwork inside the creator panel. Same tokens as the rest of the
+   shell — glass plate, 12px radii, hairlines, accent reserved for state — and
+   the same rule the asset library obeys: nothing paints outside the panel, the
+   panel scrolls, and no caption is ever cut off (a long source filename wraps
+   instead of ellipsising, because the panel can scroll and the name cannot). */
+.sos-pack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+
+/* brand mark ---------------------------------------------------------- */
+.sos-pack-brand {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--sos-line);
+  border-radius: var(--sos-r-sm);
+  background: var(--sos-glass-3);
+}
+
+.sos-pack-brand-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: #0a0c10;
+  /* artwork, not a control — same as every other plate, so no drag or
+     context-menu affordance appears on any image in this panel */
+  pointer-events: none;
+}
+
+.sos-pack-brand-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sos-pack-brand-name {
+  font-size: 11.5px;
+  color: var(--sos-text);
+}
+
+.sos-pack-brand .sos-tag {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(8, 8, 10, 0.66);
+  backdrop-filter: blur(4px);
+}
+
+/* plates -------------------------------------------------------------- */
+.sos-pack-plate {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sos-pack-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--sos-line);
+  border-radius: 8px;
+  background: #0a0c10;
+  /* the pack is artwork, not a control: no pointer affordance anywhere on it */
+  pointer-events: none;
+}
+
+.sos-pack-plate[data-wide] .sos-pack-img {
+  border-radius: var(--sos-r-sm);
+}
+
+.sos-pack-cap {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sos-pack-cap-name {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--sos-text);
+  /* never truncated — the name wraps and the panel scrolls */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sos-pack-cap-sub {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--sos-text-2);
+  overflow-wrap: anywhere;
+}
+
+.sos-pack-cap-src {
+  font-size: 9.5px;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  color: var(--sos-text-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* angle switch — local view state, not selection ---------------------- */
+.sos-pack-angles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sos-pack-angle {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--sos-line);
+  border-radius: 999px;
+  background: var(--sos-glass-3);
+  color: var(--sos-text-2);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--sos-fast), border-color var(--sos-fast),
+    color var(--sos-fast);
+}
+
+.sos-pack-angle:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--sos-line-2);
+  color: var(--sos-text);
+}
+
+.sos-pack-angle[data-active="true"] {
+  border-color: rgba(232, 181, 77, 0.5);
+  background: var(--sos-acc-soft);
+  color: var(--sos-text);
+}
+
+.sos-pack-angle:focus-visible {
+  outline: 2px solid var(--sos-acc);
+  outline-offset: 2px;
+}
+
+/* reference + material blocks ----------------------------------------- */
+.sos-pack-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sos-pack-block-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sos-text-3);
+}
+
+/* the reference plates share the asset grid's density — a 2-up at the approved
+   column width, 1-up when the column tightens — because a stack of full-width
+   photos would out-shout the registry library it sits under. Heights follow the
+   file's own ratio, so nothing is letterboxed or cropped at any size. */
+.sos-pack-refs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.sos-pack-mats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.sos-pack-mat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sos-pack-mat img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--sos-line);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.sos-pack-mat-name {
+  font-size: 9.5px;
+  line-height: 1.3;
+  color: var(--sos-text-2);
+  overflow-wrap: anywhere;
+}
+
+.sos-pack-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  border: 1px dashed var(--sos-line);
+  border-radius: var(--sos-r-sm);
+  background: var(--sos-glass-3);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--sos-text-3);
+}
+
+.sos-pack-note .sos-row-ico {
+  margin-top: 1px;
+}
+
+.sos-pack-note[data-hidden="true"] {
+  display: none;
+}
+
+@media (max-width: 1140px) {
+  .sos-pack {
+    gap: 8px;
+  }
+
+  .sos-pack-mats {
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sos-pack-angle {
+    transition: none;
+  }
 }
