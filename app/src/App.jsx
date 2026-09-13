@@ -5,6 +5,7 @@ import StudioControls from "./components/StudioControls";
 import CapturePreview from "./components/CapturePreview";
 import { getProduct } from "./products/registry";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "./environments/registry";
+import { getLightingProfile } from "./lighting/profiles";
 import "./App.css";
 
 export default function App() {
@@ -23,6 +24,13 @@ export default function App() {
   // camera request when the product switches; environment swaps keep it.
   const [customView, setCustomView] = useState(null);
   const cameraApiRef = useRef(null);
+
+  // Mission 9 (Lighting Foundation) — live lighting state for the Studio
+  // renderer. Starts from (and resets to) the environment's tuned profile on
+  // every environment switch; session-only React state like everything else.
+  const [lighting, setLighting] = useState(() =>
+    getLightingProfile(DEFAULT_ENVIRONMENT_ID)
+  );
 
   // Mission 8 (Capture Shot Foundation) — the capture function is registered
   // by the CaptureBridge inside the existing Canvas (same renderer, same
@@ -48,6 +56,17 @@ export default function App() {
 
   const handleCameraPreset = (id) =>
     setCameraRequest((prev) => ({ id, seq: prev.seq + 1 }));
+
+  // Environment switch also loads that environment's lighting profile.
+  const handleEnvironmentSelect = useCallback((id) => {
+    setEnvironmentId(id);
+    setLighting(getLightingProfile(id));
+  }, []);
+
+  const handleLightingChange = useCallback(
+    (patch) => setLighting((prev) => ({ ...prev, ...patch })),
+    []
+  );
 
   // Mission 7.2 (Save Custom View) — snapshot the exact current camera
   // position + orbit target (read-only), then route a "custom" request
@@ -111,10 +130,11 @@ export default function App() {
         captureRef={captureRef}
         customView={customView}
         cameraApiRef={cameraApiRef}
+        lighting={lighting}
       />
       <StudioControls
         environmentId={environment.id}
-        onEnvironmentSelect={setEnvironmentId}
+        onEnvironmentSelect={handleEnvironmentSelect}
         productId={product.id}
         onProductSelect={setProductId}
         activePresetId={cameraRequest.id}
@@ -122,6 +142,8 @@ export default function App() {
         onCaptureShot={handleCaptureShot}
         hasCustomView={customView !== null}
         onSaveCustomView={handleSaveCustomView}
+        lighting={lighting}
+        onLightingChange={handleLightingChange}
       />
       <CapturePreview shot={shot} onClose={handleCloseShot} />
       <Hero />

@@ -13,6 +13,7 @@ import { PRODUCTS } from "../products/registry";
 import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
 import { computeCameraShot, getCameraPreset } from "../camera/presets";
+import { DEFAULT_LIGHTING } from "../lighting/profiles";
 
 const FOV = 45;
 
@@ -124,6 +125,31 @@ function CaptureBridge({ captureRef }) {
   return null;
 }
 
+// Imperative renderer configuration lives in module-level helpers: three.js
+// mutates these objects by design (shadow map flags, tone-mapping exposure,
+// mesh shadow flags), so the writes happen away from React render scope.
+function setShadowMapOnDemand(gl, onDemand) {
+  gl.shadowMap.autoUpdate = !onDemand;
+  gl.shadowMap.needsUpdate = true;
+}
+
+function invalidateShadowMap(gl) {
+  gl.shadowMap.needsUpdate = true;
+}
+
+function setExposure(gl, exposure) {
+  gl.toneMappingExposure = exposure;
+}
+
+function enableModelShadows(root) {
+  root.traverse((obj) => {
+    if (obj.isMesh && obj.geometry) {
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    }
+  });
+}
+
 function StudioStage({
   product,
   environment,
@@ -134,6 +160,7 @@ function StudioStage({
   cameraRequest,
   customView,
   cameraApiRef,
+  lighting,
 }) {
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef(null);
@@ -274,6 +301,38 @@ function StudioStage({
     };
   }, [cameraApiRef, camera]);
 
+  // Mission 9 (Lighting Foundation) — shadow ortho frustum derived from the
+  // model bounds and the FIXED key-light direction, never from the view
+  // camera: the ground shadow stays put while orbiting and survives every
+  // camera preset.
+  const shadowExtent = fit.footprintRadius * 2.4 + fit.size.y;
+  const shadowFar = 20 + fit.distance * 2;
+
+  // The shadow map renders ON DEMAND (autoUpdate off): only model, transform
+  // or fit changes invalidate it, so orbit/zoom/preset frames never re-render
+  // it — no flicker, no disappearing shadows, flat per-frame cost.
+  useEffect(() => {
+    setShadowMapOnDemand(gl, true);
+    return () => {
+      setShadowMapOnDemand(gl, false);
+    };
+  }, [gl]);
+
+  useEffect(() => {
+    invalidateShadowMap(gl);
+  }, [gl, modelScene, transform, fit]);
+
+  // Exposure slider drives the renderer's existing tone-mapping exposure.
+  useEffect(() => {
+    setExposure(gl, lighting.exposure);
+  }, [gl, lighting.exposure]);
+
+  // Model meshes cast and receive the key-light shadow.
+  useEffect(() => {
+    enableModelShadows(modelScene);
+    invalidateShadowMap(gl);
+  }, [modelScene, gl]);
+
   // R3F's Suspense boundary hides previously-committed scenes via
   // hideInstance(), which writes visible=false onto the model object itself.
   // With loader-cached GLBs the object outlives its hiding instance (the
@@ -368,10 +427,35 @@ function StudioStage({
 
   return (
     <>
-      {/* Lighting: low ambient + key from front-above + warm fill from opposite side */}
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[4, 6, 5]} intensity={2.5} />
-      <directionalLight position={[-6, 2, -4]} intensity={1.0} color={0xffd2a1} />
+      {/* Lighting Foundation — the original three-light setup, now live-driven:
+          key from front-above (casts the ground shadow), warm fill from the
+          opposite side, cool rim from behind, plus the ambient base. */}
+      <ambientLight intensity={lighting.ambient} />
+      <directionalLight
+        position={[4, 6, 5]}
+        intensity={lighting.key}
+        castShadow
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-camera-left={-shadowExtent}
+        shadow-camera-right={shadowExtent}
+        shadow-camera-top={shadowExtent}
+        shadow-camera-bottom={-shadowExtent}
+        shadow-camera-near={0.5}
+        shadow-camera-far={shadowFar}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.03}
+      />
+      <directionalLight
+        position={[-6, 2, -4]}
+        intensity={lighting.fill}
+        color={0xffd2a1}
+      />
+      <directionalLight
+        position={[-3, 5, -7]}
+        intensity={lighting.rim}
+        color={0xcfd8ff}
+      />
 
       {/* Floor anchored to the model's actual base (was hardcoded at y=-1.2).
           Hidden while a photographic environment is active — its backdrop
@@ -383,6 +467,22 @@ function StudioStage({
       >
         <circleGeometry args={[fit.footprintRadius * 1.4, 64]} />
         <meshStandardMaterial color="#1a1a1a" />
+      </mesh>
+
+      {/* Ground shadow catcher — fully transparent except where the key light
+          is occluded, so the product gains a soft contact shadow over the
+          photographic backdrops (ShadowMaterial renders shadow only). */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[fit.center.x, fit.floorY + 0.003, fit.center.z]}
+        receiveShadow
+      >
+        <circleGeometry args={[fit.footprintRadius * 2.6, 64]} />
+        <shadowMaterial
+          transparent
+          opacity={lighting.shadow}
+          depthWrite={false}
+        />
       </mesh>
 
       {/* Selection ring — thin light/gold ring around the model footprint */}
@@ -439,6 +539,7 @@ export default function StudioCanvas({
   captureRef = null,
   customView = null,
   cameraApiRef = null,
+  lighting = DEFAULT_LIGHTING,
 }) {
   const [selection, setSelection] = useState(null);
   const [transform, setTransform] = useState({ ...DEFAULT_TRANSFORM });
@@ -469,6 +570,11 @@ export default function StudioCanvas({
   return (
     <>
       <Canvas
+        // three r186 removed PCFSoftShadowMap and warns on every shadow
+        // render if it is requested; "percentage" = PCFShadowMap, the exact
+        // behavior the renderer already falls back to. Same verified visuals,
+        // clean console.
+        shadows="percentage"
         camera={{ fov: FOV, near: 0.1, far: 500, position: [0, 2, 5] }}
         // preserveDrawingBuffer keeps the rendered frame readable after the
         // compositor swaps, so Capture Shot can PNG-encode the exact current
@@ -493,6 +599,7 @@ export default function StudioCanvas({
           cameraRequest={cameraRequest}
           customView={customView}
           cameraApiRef={cameraApiRef}
+          lighting={lighting}
         />
         <CaptureBridge captureRef={captureRef} />
       </Canvas>

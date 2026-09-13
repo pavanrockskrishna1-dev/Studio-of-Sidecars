@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ENVIRONMENTS } from "../environments/registry";
 import { PRODUCTS } from "../products/registry";
 import { CAMERA_PRESETS } from "../camera/presets";
+import { LIGHTING_CONTROLS } from "../lighting/profiles";
 
 const GOLD = "#e8b54d";
 
@@ -273,6 +274,83 @@ function CameraRow({
   );
 }
 
+// Mission 9 (Lighting Foundation) — compact Lighting section: six live
+// sliders (key / fill / rim / ambient / shadow / exposure) in a two-column
+// grid, same compact dark language as the rest of the panel. Every input
+// event updates the Studio renderer immediately.
+function LightingRow({ lighting, onLightingChange }) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 9,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "rgba(255,255,255,0.45)",
+          marginBottom: 4,
+        }}
+      >
+        Lighting
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "5px 10px",
+          maxWidth: 262,
+        }}
+      >
+        {LIGHTING_CONTROLS.map((c) => (
+          <label
+            key={c.id}
+            style={{ display: "flex", flexDirection: "column", gap: 1 }}
+          >
+            <span
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 8,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.4)",
+              }}
+            >
+              <span>{c.label}</span>
+              <span
+                style={{
+                  color: "rgba(255,255,255,0.62)",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {Number(lighting[c.id]).toFixed(2)}
+              </span>
+            </span>
+            <input
+              data-testid={`light-${c.id}`}
+              type="range"
+              min={c.min}
+              max={c.max}
+              step={c.step}
+              value={lighting[c.id]}
+              onChange={(e) =>
+                onLightingChange({ [c.id]: parseFloat(e.target.value) })
+              }
+              style={{
+                width: "100%",
+                height: 12,
+                margin: 0,
+                accentColor: GOLD,
+                background: "transparent",
+                cursor: "pointer",
+              }}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Mission 8 (Capture Shot Foundation) — one compact gold action beneath the
 // CAMERA presets. It captures the live WebGL presentation exactly as shown
 // (environment, model, transform, camera, selection) and changes nothing.
@@ -330,6 +408,8 @@ export default function StudioControls({
   onCaptureShot,
   hasCustomView,
   onSaveCustomView,
+  lighting,
+  onLightingChange,
 }) {
   return (
     <div
@@ -371,6 +451,7 @@ export default function StudioControls({
         hasCustomView={hasCustomView}
         onSaveCustomView={onSaveCustomView}
       />
+      <LightingRow lighting={lighting} onLightingChange={onLightingChange} />
       <CaptureRow onCapture={onCaptureShot} />
     </div>
   );
