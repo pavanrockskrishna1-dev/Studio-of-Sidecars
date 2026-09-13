@@ -502,6 +502,14 @@
   gap: 1px;
 }
 
+/* the asset grid needs the full column, not the row list's left rule */
+.sos-group-body[data-layout="grid"] {
+  display: block;
+  padding: 4px 0 8px;
+  margin-left: 0;
+  border-left: 0;
+}
+
 /* placeholder rows: present for the interface, inert by design */
 .sos-row {
   font: inherit;
@@ -563,7 +571,8 @@
   background: #0a0c10;
 }
 
-.sos-row .sos-tag {
+.sos-row .sos-tag,
+.sos-asset .sos-tag {
   margin-left: auto;
   font-size: 9px;
   letter-spacing: 0.1em;
@@ -589,6 +598,134 @@
 .sos-side-foot .sos-row-ico {
   color: var(--sos-acc);
   background: var(--sos-acc-soft);
+}
+
+/* ========================================================= ASSET LIBRARY
+   The cards live inside the sidebar column the shell already owns: glass
+   plate, 12px radius, accent reserved for state. auto-fill is the responsive
+   rule (2-up at 260px, wider if the column ever grows, 1-up when tight). */
+.sos-lib {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 6px;
+}
+
+.sos-asset {
+  font: inherit;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--sos-line);
+  border-radius: var(--sos-r-sm);
+  background: var(--sos-glass-3);
+  color: var(--sos-text-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--sos-fast), border-color var(--sos-fast),
+    color var(--sos-fast);
+}
+
+.sos-asset[data-active="true"] {
+  border-color: rgba(232, 181, 77, 0.5);
+  background: var(--sos-acc-soft);
+  color: var(--sos-text);
+}
+
+/* hover is an affordance, so it must survive the active state: declared after
+   it and raised past the attribute rule, while the placeholder keeps the
+   shell's inert treatment (same muted hover as .sos-row, no lift). */
+.sos-asset:not([data-inert="true"]):hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--sos-line-2);
+  color: var(--sos-text);
+}
+
+.sos-asset[data-active="true"]:not([data-inert="true"]):hover {
+  background: rgba(232, 181, 77, 0.22);
+  border-color: rgba(232, 181, 77, 0.7);
+}
+
+.sos-asset-media {
+  position: relative;
+  display: block;
+  height: 54px;
+  overflow: hidden;
+  border: 1px solid var(--sos-line);
+  border-radius: 8px;
+  background: #0a0c10;
+}
+
+.sos-asset-plate {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--sos-text-3);
+}
+
+.sos-asset-plate-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sos-asset-txt {
+  display: block;
+  min-width: 0;
+}
+
+.sos-asset .sos-row-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  min-height: 15px;
+  line-height: 1.25;
+}
+
+/* secondary meta may compress; the name never may (the shell's own rule: a
+   label is never cut off) */
+.sos-asset .sos-row-sub {
+  display: block;
+}
+
+/* active marker — the accent stays a state signal, never a fill */
+.sos-asset-state {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--sos-acc);
+}
+
+/* "Coming Soon" hardware: the exact inert treatment the sidebar rows use —
+   muted text, default cursor, no lift on hover — on a card instead of a row. */
+.sos-asset[data-inert="true"] {
+  cursor: default;
+  color: var(--sos-text-2);
+}
+
+.sos-asset[data-inert="true"]:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--sos-line);
+  color: var(--sos-text-2);
+}
+
+.sos-asset[data-inert="true"] .sos-asset-plate,
+.sos-asset[data-inert="true"] .sos-asset-plate-img {
+  opacity: 0.55;
+}
+
+.sos-asset[data-inert="true"] .sos-row-name {
+  opacity: 0.72;
 }
 
 /* ========================================================== RIGHT RAIL */

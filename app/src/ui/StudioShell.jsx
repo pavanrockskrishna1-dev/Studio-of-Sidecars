@@ -5,6 +5,7 @@ import VersionTabs from "./VersionTabs";
 import CreatorSidebar from "./CreatorSidebar";
 import InspectorRail from "./InspectorRail";
 import useFloatingPanelRect from "./useFloatingPanelRect";
+import useEngineSelection from "./useEngineSelection";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "../environments/registry";
 
 /* ==========================================================================
@@ -47,11 +48,12 @@ function useNarrow() {
 }
 
 export default function StudioShell() {
-  // The engine owns environment state; until it is lifted out of App.jsx the
-  // header reads the locked hero default from the environment registry, so the
-  // shell never invents its own source of truth. TopHeader takes an
-  // `environment` prop, so a one-line state lift in App makes it live.
-  const environment = getEnvironment(DEFAULT_ENVIRONMENT_ID);
+  // The engine owns asset state. The shell reads and drives it through the
+  // engine's own picker (useEngineSelection), so neither the header nor the
+  // library keeps a private copy: the environment title is the live one, and
+  // falls back to the locked hero default only until the engine is mounted.
+  const assets = useEngineSelection();
+  const environment = getEnvironment(assets.environmentId ?? DEFAULT_ENVIRONMENT_ID);
 
   const shoot = useFloatingPanelRect("shoot-controls");
   const selection = useFloatingPanelRect("selection-inspector");
@@ -82,6 +84,8 @@ export default function StudioShell() {
         dodgeBelow={selection ? selection.bottom + DODGE_GAP : 0}
         collapsed={sideCollapsed}
         onCollapse={() => setSideMin(!sideCollapsed)}
+        selection={assets}
+        onSelect={assets.select}
       />
       <InspectorRail
         dodgeBelow={shoot ? shoot.bottom + DODGE_GAP : 0}

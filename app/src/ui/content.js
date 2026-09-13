@@ -1,4 +1,5 @@
 import { ENVIRONMENTS } from "../environments/registry";
+import { PRODUCTS } from "../products/registry";
 import { CAMERA_PRESETS } from "../camera/presets";
 
 /* ==========================================================================
@@ -9,8 +10,11 @@ import { CAMERA_PRESETS } from "../camera/presets";
    only: no handler, no store, no side effect. When a later engine mission
    wires a section, it supplies the callback and this file becomes the seed.
 
-   Studio Backgrounds intentionally READ the locked environment registry — the
-   UI must never invent its own list of what the studio can actually load.
+   Mission 10A: the creator sidebar is now the Asset Library, and it reads the
+   two engine registries directly — PRODUCTS and ENVIRONMENTS are the only
+   sources of truth for what the studio can display. Nothing here duplicates a
+   registry array; the maps below attach chrome copy to registry ids, and an
+   id that is not in the registry can never appear as a selectable card.
    ========================================================================== */
 
 // `name` is the mockup label, `short` the compressed label used when the row
@@ -25,80 +29,81 @@ export const VERSION_TABS = [
   { id: "v6", short: "V6", name: "Brand Studio", compact: "Brand" },
 ];
 
-function row(id, name, meta, icon, extra = {}) {
-  return { id, name, meta, icon, ...extra };
+// Chrome copy keyed by registry id. The registry owns what exists (id, name,
+// model file); this only supplies the subtitle line and the glyph the card
+// plate uses, so a product can never appear here without existing upstream.
+const PRODUCT_CATEGORY = {
+  "coffee-bike": "Retail mobility · hero",
+  "cessna-172": "Aviation · heritage",
+};
+const PRODUCT_ICON = { "coffee-bike": "bike", "cessna-172": "plane" };
+
+// Announced but not shipped. Deliberately NOT a registry entry: no id in
+// PRODUCTS, no modelPath, nothing the engine could load — so the card can
+// only ever render as the inert placeholder the sidebar already uses.
+export const PRODUCT_PLACEHOLDERS = [
+  { id: "bbq-bike", name: "BBQ Bike", icon: "flame" },
+];
+
+function productCards() {
+  return [
+    ...PRODUCTS.map((p) => ({
+      id: p.id,
+      name: p.name,
+      category: PRODUCT_CATEGORY[p.id] || "In the studio",
+      icon: PRODUCT_ICON[p.id] || "cube",
+    })),
+    ...PRODUCT_PLACEHOLDERS.map((p) => ({ ...p, placeholder: true })),
+  ];
 }
 
-export const SIDEBAR_GROUPS = [
+function environmentCards() {
+  return ENVIRONMENTS.map((env) => ({
+    id: env.id,
+    name: env.name,
+    // the registry's own compressed name, exactly as the engine's chips use it
+    // (`o.label ?? o.name`) — so a card never ellipsizes at 118px, and the
+    // full name still carries in the tooltip.
+    short: env.label ?? env.name,
+    category: env.mood,
+    thumb: env.file,
+    tag: env.hero ? "hero" : null,
+  }));
+}
+
+/**
+ * The Asset Library: what the studio can display today, as two collections.
+ * `kind` is the bridge key into the engine's picker (products / environments),
+ * `items` are derived from the registries on every module load, and the count
+ * a group header shows is therefore always the engine's real count.
+ */
+export const LIBRARY_GROUPS = [
   {
-    id: "furniture",
-    name: "Furniture",
-    sub: "stage dressing",
-    icon: "sofa",
-    open: false,
-    items: [
-      row("sling-chair", "Sling Chair", "walnut · leather", "sofa"),
-      row("cafe-table", "Café Table", "round · steel base", "sofa"),
-      row("leather-loveseat", "Leather Loveseat", "tan · patina", "sofa"),
-      row("brass-floor-lamp", "Brass Floor Lamp", "warm practical", "bulb"),
-      row("turntable-plinth", "Turntable Plinth", "gloss black", "cube"),
-    ],
-  },
-  {
-    id: "lighting",
-    name: "Lighting",
-    sub: "cinematic looks",
-    icon: "bulb",
-    open: false,
-    items: [
-      row("softbox", "Softbox Key", "45° · 2.5", "sun"),
-      row("cafe-window", "Café Window", "cool daylight", "sun"),
-      row("golden-hour", "Golden Hour", "warm rim", "sun"),
-      row("night-neon", "Night Neon", "blue haze", "sun"),
-      row("backlit-rim", "Backlit Rim", "silhouette", "sun"),
-    ],
-  },
-  {
-    id: "scenes",
-    name: "Scenes",
-    sub: "saved shot sets",
-    icon: "film",
-    open: false,
-    items: [
-      row("showroom-01", "Showroom 01", "hero · front", "frame"),
-      row("loft-reveal", "Loft Reveal", "orbit · 12s", "film"),
-      row("reel-9-16", "Reel 9:16", "vertical cut", "render"),
-      row("detail-macro", "Detail Macro", "part close-up", "camera"),
-    ],
-  },
-  {
-    id: "projects",
-    name: "Projects",
-    sub: "this device",
-    icon: "folder",
-    open: false,
-    items: [
-      row("coffee-bike-launch", "Coffee Bike Launch", "edited 2h ago", "folder"),
-      row("cessna-heritage", "Cessna Heritage", "edited yesterday", "folder"),
-      row("kop-refined", "The KOP · Refined", "locked", "lock"),
-    ],
+    id: "products",
+    name: "Products",
+    sub: "selectable in the stage",
+    icon: "cube",
+    kind: "product",
+    open: true,
+    items: productCards(),
   },
   {
     id: "backgrounds",
     name: "Studio Backgrounds",
     sub: "locked library",
     icon: "frame",
+    kind: "environment",
     open: true,
-    // Real studio imagery, read straight from the environment registry so the
-    // chrome can never drift from what the engine is able to load.
-    items: ENVIRONMENTS.map((env) =>
-      row(env.id, env.name, env.mood, "frame", {
-        thumb: env.file,
-        tag: env.hero ? "hero" : null,
-      })
-    ),
+    items: environmentCards(),
   },
 ];
+
+export const ASSET_COUNT = LIBRARY_GROUPS.reduce((n, g) => n + g.items.length, 0);
+
+// The one product that ships no model: it must read as present but inert, on
+// the same terms every other placeholder row in this shell already uses.
+export const PLACEHOLDER_TAG = "Coming Soon";
+export const PLACEHOLDER_HINT = "not in the studio yet";
 
 // Inspector sections. `Camera` mirrors the engine's live preset set; the rest
 // are placeholders until their engine mission lands.

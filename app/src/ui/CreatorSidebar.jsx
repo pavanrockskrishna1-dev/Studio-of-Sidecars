@@ -1,62 +1,29 @@
 import { useCallback, useState } from "react";
 import Icon from "./icons";
-import { SIDEBAR_GROUPS } from "./content";
+import { ASSET_COUNT, LIBRARY_GROUPS } from "./content";
+import AssetGrid from "./AssetLibrary";
 
 /* ==========================================================================
-   Left creator sidebar (Agent #2 · UI ONLY)
+   Left creator sidebar — the Asset Library (Agent #2 · UI ONLY)
    --------------------------------------------------------------------------
-   Collapsible groups from the mockup's `#sideNav`, rebuilt as one reusable
-   <SidebarGroup> + <SidebarRow> pair driven by ui/content.js:
-   Furniture · Lighting · Scenes · Projects · Studio Backgrounds, with the
-   Private Workspace strip pinned to the footer.
+   Rebuilt on the shell's existing accordion: one reusable <SidebarGroup> whose
+   body is now the asset grid (see AssetLibrary.jsx), fed by the engine
+   registries through ui/content.js. It replaces the placeholder creator
+   content (Furniture / Lighting / Scenes / Projects), because the studio can
+   only display what its registries ship today: two products and eleven
+   studio backgrounds, plus announced hardware that stays inert.
 
-   Scope note: only the group disclosure is interactive (chrome state). Every
-   row is inert by contract — `aria-disabled`, no handler — because the
-   engines for these libraries do not exist yet. Making them look live would
-   be worse than an honest placeholder.
+   Interaction contract:
+     · group disclosure is shell state (open / collapsed);
+     · a real card delegates selection to the engine's own picker, so the
+       engine stays the single authority over product + environment state;
+     · a placeholder card is inert by construction — no handler, no tab stop,
+       aria-disabled — on the same treatment every other placeholder row in
+       this shell already uses;
+     · the panel scrolls internally and never grows over the stage.
    ========================================================================== */
 
-function RowGlyph({ name, thumb }) {
-  if (thumb) {
-    return (
-      <img
-        className="sos-row-thumb"
-        src={thumb}
-        alt=""
-        width="30"
-        height="20"
-        loading="lazy"
-        draggable="false"
-      />
-    );
-  }
-  return (
-    <span className="sos-row-ico" aria-hidden="true">
-      <Icon name={name} size={13} stroke={1.7} />
-    </span>
-  );
-}
-
-function SidebarRow({ item }) {
-  return (
-    <button
-      type="button"
-      className="sos-row"
-      aria-disabled="true"
-      tabIndex={-1}
-      title={`${item.name} — UI shell only in this build`}
-    >
-      <RowGlyph name={item.icon} thumb={item.thumb} />
-      <span style={{ minWidth: 0 }}>
-        <span className="sos-row-name">{item.name}</span>
-        {item.meta ? <span className="sos-row-sub">{item.meta}</span> : null}
-      </span>
-      {item.tag ? <span className="sos-tag">{item.tag}</span> : null}
-    </button>
-  );
-}
-
-function SidebarGroup({ group, open, onToggle, collapsed }) {
+function SidebarGroup({ group, open, onToggle, collapsed, activeId, onSelect }) {
   return (
     <section className="sos-group" data-open={open}>
       <button
@@ -82,10 +49,13 @@ function SidebarGroup({ group, open, onToggle, collapsed }) {
         <Icon name="chevron" size={13} className="sos-chev" />
       </button>
       {open ? (
-        <div className="sos-group-body" role="list">
-          {group.items.map((item) => (
-            <SidebarRow key={item.id} item={item} />
-          ))}
+        <div className="sos-group-body" data-layout="grid">
+          <AssetGrid
+            group={group}
+            collapsed={collapsed}
+            activeId={activeId}
+            onSelect={onSelect}
+          />
         </div>
       ) : null}
     </section>
@@ -96,10 +66,12 @@ export default function CreatorSidebar({
   dodgeBelow = 0,
   collapsed = false,
   onCollapse,
+  selection = {},
+  onSelect,
 }) {
-  // disclosure state only — never touches scene, camera or asset state
+  // disclosure state only — asset state belongs to the engine
   const [open, setOpen] = useState(() =>
-    Object.fromEntries(SIDEBAR_GROUPS.map((g) => [g.id, Boolean(g.open)]))
+    Object.fromEntries(LIBRARY_GROUPS.map((g) => [g.id, Boolean(g.open)]))
   );
 
   // Collapsed: a tile is an "expand and open this collection" shortcut, so the
@@ -119,13 +91,14 @@ export default function CreatorSidebar({
   return (
     <aside
       className="sos-side sos-panel"
-      aria-label="Creator library"
+      aria-label="Asset library"
+      data-engine-ready={selection.ready || undefined}
       // park below the engine's selection inspector when it is open
       style={dodgeBelow ? { "--sos-dodge": `${dodgeBelow}px` } : undefined}
     >
       <div className="sos-side-head">
         <span className="sos-eyebrow">Creator</span>
-        <span className="sos-meta">{SIDEBAR_GROUPS.length} collections</span>
+        <span className="sos-meta">{ASSET_COUNT} assets</span>
         <button
           type="button"
           className="sos-collapse"
@@ -139,13 +112,15 @@ export default function CreatorSidebar({
       </div>
 
       <div className="sos-side-scroll">
-        {SIDEBAR_GROUPS.map((group) => (
+        {LIBRARY_GROUPS.map((group) => (
           <SidebarGroup
             key={group.id}
             group={group}
             open={Boolean(open[group.id])}
             collapsed={collapsed}
             onToggle={() => toggle(group.id)}
+            activeId={group.kind === "product" ? selection.productId : selection.environmentId}
+            onSelect={(id) => onSelect?.(group.kind, id)}
           />
         ))}
       </div>
