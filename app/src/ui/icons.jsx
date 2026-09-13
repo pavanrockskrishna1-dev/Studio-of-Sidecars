@@ -138,9 +138,52 @@ const PATHS = {
     </>
   ),
   chevron: <path d="M9.6 5.8 15.8 12l-6.2 6.2" />,
+  /* Mission 11A — Materials Manager vocabulary */
+  palette: (
+    <>
+      <path d="M12 3.7a8.3 8.3 0 1 0 0 16.6c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.1 0-.9.8-1.7 1.8-1.7h1.4a4.3 4.3 0 0 0 4.3-4.3c0-3.7-3.7-6.7-8.3-6.7Z" />
+      <circle cx="8" cy="9.2" r=".9" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="7.4" r=".9" fill="currentColor" stroke="none" />
+      <circle cx="15.8" cy="9.4" r=".9" fill="currentColor" stroke="none" />
+    </>
+  ),
+  star: (
+    <path d="m12 4.2 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 9.9l5.4-.8Z" />
+  ),
+  search: (
+    <>
+      <circle cx="10.8" cy="10.8" r="6" />
+      <path d="m15.2 15.2 4.2 4.2" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="8.6" y="8.6" width="11" height="11" rx="2.2" />
+      <path d="M15.4 5.4H6.4a2.2 2.2 0 0 0-2.2 2.2v9" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4.8 7.2h14.4M9.4 7.2V5.4a1.2 1.2 0 0 1 1.2-1.2h2.8a1.2 1.2 0 0 1 1.2 1.2v1.8" />
+      <path d="M6.6 7.2 7.6 19a1.6 1.6 0 0 0 1.6 1.4h5.6A1.6 1.6 0 0 0 16.4 19l1-11.8" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="m5 18.6.9-3.6 9.5-9.5a1.9 1.9 0 0 1 2.7 2.7l-9.5 9.5Z" />
+      <path d="M4.4 20.4h6.2" />
+    </>
+  ),
+  undo: (
+    <>
+      <path d="M4.6 9.4h8.6a5 5 0 1 1 0 10H8.2" />
+      <path d="m8 5.4-3.4 4 3.4 4" />
+    </>
+  ),
+  plus: <path d="M12 5.6v12.8M5.6 12h12.8" />,
 };
 
-export default function Icon({ name, size = 18, stroke = 1.6, className, style }) {
+export default function Icon({ name, size = 18, stroke = 1.6, className, style, filled = false }) {
   const glyph = PATHS[name];
   if (!glyph) return null;
   return (
@@ -150,7 +193,7 @@ export default function Icon({ name, size = 18, stroke = 1.6, className, style }
       viewBox="0 0 24 24"
       className={className}
       style={style}
-      fill="none"
+      fill={filled ? "currentColor" : "none"}
       stroke="currentColor"
       strokeWidth={stroke}
       strokeLinecap="round"

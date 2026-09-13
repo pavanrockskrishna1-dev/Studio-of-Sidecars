@@ -6,6 +6,7 @@ import { hydrateRuntimeAssets, useRuntimeAssets } from "../assets/runtimeRegistr
 import { BBQ_PACK } from "./bbqPack";
 import AssetGrid from "./AssetLibrary";
 import AssetPreview from "./AssetPreview";
+import MaterialsManager from "./MaterialsManager";
 
 /* ==========================================================================
    Left creator sidebar — the Asset Library (Agent #2 · UI ONLY)
@@ -92,6 +93,9 @@ export default function CreatorSidebar({
   // the pack section's disclosure is shell state too; the pack itself is
   // read-only artwork, so there is nothing to select and no bridge to wire
   const [packOpen, setPackOpen] = useState(true);
+  // materials disclosure is shell state too; the material values themselves
+  // live on the three.js materials, and only their snapshot is persisted
+  const [matOpen, setMatOpen] = useState(true);
 
   // Collapsed: a tile is an "expand and open this collection" shortcut, so the
   // icon rail is still a way in rather than a dead strip.
@@ -156,6 +160,39 @@ export default function CreatorSidebar({
             onSelect={(id) => onSelect?.(group.kind, id)}
           />
         ))}
+
+        {/* Mission 11A — the Materials Manager edits the materials of whatever
+            the engine currently has staged, so it follows `selection.productId`
+            and owns no model state of its own. */}
+        <section className="sos-group" data-open={matOpen}>
+          <button
+            type="button"
+            className="sos-group-head"
+            aria-expanded={collapsed ? undefined : matOpen}
+            data-testid="ui-group-materials"
+            title={collapsed ? "Materials — expand the creator panel" : "Materials — live PBR editing for the staged model"}
+            onClick={() => (collapsed ? onCollapse?.() : setMatOpen((v) => !v))}
+          >
+            <span className="sos-tile" aria-hidden="true">
+              <Icon name="palette" size={16} />
+            </span>
+            <span className="sos-group-txt">
+              <span className="sos-group-name">Materials</span>
+              <span className="sos-group-sub">live editing · staged model</span>
+            </span>
+            <span className="sos-tag">Live</span>
+            <Icon name="chevron" size={13} className="sos-chev" />
+          </button>
+          {matOpen ? (
+            <div className="sos-group-body">
+              <MaterialsManager
+                collapsed={collapsed}
+                productId={selection.productId}
+                onExpand={onCollapse}
+              />
+            </div>
+          ) : null}
+        </section>
 
         <section className="sos-group" data-open={packOpen}>
           <button

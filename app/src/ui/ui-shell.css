@@ -1507,3 +1507,172 @@
   align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.7); cursor: zoom-out;
 }
 .sos-thumbview img { max-width: min(70vw, 560px); max-height: 60vh; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.16); background: repeating-conic-gradient(rgba(255,255,255,0.06) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px; }
+
+/* ==========================================================================
+   Mission 11A (Agent #2) · Materials Manager — UI ONLY
+   --------------------------------------------------------------------------
+   The editor sits in the same accordion as the asset library, so it inherits
+   the shell's rules: nothing may escape the panel, nothing may overlap the
+   engine column, every label wraps instead of truncating, and the width is
+   whatever the tier gives it (260 / 240 / 216). Colours, radii and speeds come
+   from the shell's tokens; only the material swatch gradients are literal, and
+   those live in src/materials/presets.js as data, not here.
+   ========================================================================== */
+
+.sos-mat { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sos-mat-sub { font-size: 10.5px; line-height: 1.45; margin: 0; color: var(--sos-text-3); min-width: 0; }
+.sos-mat-sub strong { color: var(--sos-text-2); font-weight: 600; }
+.sos-mat-note { font-size: 10.5px; margin: 0; color: var(--sos-text-3); }
+
+.sos-mat-list { list-style: none; display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; min-width: 0; }
+.sos-mat-row {
+  font: inherit; width: 100%; min-width: 0; display: flex; align-items: center; gap: 6px;
+  padding: 5px 6px; border-radius: var(--sos-r-sm); cursor: pointer; text-align: left;
+  border: 1px solid transparent; background: var(--sos-glass-2); color: var(--sos-text-2);
+  transition: border-color var(--sos-fast), background var(--sos-fast);
+}
+.sos-mat-row:hover { border-color: var(--sos-line-2); background: var(--sos-glass-3); }
+.sos-mat-row[data-active] { border-color: var(--sos-acc); background: var(--sos-acc-soft); color: var(--sos-text); }
+.sos-mat-dot { flex: 0 0 auto; width: 11px; height: 11px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.22); }
+.sos-mat-row-name { flex: 1 1 auto; min-width: 0; font-size: 11px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
+.sos-mat-row-meta { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; font-size: 9.5px; color: var(--sos-text-3); }
+.sos-mat-edited { flex: 0 0 auto; width: 5px; height: 5px; border-radius: 999px; background: var(--sos-acc); box-shadow: 0 0 0 2px var(--sos-acc-soft); }
+
+.sos-mat-inspect {
+  display: flex; flex-direction: column; gap: 7px; padding: 8px;
+  border: 1px solid var(--sos-line); border-radius: var(--sos-r-md); background: var(--sos-glass);
+}
+.sos-mat-inspect-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sos-mat-swatch { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.2); }
+.sos-mat-inspect-name { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; font-size: 11.5px; color: var(--sos-text); }
+.sos-mat-inspect-name em { font-style: normal; font-size: 9.5px; color: var(--sos-text-3); white-space: normal; overflow-wrap: anywhere; }
+
+.sos-mat-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sos-mat-field-head { display: flex; justify-content: space-between; gap: 6px; font-size: 10px; color: var(--sos-text-3); }
+.sos-mat-field-name { min-width: 0; }
+.sos-mat-field-num { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--sos-text-2); }
+.sos-mat-field input[type="range"] {
+  width: 100%; min-width: 0; height: 16px; margin: 0; cursor: pointer;
+  appearance: none; background: transparent;
+}
+.sos-mat-field input[type="range"]::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.16); }
+.sos-mat-field input[type="range"]::-webkit-slider-thumb {
+  appearance: none; width: 11px; height: 11px; margin-top: -4px; border-radius: 999px;
+  background: var(--sos-acc); border: 1px solid rgba(0, 0, 0, 0.45); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.sos-mat-field input[type="range"]:focus-visible { outline: 2px solid var(--sos-acc); outline-offset: 3px; border-radius: 4px; }
+.sos-mat-color-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.sos-mat-color-row input[type="color"] {
+  flex: 0 0 auto; width: 34px; height: 22px; padding: 0; cursor: pointer;
+  border: 1px solid var(--sos-line-2); border-radius: 6px; background: transparent;
+}
+.sos-mat-color-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+.sos-mat-color-row input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+.sos-mat-hex {
+  font: inherit; font-size: 10.5px; flex: 1 1 auto; min-width: 0; padding: 3px 6px;
+  color: var(--sos-text); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--sos-line);
+  border-radius: 6px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.sos-mat-hex:focus-visible { outline: 2px solid var(--sos-acc); outline-offset: 1px; border-color: transparent; }
+
+.sos-mat-actions, .sos-mat-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
+.sos-mat-mini {
+  font: inherit; font-size: 10px; display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 7px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--sos-line-2); background: var(--sos-glass-2); color: var(--sos-text-2);
+  transition: border-color var(--sos-fast), color var(--sos-fast);
+}
+.sos-mat-mini:hover:not(:disabled) { border-color: var(--sos-acc); color: var(--sos-text); }
+.sos-mat-mini:disabled { opacity: 0.45; cursor: not-allowed; }
+.sos-mat-save-row { display: flex; align-items: center; gap: 4px; flex: 1 1 100%; min-width: 0; }
+.sos-mat-name {
+  font: inherit; font-size: 10.5px; flex: 1 1 auto; min-width: 0; padding: 4px 6px;
+  color: var(--sos-text); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--sos-acc);
+  border-radius: 6px;
+}
+.sos-mat-warn { font-size: 9.5px; color: var(--sos-text-3); min-width: 0; }
+
+.sos-mat-tools { display: flex; min-width: 0; }
+.sos-mat-search {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 5px; padding: 4px 7px;
+  border: 1px solid var(--sos-line); border-radius: var(--sos-r-sm); background: rgba(0, 0, 0, 0.3);
+  color: var(--sos-text-3);
+}
+.sos-mat-search input {
+  font: inherit; font-size: 10.5px; flex: 1 1 auto; min-width: 0; border: 0; outline: 0;
+  background: transparent; color: var(--sos-text);
+}
+.sos-mat-cats { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
+.sos-mat-cat {
+  font: inherit; font-size: 9.5px; padding: 3px 7px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--sos-line); background: transparent; color: var(--sos-text-3);
+  transition: border-color var(--sos-fast), color var(--sos-fast);
+}
+.sos-mat-cat:hover { color: var(--sos-text-2); border-color: var(--sos-line-2); }
+.sos-mat-cat[data-on] { color: var(--sos-text); border-color: var(--sos-acc); background: var(--sos-acc-soft); }
+
+.sos-mat-grid {
+  list-style: none; display: grid; gap: 5px; margin: 0; padding: 0; min-width: 0;
+  /* two-up at 260px, and it never forces the panel wider than the shell gives it */
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+}
+.sos-mat-grid > li { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sos-mat-preset {
+  font: inherit; width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 4px;
+  padding: 5px; cursor: pointer; text-align: left; position: relative;
+  border: 1px solid var(--sos-line); border-radius: var(--sos-r-sm); background: var(--sos-glass-2);
+  transition: border-color var(--sos-fast), transform var(--sos-fast);
+}
+.sos-mat-preset:hover { border-color: var(--sos-line-2); }
+.sos-mat-preset[data-active] { border-color: var(--sos-acc); box-shadow: inset 0 0 0 1px var(--sos-acc-soft); }
+.sos-mat-thumb {
+  display: block; height: 40px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, 0.12);
+  background-color: #101114; background-size: cover; background-position: center;
+  /* a swatch is decoration: it must never intercept a click meant for the preset */
+  pointer-events: none;
+}
+.sos-mat-preset-name {
+  font-size: 10px; line-height: 1.3; color: var(--sos-text-2); min-width: 0;
+  white-space: normal; overflow-wrap: anywhere;
+}
+.sos-mat-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sos-mat-cell-tools { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.sos-mat-cell-cat { font-size: 9px; color: var(--sos-text-3); text-transform: uppercase; letter-spacing: 0.06em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sos-mat-cell-tools .sos-mat-custom-tools { flex: 1 1 auto; }
+.sos-mat-star {
+  font: inherit; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; border-radius: 999px; cursor: pointer; color: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--sos-line); background: rgba(0, 0, 0, 0.5);
+}
+.sos-mat-star[data-on] { color: #e8b54d; border-color: rgba(232, 181, 77, 0.5); }
+.sos-mat-custom-tools { display: flex; gap: 3px; min-width: 0; flex: 1 1 auto; }
+.sos-mat-custom-tools button {
+  font: inherit; flex: 1 1 0; min-width: 0; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+  gap: 2px; padding: 0; cursor: pointer; border-radius: 6px; color: var(--sos-text-3);
+  border: 1px solid var(--sos-line); background: var(--sos-glass-2);
+}
+.sos-mat-custom-tools button:hover { color: var(--sos-text); border-color: var(--sos-line-2); }
+.sos-mat-rename {
+  font: inherit; font-size: 10px; width: 100%; min-width: 0; padding: 3px 5px; color: var(--sos-text);
+  background: rgba(0, 0, 0, 0.4); border: 1px solid var(--sos-acc); border-radius: 6px;
+}
+.sos-mat-empty-inline { font-size: 10px; line-height: 1.45; margin: 2px 0 0; color: var(--sos-text-3); min-width: 0; }
+.sos-mat-collapsed {
+  font: inherit; position: relative; width: 100%; display: flex; align-items: center; justify-content: center;
+  gap: 4px; padding: 9px 0; cursor: pointer; border-radius: var(--sos-r-sm);
+  border: 1px solid var(--sos-line); background: var(--sos-glass-2); color: var(--sos-text-2);
+}
+.sos-mat-collapsed-count { font-size: 9px; color: var(--sos-text-3); }
+
+/* the shell's own focus ring, extended to the new controls */
+.sos-mat-row:focus-visible,
+.sos-mat-preset:focus-visible,
+.sos-mat-cat:focus-visible,
+.sos-mat-mini:focus-visible,
+.sos-mat-star:focus-visible,
+.sos-mat-collapsed:focus-visible,
+.sos-mat-custom-tools button:focus-visible { outline: 2px solid var(--sos-acc); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sos-mat-row, .sos-mat-preset, .sos-mat-cat, .sos-mat-mini { transition: none; }
+}
