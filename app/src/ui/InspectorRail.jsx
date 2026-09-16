@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Icon from "./icons";
 import {
   CAMERA_FRAMINGS,
   INSPECTOR_PLACEHOLDERS,
   RAIL_CHIPS,
 } from "./content";
+import {
+  MOOD_KNOBS,
+  findActiveMoodPreset,
+  moodPresetForLabel,
+  moodPresetId,
+} from "../lighting/moodPresets";
 
 /* ==========================================================================
    Right inspector rail (Agent #2 · UI ONLY)
@@ -17,9 +23,11 @@ import {
       docked directly above this rail, so the rail mirrors the real preset
       names (read from camera/presets.js, never duplicated) instead of
       shipping a second, decorative set of buttons that do nothing.
-   2. Everything the engine has not built yet (lighting, materials, render) is
-      a labelled placeholder with inert controls — visibly a shell, never a
-      dead-looking fake.
+   2. Everything the engine has not built yet (materials, render) is a
+      labelled placeholder with inert controls — visibly a shell, never a
+      dead-looking fake. Mission 13C: the Lighting chips are no longer
+      placeholders — they drive the engine's real lighting state through the
+      engine's own slider pipeline (below); materials and render stay shell.
    ========================================================================== */
 
 const SECTIONS = [
@@ -29,14 +37,85 @@ const SECTIONS = [
   { id: "render", name: "Render", sub: "output presets", icon: "render" },
 ];
 
-function Chips({ items }) {
+/* --------------------------------------------------------------------------
+   Mission 13C — mood preset bridge (new work for this mission, built and
+   verified in its verification report).
+
+   The rail is a sibling of <App/> (see StudioShell.jsx), so it has no props
+   from the engine and no store it may mirror: the ONLY sanctioned path into
+   the engine's lighting state is the engine's own six slider inputs
+   (data-testid="light-*" in StudioControls.jsx), whose onChange runs App's
+   real setLighting. This bridge drives those inputs the React-controlled way
+   — native value setter + a dispatched input event — so a preset is applied
+   by the EXISTING pipeline, with no second lighting state, no new panel and
+   no engine edit.
+
+   Two dynamics the code has to respect (both verified in the browser):
+   - React's change plugin ignores an input event whose value equals the
+     value it last tracked, so a knob already at its preset value is SKIPPED
+     (nothing to change) instead of dispatched;
+   - each slider carries its own value tracker, so six different sliders may
+     each take exactly one changed dispatch in the same gesture.
+
+   If the engine panel is not in the DOM (it is, in every reachable state of
+   this app — see the mount matrix in the Phase B report), setLightKnob
+   reports false and the click is a graceful no-op: no state change, no
+   active highlight, no throw.
+   -------------------------------------------------------------------------- */
+
+const lightKnobEl = (knob) => document.querySelector(`[data-testid="light-${knob}"]`);
+
+function setLightKnob(knob, value) {
+  const el = lightKnobEl(knob);
+  if (!el) return false;
+  if (Math.abs(parseFloat(el.value) - value) < 1e-9) return true; // already there
+  const setNativeValue = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    "value"
+  ).set;
+  setNativeValue.call(el, String(value));
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  return true;
+}
+
+// true only when all six knobs are (or now are) at the preset's values.
+function applyMoodPreset(values) {
+  return MOOD_KNOBS.every((k) => setLightKnob(k, values[k]));
+}
+
+// The rig's live six, as numbers — or null when the engine panel is absent.
+function readLiveLighting() {
+  const values = {};
+  for (const k of MOOD_KNOBS) {
+    const el = lightKnobEl(k);
+    if (!el) return null;
+    values[k] = parseFloat(el.value);
+  }
+  return values;
+}
+
+function Chips({ items, onSelect, activeMoodId }) {
   return (
     <div className="sos-frow">
-      {items.map((text) => (
-        <span key={text} className="sos-pchip">
-          {text}
-        </span>
-      ))}
+      {items.map((text) =>
+        onSelect ? (
+          <button
+            key={text}
+            type="button"
+            className="sos-pchip"
+            data-on={moodPresetId(text) === activeMoodId || undefined}
+            aria-pressed={moodPresetId(text) === activeMoodId}
+            title={`Apply the ${text} preset`}
+            onClick={() => onSelect(text)}
+          >
+            {text}
+          </button>
+        ) : (
+          <span key={text} className="sos-pchip">
+            {text}
+          </span>
+        )
+      )}
     </div>
   );
 }
@@ -109,12 +188,54 @@ export default function InspectorRail({
   onCollapse,
 }) {
   const [openId, setOpenId] = useState("camera");
-  const openSection = (id) => setOpenId((prev) => (prev === id ? null : id));
+
+  // Mission 13C — which mood preset (if any) matches the rig's live values.
+  // null = no chip highlighted (the default and every manually adjusted state).
+  const [activeMoodId, setActiveMoodId] = useState(null);
+  const refreshActiveMood = useCallback(() => {
+    const match = findActiveMoodPreset(readLiveLighting());
+    setActiveMoodId(match ? match.id : null);
+  }, []);
+
+  // The highlight is maintained from event handlers only (never from an
+  // effect body): recompute when the Lighting card opens, clear it whenever
+  // the card closes or another section takes the accordion, and recompute on
+  // every change of any engine lighting slider (see the listener below), so a
+  // manual slider move un-highlights the chip.
+  const openSection = (id) => {
+    const next = openId === id ? null : id;
+    setOpenId(next);
+    if (next === "lighting") refreshActiveMood();
+    else if (openId === "lighting") setActiveMoodId(null);
+  };
   // From the collapsed strip: bring the rail back with that section open.
   const openFromStrip = (id) => {
     setOpenId(id);
+    if (id === "lighting") refreshActiveMood();
+    else if (openId === "lighting") setActiveMoodId(null);
     onCollapse?.();
   };
+
+  const handleMoodSelect = useCallback((label) => {
+    const preset = moodPresetForLabel(label);
+    if (!preset) return; // label with no preset — stay inert
+    if (applyMoodPreset(preset.values)) setActiveMoodId(preset.id);
+  }, []);
+
+  // While the Lighting card is open, listen for the engine sliders' own input
+  // events (they bubble to document) and keep the highlight in sync with the
+  // rig's real values.
+  useEffect(() => {
+    if (openId !== "lighting") return;
+    const onLightInput = (e) => {
+      const t = e.target;
+      if (t && t.dataset && String(t.dataset.testid || "").startsWith("light-")) {
+        refreshActiveMood();
+      }
+    };
+    document.addEventListener("input", onLightInput, true);
+    return () => document.removeEventListener("input", onLightInput, true);
+  }, [openId, refreshActiveMood]);
 
   return (
     <aside
@@ -169,6 +290,18 @@ export default function InspectorRail({
                 </div>
                 <Hint>Live presets: engine panel above.</Hint>
               </>
+            ) : section.id === "lighting" ? (
+              <>
+                <Chips
+                  items={INSPECTOR_PLACEHOLDERS.lighting}
+                  onSelect={handleMoodSelect}
+                  activeMoodId={activeMoodId}
+                />
+                <Hint>
+                  One-click presets — drives the live rig; the panel's sliders
+                  stay in sync.
+                </Hint>
+              </>
             ) : (
               <>
                 <Chips items={INSPECTOR_PLACEHOLDERS[section.id]} />
@@ -181,7 +314,7 @@ export default function InspectorRail({
 
       <div className="sos-rail-foot">
         <span className="sos-meta">
-          UI SHELL · NO ENGINE CONTROL WIRED
+          LIGHTING LIVE · MATERIALS &amp; RENDER SHELL
         </span>
       </div>
     </aside>

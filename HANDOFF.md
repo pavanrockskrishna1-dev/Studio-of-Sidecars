@@ -87,3 +87,38 @@ unchanged and re-verified.
   “Clear recovery copy” dismisses it permanently for that session state.
 - MP4 deliverables are intentionally Blender-Python scripts (the browser cannot
   encode H.264 offline); PNG stills are rendered live in-browser.
+
+---
+
+## React Studio (`app/src`) — Mission 13C (2026-09-16)
+
+The Inspector Rail's five Lighting mood chips (Softbox Key, Café Window,
+Golden Hour, Night Neon, Backlit Rim) are now real one-click presets:
+
+- **Preset data:** `app/src/lighting/moodPresets.js` — five frozen presets over
+  the rig's six values (key/fill/rim/ambient/shadow/exposure), calibrated to
+  the proven ranges in `lighting/profiles.js` and the `LIGHTING_CONTROLS`
+  slider step grid. No JSX, no duplicated chip labels (join is a label→id
+  slug against `INSPECTOR_PLACEHOLDERS.lighting` in `ui/content.js`).
+- **Wiring:** `app/src/ui/InspectorRail.jsx` — the Lighting chips are
+  `<button>`s; a click drives the engine's own six `data-testid="light-*"`
+  slider inputs (native value setter + dispatched input event), so the
+  EXISTING `onLightingChange` → `setLighting` pipeline runs — no second
+  lighting state, no new panel. Active-chip highlight (`data-on`, the shell's
+  existing gold pattern) tracks the rig's live values and clears on any manual
+  slider move.
+- **Not touched:** `StudioControls.jsx`, `App.jsx`, `StudioCanvas.jsx`,
+  `ui/content.js`, `lighting/profiles.js`, `assets/runtimeRegistry.js`.
+  Materials/Render chips remain inert shells (their missions are separate).
+- **Persistence:** none added — lighting stays session-only React state, as
+  before (Mission 13C Phase C was not taken on).
+- **Verification:** 34/34 Playwright checks in a real browser (before/after
+  values for all five presets, readout/state proof, highlight on/off,
+  environment-switch cross-check, absent-panel no-op, input count stays 6,
+  materials/camera chips unchanged); production build green; lint clean on the
+  touched files (pre-existing lint errors in `StudioCanvas.jsx` untouched).
+- **Observation (pre-existing, not fixed — out of scope):** at hydration,
+  `assets/runtimeRegistry.js` nudges the `light-key` slider, and React's
+  value-tracker ignores the "back" dispatch, so Key permanently sits one notch
+  below the environment profile (2.7 → 2.6 on boot). Baselines in any future
+  lighting work must be read from the live DOM, not assumed from profiles.

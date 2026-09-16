@@ -865,6 +865,18 @@
   white-space: nowrap;
 }
 
+/* Mission 13C — the lighting chips are buttons now; same gold active signal
+   as .sos-chip[data-on] / .sos-star[data-on] elsewhere in this shell. */
+button.sos-pchip {
+  font-family: inherit;
+  cursor: pointer;
+}
+.sos-pchip[data-on] {
+  border-color: rgba(232, 181, 77, 0.55);
+  background: rgba(232, 181, 77, 0.14);
+  color: #e8b54d;
+}
+
 .sos-field {
   display: flex;
   flex-direction: column;
