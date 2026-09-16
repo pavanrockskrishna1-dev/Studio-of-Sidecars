@@ -37,6 +37,7 @@ Only after that does the agent inspect the code relevant to its task.
 | IndexedDB asset storage | `assets/idb.js` — real `indexedDB.open`/put/get/delete |
 | localStorage persistence | `materials/store.js` — real favorites persistence |
 | Product/environment registries | `products/registry.js`, `environments/registry.js` — real, data-driven; camera/floor/lighting derive from the loaded model automatically |
+| Inspector Rail lighting mood presets (Mission 13C) | `lighting/moodPresets.js` — five frozen presets (softbox-key / cafe-window / golden-hour / night-neon / backlit-rim) setting the rig's real six values, calibrated to the `profiles.js` proven ranges and the `LIGHTING_CONTROLS` step grid. Wired in `ui/InspectorRail.jsx`: the Lighting chips are `<button>`s whose `onClick` drives the engine's own six `data-testid="light-*"` sliders (native value setter + dispatched input event → the existing `onLightingChange` → `setLighting` in `App.jsx`), plus an active-chip `data-on` highlight that tracks the live rig values and clears on any manual slider move. Browser-verified (34/34 checks): all five presets change the six live values and readouts exactly, `light-*` input count stays 6 (no second panel), graceful no-op if the engine panel is absent. Session-only state, like the rest of the Studio controls (no persistence added). |
 
 ## PARTIAL
 
@@ -49,7 +50,7 @@ Only after that does the agent inspect the code relevant to its task.
 
 | Feature | Evidence |
 |---|---|
-| Inspector Rail — Lighting/Materials/Render sections | Structurally dead, not just unstyled: `Chips` renders plain `<span>` tags with no `onClick`; its "slider" (`VisualField`) is deliberately a `<div>` instead of an `<input>` so it can never fire a change event. Confirmed in the component code itself (`ui/InspectorRail.jsx`), not inferred from comments. |
+| Inspector Rail — Materials/Render sections | Structurally dead, not just unstyled: their `Chips` still render plain `<span>` tags with no `onClick` (the Lighting chips became real buttons in Mission 13C); the camera card's "slider" (`VisualField`) is deliberately a `<div>` instead of an `<input>` so it can never fire a change event. Confirmed in the component code itself (`ui/InspectorRail.jsx`), not inferred from comments. |
 | Video export / Camera Director | No export-to-video code anywhere in `src/` |
 | BBQ Bike | No `bbq-bike` entry in `products/registry.js` — confirmed by cross-checking the registry, not by trusting `bbqPack.js`'s own comment |
 | Cessna 172 asset | GLB file exists but is machine-generated placeholder geometry (`gen-c172-placeholder.mjs`), not a real aircraft model |
@@ -61,7 +62,7 @@ Only after that does the agent inspect the code relevant to its task.
 ## PRIORITY — Mission 13 Backlog
 
 ### Phase A — Make existing UI real
-1. Connect Inspector Rail lighting controls to the real lighting store
+1. ~~Connect Inspector Rail lighting controls to the real lighting store~~ — done in Mission 13C (`lighting/moodPresets.js` + chip wiring, browser-verified; see VERIFIED table)
 2. Connect Inspector Rail material chips to the real material presets
 3. Connect Inspector Rail render/output settings to the real export pipeline
 
