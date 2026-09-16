@@ -1,5 +1,23 @@
 # WATCHERS_AUDIT_REACT_v1
 
+## Watchers Protocol
+
+This document is the canonical truth for the React Studio.
+
+Rules:
+- Do not promote Partial or Not Implemented features to Verified without code evidence.
+- Do not rely on UI labels, README, comments, or previous chat history.
+- Every new Verified feature must include the file(s) and function/component implementing it.
+
+Read order for any Arena agent, before touching code:
+1. `WATCHERS_AUDIT_REACT_v1.md` — what is actually implemented
+2. `PROJECT_STATE.json` — current project/version state
+3. `HANDOFF.md` — remaining work and blockers
+
+Only after that does the agent inspect the code relevant to its task.
+
+---
+
 **Subject:** Studio-of-Sidecars — live React app (`app/src`)
 **Method:** Direct source inspection (repo zip). No claims taken from labels, UI text, comments, README, or design notes without cross-checking actual code/data.
 **Confidence:** High — every line item below is tied to a specific file and, where relevant, a function name or line reference.
