@@ -122,3 +122,59 @@ Golden Hour, Night Neon, Backlit Rim) are now real one-click presets:
   value-tracker ignores the "back" dispatch, so Key permanently sits one notch
   below the environment profile (2.7 → 2.6 on boot). Baselines in any future
   lighting work must be read from the live DOM, not assumed from profiles.
+
+---
+
+## Watchers Bootstrap — three local fixes (2026-09-16)
+
+- **Fix 1 (hydration Key-light bug, `assets/runtimeRegistry.js`):** root cause
+  confirmed against a real Chromium instance (Playwright, dev-only tooling,
+  not added to the project) driving the actual dev server — the observation
+  above was correct. React's controlled-input reconciliation synchronously
+  restores the DOM value *and* its internal value tracker back to the
+  last-committed value right after `nudgeEngineRender()`'s first ("away")
+  dispatch, before the second ("back") dispatch runs — so the return dispatch
+  finds nothing changed and is dropped, leaving Key stuck on the "away" value
+  once React's own deferred commit for it lands. Fixed by re-syncing the
+  tracker (`el._valueTracker.setValue(alt)`) between the two dispatches so the
+  return dispatch is always recognized as a real change. `nudgeEngineRender()`'s
+  signature, call sites, and chip-repaint purpose are unchanged. Verified
+  against the real running app across 5 separate browser runs, including runs
+  that hit the exact race.
+- **Fix 2 (`StudioCanvas.jsx` lint cleanup):** the 6 `react-hooks/immutability`
+  errors were suppressed at their exact lines with justified
+  `eslint-disable-next-line` comments — the rule assumes hook return values
+  are immutable, which doesn't hold for react-three-fiber's `useThree()`/
+  `useGLTF()`, which intentionally return the live, mutable scene/camera/model
+  objects for imperative control. No logic, JSX, or dependency arrays changed.
+- **Known latent risk, deliberately not fixed:** the `react-hooks/exhaustive-deps`
+  warning on the camera-preset effect (`StudioCanvas.jsx`, effect ending
+  `}, [cameraRequest, customView, fit, camera, gl]);`) is missing
+  `product.frontAz` as a dependency. It's harmless today only because every
+  registered product has a distinct `modelPath`, so a product switch always
+  changes `modelScene`/`fit` (already a listed dependency) and the effect
+  re-runs anyway. If a future product is ever added that shares a
+  `modelPath` with another product but has a different `frontAz`, camera
+  presets could apply the wrong azimuth after switching between them without
+  the effect re-firing. Revisit this dependency before adding any product
+  registry entry that reuses an existing `modelPath`.
+- **Fix 3 (real-GPU video export feasibility test):** confirmed on this
+  machine's real GPU (`ANGLE (Intel, Intel(R) HD Graphics 5500), D3D11`, not
+  software rendering) using `HTMLCanvasElement.captureStream()` +
+  `MediaRecorder`, browser-native only. Two findings any future video-export
+  mission must design around:
+  - **VP9 encoder spin-up is highly variable (1.2s–7.8s observed) before it
+    emits any real encoded data.** A naive fixed-duration capture (e.g. a
+    literal 5-second recording) is unsafe as a result — the spin-up can
+    exceed the whole window and produce a fully empty output file with no
+    error raised. A real export feature must either warm up the recorder
+    for a few seconds before the "real" capture window starts, or record
+    longer than the target duration and trim the result, rather than
+    trusting a short fixed-length recording to contain any usable frames.
+  - **H.264/MP4 is not usable on this hardware, regardless of what
+    `MediaRecorder.isTypeSupported()` reports.** `video/mp4;codecs=avc1`
+    reports `true`, but an actual recording attempt with it produces 0
+    bytes / 0 chunks — confirmed by trying to record, not just reading the
+    flag. `video/webm;codecs=vp9` is the only codec that actually produces
+    real, playable output on this machine; treat it as the only real
+    browser-native export path.

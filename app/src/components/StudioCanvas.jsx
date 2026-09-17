@@ -220,6 +220,10 @@ function StudioStage({
   useEffect(() => {
     const pmrem = new THREE.PMREMGenerator(gl);
     const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+    // react-three-fiber's useThree() intentionally returns the live, mutable
+    // three.js scene; this rule assumes hook return values are immutable
+    // React state, which does not hold for r3f's imperative scene graph.
+    // eslint-disable-next-line react-hooks/immutability
     scene.environment = envRT.texture;
     return () => {
       scene.environment = null;
@@ -274,6 +278,10 @@ function StudioStage({
     return { center, size, distance, footprintRadius, floorY: box.min.y };
   }, [modelScene, gl]);
 
+  // react-three-fiber's useThree() intentionally returns the live, mutable
+  // three.js camera; positioning it imperatively (as here) is the standard
+  // r3f pattern, not a violation the immutability rule is meant to catch.
+  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => {
     // Product-shot angle: slightly below model center. The offset scales with
     // model HEIGHT (not camera distance) so it reads the same at any scale —
@@ -286,6 +294,7 @@ function StudioStage({
       fit.center.y + dy,
       fit.center.z + dirH.y * horiz
     );
+    // eslint-disable-next-line react-hooks/immutability
     camera.far = fit.distance * 10 + 10;
     camera.updateProjectionMatrix();
     camera.lookAt(fit.center);
@@ -302,6 +311,10 @@ function StudioStage({
   // Mission 7.2 (Save Custom View): the transient id "custom" restores the
   // session's single saved view (exact camera position + orbit target)
   // through this same request flow — no second camera state system.
+  // react-three-fiber's useThree() intentionally returns the live, mutable
+  // three.js camera; positioning it imperatively (as here) is the standard
+  // r3f pattern, not a violation the immutability rule is meant to catch.
+  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => {
     if (!cameraRequest || !cameraRequest.id) return undefined;
     let position;
@@ -323,6 +336,7 @@ function StudioStage({
       ));
     }
     camera.position.copy(position);
+    // eslint-disable-next-line react-hooks/immutability
     camera.far = fit.distance * 10 + 10;
     camera.updateProjectionMatrix();
     camera.lookAt(target);
@@ -392,6 +406,9 @@ function StudioStage({
   // ownership of its visibility every frame (a one-shot effect is not
   // enough: the hide can land asynchronously after mount).
   useFrame(() => {
+    // See comment above: this write-back is the whole point, not an
+    // accidental mutation.
+    // eslint-disable-next-line react-hooks/immutability
     if (!modelScene.visible) modelScene.visible = true;
   });
 

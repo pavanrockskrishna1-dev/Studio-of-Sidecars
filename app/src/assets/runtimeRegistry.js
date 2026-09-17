@@ -236,6 +236,20 @@ export function nudgeEngineRender() {
   const alt = value - step >= min ? String(value - step) : String(value + step);
   setter.call(el, alt);
   el.dispatchEvent(new Event("input", { bubbles: true }));
+  // React's own controlled-input reconciliation reacts to the dispatch above
+  // by immediately restoring the DOM value (and re-syncing its internal
+  // value tracker) back to `original`, synchronously, in anticipation of its
+  // own re-render eventually reasserting the right value -- this restore
+  // happens whether or not that re-render has actually run yet. That leaves
+  // the tracker already reporting `original` before the "return" dispatch
+  // below fires, so React sees no change and drops it. Whenever the
+  // `alt` state update React scheduled from the first dispatch does
+  // eventually commit (it lands asynchronously, once the main thread is
+  // idle), the slider is left stuck on `alt` with no correction ever
+  // applied. Re-sync the tracker to `alt` ourselves so the return dispatch
+  // is recognized as a genuine change regardless of when React's own commit
+  // for the first step lands.
+  if (el._valueTracker) el._valueTracker.setValue(alt);
   setter.call(el, original);
   el.dispatchEvent(new Event("input", { bubbles: true }));
   return true;
