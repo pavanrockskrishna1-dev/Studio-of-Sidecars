@@ -171,3 +171,27 @@ export function getBaseline(position, target, baseId, center) {
     offset: [target[0] - center.x, target[1] - center.y, target[2] - center.z],
   };
 }
+
+// Phase 16B (Slice A) — camera distance that frames a model of `size` ({x, y, z},
+// world units) at `aspect` with a vertical field of view of `fovDeg`, so the
+// model fills about `fill` of the tighter axis. It is the same formula the
+// stage runs inline when it measures a model ("Deterministic framing" in
+// components/StudioCanvas.jsx; that code is unchanged and does not call this
+// yet). The formula does not depend on azimuth: the horizontal extent is the
+// footprint diagonal, hypot(x, z).
+//
+// opts.spinSafe: the horizontal extent must be the largest one over every
+// azimuth, so a model turning about its vertical axis never leaves the frame.
+// That largest extent is the footprint diagonal, which the inline formula
+// already uses, so today both settings return the same number. The flag stays
+// so a Turntable caller states its intent and the result cannot change if the
+// default extent is ever made azimuth-dependent.
+export function fitDistance(size, aspect, fovDeg, fill = 0.7, opts = {}) {
+  const vFov = (fovDeg * Math.PI) / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+  const distV = size.y / 2 / Math.tan(vFov / 2);
+  void opts; // spinSafe: see above; the footprint diagonal is already the largest extent
+  const horizontal = Math.hypot(size.x, size.z);
+  const distH = horizontal / 2 / Math.tan(hFov / 2);
+  return Math.max(distV, distH) / fill;
+}
