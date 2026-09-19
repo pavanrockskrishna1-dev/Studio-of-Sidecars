@@ -12,6 +12,7 @@ import {
   moodPresetId,
 } from "../lighting/moodPresets";
 import * as materialStore from "../materials/store";
+import { exportPng } from "./engineCapture";
 
 /* ==========================================================================
    Right inspector rail (Agent #2 · UI ONLY)
@@ -130,15 +131,13 @@ const MATERIAL_CHIP_PRESETS = {
 
 /* --------------------------------------------------------------------------
    Render section — same bridge idea again. There is no export code to copy:
-   StudioControls' Capture button just calls App's handleCaptureShot (capture
-   the live canvas → preview lightbox → "Download PNG"), so Export PNG clicks
-   that very button. The aspect chips set the engine's own Format select
+   Export PNG uses the shared exportPng() (./engineCapture.js), which clicks the
+   engine's own Capture Shot button. The aspect chips set the engine's own Format select
    (data-testid="cap-format"), i.e. the real exportOpts.presetId the capture
    reads. A chip with no real system behind it is marked Reserved.
    -------------------------------------------------------------------------- */
 
 const FORMAT_SELECT = '[data-testid="cap-format"]';
-const CAPTURE_BUTTON = '[data-testid="capture-shot"]';
 
 // chip label → engine export preset id (capture/exportOptions.js EXPORT_PRESETS)
 const RENDER_CHIP_FORMATS = {
@@ -161,13 +160,6 @@ function applyExportFormat(label) {
   ).set;
   setNativeValue.call(el, id);
   el.dispatchEvent(new Event("change", { bubbles: true }));
-  return true;
-}
-
-function exportPng() {
-  const el = document.querySelector(CAPTURE_BUTTON);
-  if (!el) return false;
-  el.click();
   return true;
 }
 

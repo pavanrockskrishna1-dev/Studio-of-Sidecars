@@ -1,11 +1,12 @@
 import Icon from "./icons";
+import { exportPng } from "./engineCapture";
 
 /* ==========================================================================
    Top header (Agent #2 · UI ONLY)
    --------------------------------------------------------------------------
    Brand + current environment read-out + the two header actions, per the
-   mockup's `#topStrip`. Export is deliberately visual-only, so it takes an
-   optional handler that this mission never supplies.
+   mockup's `#topStrip`. Export runs the engine's real PNG capture through the
+   shared exportPng() (./engineCapture.js).
 
    `environment` is optional on purpose: the shell cannot know the live value
    (environment state is owned by App/StudioCanvas, which another mission
@@ -113,12 +114,13 @@ export default function TopHeader({
             </span>
           </div>
         ) : null}
-        {/* visual only in this build: the export pipeline belongs to the engine */}
+        {/* Export = the engine's Capture Shot (same as the rail's Export PNG) */}
         <button
           type="button"
           className="sos-btn sos-btn-primary"
           data-testid="ui-export"
-          title="Export — visual only in this build"
+          title="Export PNG — captures the current view with the chosen format (same as Capture Shot)"
+          onClick={exportPng}
         >
           Export
           <Icon name="upload" size={15} />
