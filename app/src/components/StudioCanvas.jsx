@@ -4,11 +4,13 @@ import {
   useMemo,
   useRef,
   useState,
+  Suspense,
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import { PRODUCTS } from "../products/registry";
 import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
@@ -200,6 +202,101 @@ function enableModelShadows(root) {
   });
 }
 
+// Image-based lighting. Lives outside StudioStage (which remounts on every
+// product switch) so the converted environment survives product changes. An
+// environment with an `hdri` lights the model from that equirect HDR; every
+// other environment — and any HDR that fails to load — uses the local
+// RoomEnvironment probe. The HDR loads through its own LoadingManager so
+// drei's useProgress (and the full-screen LoadingScreen) never sees it.
+// The r3f scene is the live, mutable three.js scene; like the other renderer
+// writes above, this happens in a module-level helper.
+function setSceneEnvironment(scene, texture) {
+  scene.environment = texture;
+}
+
+const hdrLoadingManager = new THREE.LoadingManager();
+const PROBE_KEY = "probe";
+
+function EnvironmentLighting({ environment }) {
+  const { scene, gl } = useThree();
+  const stateRef = useRef(null);
+  const { id, hdri } = environment;
+
+  // One PMREM generator + result cache (env id -> render target) per canvas.
+  useEffect(() => {
+    const state = {
+      pmrem: new THREE.PMREMGenerator(gl),
+      cache: new Map(),
+      failed: new Set(),
+      pending: new Set(),
+      current: null,
+      dead: false,
+    };
+    stateRef.current = state;
+    return () => {
+      state.dead = true;
+      setSceneEnvironment(scene, null);
+      state.cache.forEach((rt) => rt.dispose());
+      state.pmrem.dispose();
+      stateRef.current = null;
+    };
+  }, [scene, gl]);
+
+  useEffect(() => {
+    const state = stateRef.current;
+    const { pmrem, cache, failed, pending } = state;
+    state.current = id;
+    const applyProbe = () => {
+      if (!cache.has(PROBE_KEY)) {
+        const room = new RoomEnvironment();
+        cache.set(PROBE_KEY, pmrem.fromScene(room, 0.04));
+        room.dispose();
+      }
+      setSceneEnvironment(scene, cache.get(PROBE_KEY).texture);
+    };
+    if (!hdri || failed.has(id)) {
+      applyProbe();
+      return;
+    }
+    if (cache.has(id)) {
+      setSceneEnvironment(scene, cache.get(id).texture);
+      return;
+    }
+    // The probe lights the model until the HDR is converted.
+    applyProbe();
+    if (pending.has(id)) return;
+    pending.add(id);
+    const fail = (err) => {
+      pending.delete(id);
+      if (state.dead || failed.has(id)) return;
+      failed.add(id);
+      console.warn(`HDR environment "${id}" failed to load; using the default probe.`, err);
+    };
+    new HDRLoader(hdrLoadingManager).load(
+      hdri,
+      (tex) => {
+        pending.delete(id);
+        try {
+          if (state.dead) return;
+          tex.mapping = THREE.EquirectangularReflectionMapping;
+          cache.set(id, pmrem.fromEquirectangular(tex));
+        } catch (err) {
+          fail(err);
+          return;
+        } finally {
+          tex.dispose();
+        }
+        // A load that resolves after a newer switch is cached, not applied.
+        if (state.current === id) setSceneEnvironment(scene, cache.get(id).texture);
+      },
+      undefined,
+      fail
+    );
+  }, [scene, id, hdri]);
+
+  return null;
+}
+
 function StudioStage({
   product,
   environment,
@@ -215,22 +312,6 @@ function StudioStage({
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef(null);
   const transformRef = useRef(null);
-
-  // Local PBR environment (RoomEnvironment via PMREM — no network, no HDR download)
-  useEffect(() => {
-    const pmrem = new THREE.PMREMGenerator(gl);
-    const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
-    // react-three-fiber's useThree() intentionally returns the live, mutable
-    // three.js scene; this rule assumes hook return values are immutable
-    // React state, which does not hold for r3f's imperative scene graph.
-    // eslint-disable-next-line react-hooks/immutability
-    scene.environment = envRT.texture;
-    return () => {
-      scene.environment = null;
-      envRT.dispose();
-      pmrem.dispose();
-    };
-  }, [scene, gl]);
 
   const { scene: modelScene } = useGLTF(product.modelPath);
 
@@ -693,20 +774,26 @@ export default function StudioCanvas({
           zIndex: 0,
         }}
       >
-        {/* key=product.id: switching products remounts the stage cleanly */}
-        <StudioStage
-          key={product.id}
-          product={product}
-          environment={environment}
-          transform={transform}
-          selected={selection !== null}
-          onSelect={handleSelect}
-          onClear={handleClear}
-          cameraRequest={cameraRequest}
-          customView={customView}
-          cameraApiRef={cameraApiRef}
-          lighting={lighting}
-        />
+        <EnvironmentLighting environment={environment} />
+        {/* Own Suspense boundary: a not-yet-loaded model suspends only the
+            stage, so the canvas-level EnvironmentLighting above is never
+            hidden (which would drop its cached environment) on product switch. */}
+        <Suspense fallback={null}>
+          {/* key=product.id: switching products remounts the stage cleanly */}
+          <StudioStage
+            key={product.id}
+            product={product}
+            environment={environment}
+            transform={transform}
+            selected={selection !== null}
+            onSelect={handleSelect}
+            onClear={handleClear}
+            cameraRequest={cameraRequest}
+            customView={customView}
+            cameraApiRef={cameraApiRef}
+            lighting={lighting}
+          />
+        </Suspense>
         <CaptureBridge captureRef={captureRef} />
       </Canvas>
       {selection && (

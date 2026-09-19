@@ -43,6 +43,10 @@ export const ENVIRONMENTS = [
     name: "Aviation Heritage Hangar",
     label: "Aviation Hangar",
     file: "/environments/aviation_heritage_hangar.jpg",
+    // Optional real equirect HDR that lights the model (image-based lighting);
+    // the JPG above stays the visible backdrop. Entries without one use the
+    // built-in RoomEnvironment probe.
+    hdri: "/environments/hangar_interior_2k.hdr",
     mood: "riveted hangar · light shafts · aviation decor",
   },
   {
