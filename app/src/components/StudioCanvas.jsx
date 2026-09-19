@@ -281,8 +281,11 @@ function StudioStage({
   // react-three-fiber's useThree() intentionally returns the live, mutable
   // three.js camera; positioning it imperatively (as here) is the standard
   // r3f pattern, not a violation the immutability rule is meant to catch.
+  // Phase 15A: the default hero framing is a callable so Reset Studio Session
+  // can re-apply it (exposed as cameraApiRef.resetView); the effect below
+  // still runs it on every fit change exactly as before.
   // eslint-disable-next-line react-hooks/immutability
-  useEffect(() => {
+  const frameDefault = useCallback(() => {
     // Product-shot angle: slightly below model center. The offset scales with
     // model HEIGHT (not camera distance) so it reads the same at any scale —
     // a hero angle for a bike, a level eye-line for an aircraft.
@@ -303,6 +306,10 @@ function StudioStage({
       controlsRef.current.update();
     }
   }, [fit, camera]);
+
+  useEffect(() => {
+    frameDefault();
+  }, [frameDefault]);
 
   // Camera preset — move the camera to a product-shot viewpoint on request.
   // Only the camera changes: model transform, environment and selection are
@@ -359,11 +366,12 @@ function StudioStage({
           ? controlsRef.current.target.toArray()
           : [0, 0, 0],
       }),
+      resetView: frameDefault,
     };
     return () => {
       cameraApiRef.current = null;
     };
-  }, [cameraApiRef, camera]);
+  }, [cameraApiRef, camera, frameDefault]);
 
   // Mission 9 (Lighting Foundation) — shadow ortho frustum derived from the
   // model bounds and the FIXED key-light direction, never from the view
@@ -606,6 +614,7 @@ export default function StudioCanvas({
   captureRef = null,
   customView = null,
   cameraApiRef = null,
+  transformApiRef = null,
   lighting = DEFAULT_LIGHTING,
 }) {
   const [selection, setSelection] = useState(null);
@@ -633,6 +642,36 @@ export default function StudioCanvas({
     () => setTransform({ ...DEFAULT_TRANSFORM }),
     []
   );
+
+  // Phase 15A (Studio Session) — read/write access to the live transform for
+  // Save / Restore / Reset. Same ref pattern as captureRef / cameraApiRef:
+  // this component keeps owning the state, the session only reaches it here.
+  // Writing also clears the selection (it is transient, never part of a session).
+  useEffect(() => {
+    if (!transformApiRef) return undefined;
+    // Registering a callback bag on a ref passed in by App is the same
+    // ref-handoff captureRef/cameraApiRef use; the rule assumes props are
+    // immutable values, which does not hold for a ref object.
+    // eslint-disable-next-line react-hooks/immutability
+    transformApiRef.current = {
+      read: () => ({ ...transform }),
+      write: (t) => {
+        const next = { ...DEFAULT_TRANSFORM };
+        for (const k of Object.keys(DEFAULT_TRANSFORM)) {
+          if (t && Number.isFinite(t[k])) next[k] = t[k];
+        }
+        setTransform(next);
+        setSelection(null);
+      },
+      reset: () => {
+        setTransform({ ...DEFAULT_TRANSFORM });
+        setSelection(null);
+      },
+    };
+    return () => {
+      transformApiRef.current = null;
+    };
+  }, [transformApiRef, transform]);
 
   return (
     <>

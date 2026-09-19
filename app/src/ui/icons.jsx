@@ -181,6 +181,12 @@ const PATHS = {
     </>
   ),
   plus: <path d="M12 5.6v12.8M5.6 12h12.8" />,
+  save: (
+    <>
+      <path d="M5.6 3.8h10.2l3.6 3.6v11.4a1.6 1.6 0 0 1-1.6 1.6H5.6A1.6 1.6 0 0 1 4 18.8V5.4a1.6 1.6 0 0 1 1.6-1.6Z" />
+      <path d="M8 3.8v4.6h6.4V3.8M7.6 20.4v-6.2h8.8v6.2" />
+    </>
+  ),
 };
 
 export default function Icon({ name, size = 18, stroke = 1.6, className, style, filled = false }) {

@@ -391,3 +391,43 @@ export function matchesPreset(presetId) {
 
 export const editingCount = () => Object.values(state.edited).filter(Boolean).length;
 export const hasMaterials = () => state.status === "ready" && state.entries.length > 0;
+
+/* ── Studio Session bridge (Phase 15A) ──────────────────────────────────────
+   Save/Reset for the whole studio reach the materials through these two
+   functions instead of a second copy of the edits: the snapshot is read from
+   the live materials and restoring writes back through the same apply path
+   the editor uses. */
+
+/** The current model's edited materials as plain data, or null when no model's
+ *  materials are loaded (the Materials panel has not attached one). */
+export function snapshotOverrides() {
+  if (state.status !== "ready" || !state.modelKey) return null;
+  const byEntry = {};
+  state.entries.forEach((entry, i) => {
+    if (!isEdited(entry)) return;
+    byEntry[nameKey(entry, i)] = persistable(entry);
+  });
+  return { modelKey: state.modelKey, byEntry, lastPresetId: state.lastPresetId };
+}
+
+/** Put a snapshot back: materials named in it get its values, every other
+ *  material returns to its imported look. Resolves false when the snapshot is
+ *  for a model that is not the attached one. */
+export async function restoreOverrides(snap) {
+  if (!snap || !snap.byEntry) return false;
+  // attach() applies the model's persisted overrides asynchronously; this read
+  // queues behind that one so the session's values are applied last.
+  await matRead(KEY_OVERRIDES(snap.modelKey), null);
+  if (state.status !== "ready" || state.modelKey !== snap.modelKey) return false;
+  state.entries.forEach((entry, i) => {
+    const params = snap.byEntry[nameKey(entry, i)];
+    if (params) applyParams(entry, state.root, params);
+    else restoreEntry(entry, state.root);
+  });
+  state.history = {};
+  state.lastPresetId = snap.lastPresetId || null;
+  refreshAll();
+  emit();
+  scheduleSave();
+  return true;
+}

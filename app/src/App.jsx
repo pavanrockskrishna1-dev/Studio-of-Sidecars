@@ -4,6 +4,7 @@ import StudioCanvas from "./components/StudioCanvas";
 import StudioControls from "./components/StudioControls";
 import CapturePreview from "./components/CapturePreview";
 import LoadingScreen from "./components/LoadingScreen";
+import { registerEngine } from "./session/studioSession";
 import { getProduct } from "./products/registry";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "./environments/registry";
 import { getLightingProfile } from "./lighting/profiles";
@@ -27,6 +28,12 @@ export default function App() {
   // camera request when the product switches; environment swaps keep it.
   const [customView, setCustomView] = useState(null);
   const cameraApiRef = useRef(null);
+  // Phase 15A (Studio Session) — StudioCanvas registers read/write/reset for
+  // its live model transform here (same ref pattern as cameraApiRef).
+  const transformApiRef = useRef(null);
+  // A restored session that switches product waits here until the new product
+  // has committed (the switch itself resets camera + transform).
+  const pendingSessionRef = useRef(null);
 
   // Mission 10C (Presentation Studio) — export options for Capture Shot:
   // background (studio | transparent), resolution scale (1x/2x/4x on the
@@ -132,6 +139,71 @@ export default function App() {
     setShot(null);
   }, []);
 
+  // Phase 15A — the stage-level part of a session (camera preset, saved custom
+  // view, transform). `frame` re-applies the default hero framing when the
+  // session had no preset active (skipped across a product switch: the new
+  // stage frames itself on mount).
+  const applyStageState = useCallback((snap, frame) => {
+    const custom = snap.customView ?? null;
+    setCustomView(custom);
+    const id = snap.cameraPresetId;
+    if (id && (id !== "custom" || custom)) {
+      setCameraRequest((prev) => ({ id, seq: prev.seq + 1 }));
+    } else {
+      setCameraRequest({ id: null, seq: 0 });
+      if (frame) cameraApiRef.current?.resetView?.();
+    }
+    transformApiRef.current?.write(snap.transform);
+  }, []);
+
+  useEffect(() => {
+    const pending = pendingSessionRef.current;
+    if (pending && pending.productId === productId) {
+      pendingSessionRef.current = null;
+      applyStageState(pending, false);
+    }
+  }, [productId, applyStageState]);
+
+  // Phase 15A — Studio Session bridge. The shell (a sibling of <App/>) saves,
+  // restores and resets the studio through this registered API; it reads and
+  // writes THIS state directly, so nothing is mirrored anywhere else.
+  useEffect(
+    () =>
+      registerEngine({
+        snapshot: () => ({
+          productId,
+          environmentId,
+          cameraPresetId: cameraRequest.id,
+          customView,
+          lighting,
+          exportOpts,
+          transform: transformApiRef.current?.read() ?? null,
+        }),
+        apply: (snap) => {
+          const productOk = getProduct(snap.productId).id === snap.productId;
+          const envOk = getEnvironment(snap.environmentId).id === snap.environmentId;
+          const switching = productOk && snap.productId !== productId;
+          if (productOk) setProductId(snap.productId);
+          if (envOk) setEnvironmentId(snap.environmentId);
+          if (snap.lighting) setLighting(snap.lighting);
+          setExportOpts({ ...DEFAULT_EXPORT_OPTS, ...snap.exportOpts });
+          if (switching) pendingSessionRef.current = snap;
+          else applyStageState(snap, true);
+        },
+        reset: () => {
+          pendingSessionRef.current = null;
+          setEnvironmentId(DEFAULT_ENVIRONMENT_ID);
+          setLighting(getLightingProfile(DEFAULT_ENVIRONMENT_ID));
+          setExportOpts(DEFAULT_EXPORT_OPTS);
+          setCustomView(null);
+          setCameraRequest({ id: null, seq: 0 });
+          cameraApiRef.current?.resetView?.();
+          transformApiRef.current?.reset();
+        },
+      }),
+    [productId, environmentId, cameraRequest.id, customView, lighting, exportOpts, applyStageState]
+  );
+
   // Safety net: release any live object URL if the App unmounts.
   useEffect(
     () => () => {
@@ -149,6 +221,7 @@ export default function App() {
         captureRef={captureRef}
         customView={customView}
         cameraApiRef={cameraApiRef}
+        transformApiRef={transformApiRef}
         lighting={lighting}
       />
       <StudioControls

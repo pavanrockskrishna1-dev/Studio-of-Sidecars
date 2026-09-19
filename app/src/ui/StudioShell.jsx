@@ -7,6 +7,13 @@ import InspectorRail from "./InspectorRail";
 import useFloatingPanelRect from "./useFloatingPanelRect";
 import useEngineSelection from "./useEngineSelection";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "../environments/registry";
+import { PRODUCTS } from "../products/registry";
+import {
+  readSavedSession,
+  resetSession,
+  restoreSession,
+  saveSession,
+} from "../session/studioSession";
 
 /* ==========================================================================
    StudioShell — the creator UI (Agent #2 · UI ONLY)
@@ -53,6 +60,9 @@ function useNarrow() {
   return narrow;
 }
 
+// Phase 15A — how long a session button shows its "Saved / Restored / Reset" flash
+const FLASH_MS = 1800;
+
 export default function StudioShell() {
   // The engine owns asset state. The shell reads and drives it through the
   // engine's own picker (useEngineSelection), so neither the header nor the
@@ -60,6 +70,40 @@ export default function StudioShell() {
   // falls back to the locked hero default only until the engine is mounted.
   const assets = useEngineSelection();
   const environment = getEnvironment(assets.environmentId ?? DEFAULT_ENVIRONMENT_ID);
+
+  // Phase 15A — Studio Session. The project name follows the loaded asset until
+  // the user edits it (null = follow); it is saved and restored with the session.
+  // Everything else in a session is read from / written to the engine itself.
+  const assetName = PRODUCTS.find((p) => p.id === assets.productId)?.name ?? "";
+  const [nameOverride, setNameOverride] = useState(null);
+  const [canRestore, setCanRestore] = useState(() => readSavedSession() !== null);
+  const [flash, setFlash] = useState(null);
+  useEffect(() => {
+    if (!flash) return undefined;
+    const t = setTimeout(() => setFlash(null), FLASH_MS);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  const handleSave = () => {
+    const res = saveSession(nameOverride);
+    if (res.ok) {
+      setCanRestore(true);
+      setFlash("saved");
+    }
+  };
+  const handleRestore = () => {
+    const snap = restoreSession();
+    if (!snap) return;
+    setNameOverride(snap.projectName ?? null);
+    setFlash("restored");
+  };
+  const handleReset = () => {
+    if (!window.confirm("Reset the entire studio session? Camera, lighting, environment, materials, transforms and viewer controls return to their defaults.")) return;
+    if (resetSession()) {
+      setNameOverride(null);
+      setFlash("reset");
+    }
+  };
 
   const shoot = useFloatingPanelRect("shoot-controls");
   const selection = useFloatingPanelRect("selection-inspector");
@@ -95,7 +139,15 @@ export default function StudioShell() {
       data-rail-shift={railShift || undefined}
       style={style}
     >
-      <TopHeader environment={environment} />
+      <TopHeader
+        environment={environment}
+        projectName={nameOverride ?? assetName}
+        onProjectNameChange={setNameOverride}
+        onProjectNameBlur={() => {
+          if (nameOverride !== null && !nameOverride.trim()) setNameOverride(null);
+        }}
+        session={{ canRestore, flash, onSave: handleSave, onRestore: handleRestore, onReset: handleReset }}
+      />
       <VersionTabs />
       <CreatorSidebar
         dodgeBelow={selection ? selection.bottom + DODGE_GAP : 0}

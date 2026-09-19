@@ -213,6 +213,59 @@
   white-space: nowrap;
 }
 
+/* Phase 15A — project name + session controls */
+.sos-project {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  flex: 1 1 130px;
+  min-width: 70px;
+  max-width: 220px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--sos-text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sos-line);
+  text-overflow: ellipsis;
+  transition: border-color var(--sos-fast), background var(--sos-fast);
+}
+
+.sos-project::placeholder {
+  color: var(--sos-text-3);
+  font-weight: 500;
+}
+
+.sos-project:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sos-project:focus-visible {
+  outline: 2px solid var(--sos-acc);
+  outline-offset: 2px;
+}
+
+.sos-session {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sos-btn-session {
+  padding: 0 10px;
+  gap: 6px;
+}
+
+/* screen-reader announcement of Saved / Restored / Reset */
+.sos-session-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .sos-actions {
   margin-left: auto;
   display: flex;
@@ -358,6 +411,24 @@
 
 .sos-tab-name-sm {
   display: none;
+}
+
+/* Phase 15A — name + "Reserved" badge stack inside the tab's 42px height so
+   the badge costs no extra width */
+.sos-tab-txt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  line-height: 1.15;
+}
+
+.sos-tab-badge {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sos-text-3);
+  opacity: 0.85;
 }
 
 .sos-tab[aria-selected="true"] .sos-tab-dot {
@@ -1127,6 +1198,17 @@ button.sos-pchip {
     --sos-rail-w: 284px; /* flush with the engine panel's column */
   }
 
+  /* header actions collapse to icons so the session controls fit */
+  .sos-btn-label {
+    display: none;
+  }
+
+  .sos-btn-session {
+    padding: 0;
+    width: 30px;
+    justify-content: center;
+  }
+
   .sos-brand-tag,
   .sos-env-sub {
     display: none;
@@ -1140,7 +1222,8 @@ button.sos-pchip {
   }
 
   .sos-tab-name,
-  .sos-tab-name-sm {
+  .sos-tab-name-sm,
+  .sos-tab-badge {
     display: none;
   }
 
@@ -1158,7 +1241,8 @@ button.sos-pchip {
      in that corner — the chrome keeps reserving its column regardless */
   .sos-rail,
   .sos-divider,
-  .sos-env {
+  .sos-env,
+  .sos-project {
     display: none;
   }
 }
