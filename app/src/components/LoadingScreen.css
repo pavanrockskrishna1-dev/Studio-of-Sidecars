@@ -1,0 +1,78 @@
+/* Sits above the canvas (z 0), the UI shell (z 8), the controls (z 10-20) and
+   the capture lightbox (z 40) so nothing is interactive half-loaded. Colours
+   match the shell's dark theme (--sos-bg / --sos-acc in ui-shell.css). */
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: #05060a;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: Inter, "Space Grotesk", system-ui, "Segoe UI", Roboto, Arial,
+    sans-serif;
+  opacity: 1;
+  transition: opacity 400ms ease, visibility 0s linear 0s;
+}
+
+.loading-screen[data-loading="false"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 400ms ease, visibility 0s linear 400ms;
+}
+
+.loading-screen__spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.08);
+  border-top-color: #e8b54d;
+  animation: loading-screen-spin 0.9s linear infinite;
+}
+
+.loading-screen__label {
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.loading-screen__bar {
+  width: 200px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.loading-screen__fill {
+  height: 100%;
+  background: #e8b54d;
+  transition: width 200ms ease;
+}
+
+.loading-screen__pct {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+@keyframes loading-screen-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-screen__spinner {
+    animation-duration: 3s;
+  }
+  .loading-screen,
+  .loading-screen[data-loading="false"] {
+    transition: none;
+  }
+}

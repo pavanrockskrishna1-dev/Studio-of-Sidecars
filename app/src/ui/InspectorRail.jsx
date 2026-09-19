@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import Icon from "./icons";
 import {
   CAMERA_FRAMINGS,
@@ -11,6 +11,7 @@ import {
   moodPresetForLabel,
   moodPresetId,
 } from "../lighting/moodPresets";
+import * as materialStore from "../materials/store";
 
 /* ==========================================================================
    Right inspector rail (Agent #2 · UI ONLY)
@@ -94,17 +95,52 @@ function readLiveLighting() {
   return values;
 }
 
-function Chips({ items, onSelect, activeMoodId }) {
+/* --------------------------------------------------------------------------
+   Camera chips — same bridge idea as the lighting one: the rail is a sibling
+   of <App/>, so it drives the engine's OWN Camera cards in StudioControls
+   (title="<Name> shot") with a real click. That runs App's existing
+   handleCameraPreset, so there is no second camera state. An absent panel or
+   an unknown name is a graceful no-op.
+   -------------------------------------------------------------------------- */
+
+function applyCameraPreset(name) {
+  const el = document.querySelector(
+    `[data-studio-controls] button[title="${name} shot"]`
+  );
+  if (!el) return false;
+  el.click();
+  return true;
+}
+
+/* --------------------------------------------------------------------------
+   Materials chips — each chip label maps to a real preset in
+   materials/presets.js and is applied through the SAME store MaterialsManager
+   uses (store.applyPreset → the focused material of the live model). Two
+   labels have no exact preset, so they use the nearest real one:
+   Candy Red → Racing Red, Tan Leather → Brown Leather.
+   -------------------------------------------------------------------------- */
+
+const MATERIAL_CHIP_PRESETS = {
+  Chrome: "metal-chrome",
+  "Candy Red": "paint-racing-red",
+  "Matte Charcoal": "paint-matte-black",
+  Brass: "metal-brass",
+  "Tan Leather": "leather-brown",
+};
+
+function Chips({ items, onSelect, activeMoodId, isActive, disabled }) {
   return (
     <div className="sos-frow">
-      {items.map((text) =>
-        onSelect ? (
+      {items.map((text) => {
+        const on = isActive ? isActive(text) : moodPresetId(text) === activeMoodId;
+        return onSelect ? (
           <button
             key={text}
             type="button"
             className="sos-pchip"
-            data-on={moodPresetId(text) === activeMoodId || undefined}
-            aria-pressed={moodPresetId(text) === activeMoodId}
+            data-on={on || undefined}
+            aria-pressed={on}
+            disabled={disabled}
             title={`Apply the ${text} preset`}
             onClick={() => onSelect(text)}
           >
@@ -114,8 +150,8 @@ function Chips({ items, onSelect, activeMoodId }) {
           <span key={text} className="sos-pchip">
             {text}
           </span>
-        )
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -188,6 +224,20 @@ export default function InspectorRail({
   onCollapse,
 }) {
   const [openId, setOpenId] = useState("camera");
+
+  // Materials chips read the live materials store (the one MaterialsManager
+  // subscribes to): they enable once a model's materials are ready and
+  // highlight the preset currently applied to the focused material.
+  const matState = useSyncExternalStore(
+    materialStore.subscribe,
+    materialStore.getSnapshot,
+    materialStore.getSnapshot
+  );
+  const materialsReady = matState.status === "ready" && matState.entries.length > 0;
+  const handleMaterialSelect = useCallback((label) => {
+    const id = MATERIAL_CHIP_PRESETS[label];
+    if (id) materialStore.applyPreset(id);
+  }, []);
 
   // Mission 13C — which mood preset (if any) matches the rig's live values.
   // null = no chip highlighted (the default and every manually adjusted state).
@@ -277,7 +327,11 @@ export default function InspectorRail({
             {section.id === "camera" ? (
               <>
                 <span className="sos-label">Framing</span>
-                <Chips items={CAMERA_FRAMINGS} />
+                <Chips
+                  items={CAMERA_FRAMINGS}
+                  onSelect={applyCameraPreset}
+                  isActive={() => false}
+                />
                 <div className="sos-fields">
                   <VisualField label="Distance" value="1.8 m" fill="46%" />
                   <VisualField label="Height" value="0.9 m" fill="38%" />
@@ -288,7 +342,7 @@ export default function InspectorRail({
                     <b />
                   </span>
                 </div>
-                <Hint>Live presets: engine panel above.</Hint>
+                <Hint>One-tap framing — drives the engine's camera presets.</Hint>
               </>
             ) : section.id === "lighting" ? (
               <>
@@ -300,6 +354,21 @@ export default function InspectorRail({
                 <Hint>
                   One-click presets — drives the live rig; the panel's sliders
                   stay in sync.
+                </Hint>
+              </>
+            ) : section.id === "materials" ? (
+              <>
+                <Chips
+                  items={INSPECTOR_PLACEHOLDERS.materials}
+                  onSelect={handleMaterialSelect}
+                  isActive={(t) =>
+                    materialsReady && materialStore.matchesPreset(MATERIAL_CHIP_PRESETS[t])
+                  }
+                  disabled={!materialsReady}
+                />
+                <Hint>
+                  Applies to the selected material — full editor in the
+                  Materials panel.
                 </Hint>
               </>
             ) : (
@@ -314,7 +383,7 @@ export default function InspectorRail({
 
       <div className="sos-rail-foot">
         <span className="sos-meta">
-          LIGHTING LIVE · MATERIALS &amp; RENDER SHELL
+          CAMERA · LIGHTING · MATERIALS LIVE · RENDER SHELL
         </span>
       </div>
     </aside>

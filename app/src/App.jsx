@@ -3,6 +3,7 @@ import Hero from "./components/Hero";
 import StudioCanvas from "./components/StudioCanvas";
 import StudioControls from "./components/StudioControls";
 import CapturePreview from "./components/CapturePreview";
+import LoadingScreen from "./components/LoadingScreen";
 import { getProduct } from "./products/registry";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "./environments/registry";
 import { getLightingProfile } from "./lighting/profiles";
@@ -167,6 +168,7 @@ export default function App() {
       />
       <CapturePreview shot={shot} onClose={handleCloseShot} />
       <Hero />
+      <LoadingScreen />
     </>
   );
 }
