@@ -942,6 +942,23 @@ button.sos-pchip {
   font-family: inherit;
   cursor: pointer;
 }
+
+/* Render section — a chip with no real system behind it, plus the export action */
+.sos-pchip[aria-disabled="true"] {
+  opacity: 0.7;
+  cursor: default;
+}
+.sos-pchip-badge {
+  margin-left: 6px;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sos-text-3);
+}
+.sos-rail-export {
+  width: 100%;
+  justify-content: center;
+}
 .sos-pchip[data-on] {
   border-color: rgba(232, 181, 77, 0.55);
   background: rgba(232, 181, 77, 0.14);

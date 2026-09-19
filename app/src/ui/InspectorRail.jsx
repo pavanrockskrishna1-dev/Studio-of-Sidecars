@@ -128,6 +128,49 @@ const MATERIAL_CHIP_PRESETS = {
   "Tan Leather": "leather-brown",
 };
 
+/* --------------------------------------------------------------------------
+   Render section — same bridge idea again. There is no export code to copy:
+   StudioControls' Capture button just calls App's handleCaptureShot (capture
+   the live canvas → preview lightbox → "Download PNG"), so Export PNG clicks
+   that very button. The aspect chips set the engine's own Format select
+   (data-testid="cap-format"), i.e. the real exportOpts.presetId the capture
+   reads. A chip with no real system behind it is marked Reserved.
+   -------------------------------------------------------------------------- */
+
+const FORMAT_SELECT = '[data-testid="cap-format"]';
+const CAPTURE_BUTTON = '[data-testid="capture-shot"]';
+
+// chip label → engine export preset id (capture/exportOptions.js EXPORT_PRESETS)
+const RENDER_CHIP_FORMATS = {
+  "Reel · 9:16": "story-reel",
+  "Post · 1:1": "ig-square",
+  "Hero · 4:5": "ig-portrait",
+  "Wide · 16:9": "web-hero",
+};
+
+const readExportFormat = () => document.querySelector(FORMAT_SELECT)?.value ?? null;
+
+function applyExportFormat(label) {
+  const id = RENDER_CHIP_FORMATS[label];
+  const el = document.querySelector(FORMAT_SELECT);
+  if (!id || !el) return false;
+  if (el.value === id) return true; // already there
+  const setNativeValue = Object.getOwnPropertyDescriptor(
+    window.HTMLSelectElement.prototype,
+    "value"
+  ).set;
+  setNativeValue.call(el, id);
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+  return true;
+}
+
+function exportPng() {
+  const el = document.querySelector(CAPTURE_BUTTON);
+  if (!el) return false;
+  el.click();
+  return true;
+}
+
 function Chips({ items, onSelect, activeMoodId, isActive, disabled }) {
   return (
     <div className="sos-frow">
@@ -224,6 +267,24 @@ export default function InspectorRail({
   onCollapse,
 }) {
   const [openId, setOpenId] = useState("camera");
+
+  // Render chips highlight the engine's live Format select (null = no panel).
+  const [exportFormat, setExportFormat] = useState(null);
+  useEffect(() => {
+    if (openId !== "render") return undefined;
+    const sync = (e) => {
+      if (!e || !e.target || !e.target.matches || e.target.matches(FORMAT_SELECT)) {
+        setExportFormat(readExportFormat());
+      }
+    };
+    // initial read + follow the engine's own select while the card is open
+    const t = setTimeout(sync, 0);
+    document.addEventListener("change", sync, true);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("change", sync, true);
+    };
+  }, [openId]);
 
   // Materials chips read the live materials store (the one MaterialsManager
   // subscribes to): they enable once a model's materials are ready and
@@ -373,8 +434,43 @@ export default function InspectorRail({
               </>
             ) : (
               <>
-                <Chips items={INSPECTOR_PLACEHOLDERS[section.id]} />
-                <Hint>{section.name} preset — UI shell only.</Hint>
+                <span className="sos-label">Format</span>
+                <Chips
+                  items={INSPECTOR_PLACEHOLDERS.render.filter((t) => RENDER_CHIP_FORMATS[t])}
+                  onSelect={applyExportFormat}
+                  isActive={(t) => exportFormat === RENDER_CHIP_FORMATS[t]}
+                />
+                {INSPECTOR_PLACEHOLDERS.render.some((t) => !RENDER_CHIP_FORMATS[t]) ? (
+                  <div className="sos-frow">
+                    {INSPECTOR_PLACEHOLDERS.render
+                      .filter((t) => !RENDER_CHIP_FORMATS[t])
+                      .map((t) => (
+                        <span
+                          key={t}
+                          className="sos-pchip"
+                          aria-disabled="true"
+                          title={`${t} — reserved, not wired in this build`}
+                        >
+                          {t}
+                          <span className="sos-pchip-badge">Reserved</span>
+                        </span>
+                      ))}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="sos-btn sos-btn-ghost sos-rail-export"
+                  data-testid="ui-rail-export-png"
+                  title="Export PNG — captures the current view with the chosen format (same as Capture Shot)"
+                  onClick={exportPng}
+                >
+                  <Icon name="upload" size={15} />
+                  Export PNG
+                </button>
+                <Hint>
+                  Same capture as Capture Shot: opens the preview, where
+                  Download PNG saves the file.
+                </Hint>
               </>
             )}
           </RailCard>
@@ -383,7 +479,7 @@ export default function InspectorRail({
 
       <div className="sos-rail-foot">
         <span className="sos-meta">
-          CAMERA · LIGHTING · MATERIALS LIVE · RENDER SHELL
+          CAMERA · LIGHTING · MATERIALS · RENDER LIVE
         </span>
       </div>
     </aside>
