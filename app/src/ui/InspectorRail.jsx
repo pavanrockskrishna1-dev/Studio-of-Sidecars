@@ -13,6 +13,7 @@ import {
 } from "../lighting/moodPresets";
 import * as materialStore from "../materials/store";
 import * as cameraStudio from "../camera/cameraStudio";
+import * as animationStore from "../animation/animationStore";
 import { exportPng } from "./engineCapture";
 
 /* ==========================================================================
@@ -38,6 +39,7 @@ const SECTIONS = [
   { id: "lighting", name: "Lighting", sub: "cinematic looks", icon: "sun" },
   { id: "materials", name: "Materials", sub: "tap a part to style", icon: "cube" },
   { id: "render", name: "Render", sub: "output presets", icon: "render" },
+  { id: "animate", name: "Animate", sub: "turntable preview", icon: "film" },
 ];
 
 /* --------------------------------------------------------------------------
@@ -304,6 +306,15 @@ export default function InspectorRail({
     cameraStudio.getSnapshot,
     cameraStudio.getSnapshot
   );
+  // Animate (Phase 16B Slice B): the Turntable preview's snapshot. While it
+  // previews, the controls that would fight it are disabled here (the shell CSS
+  // shield, body[data-anim], covers the header and the engine panel).
+  const animState = useSyncExternalStore(
+    animationStore.subscribe,
+    animationStore.getSnapshot,
+    animationStore.getSnapshot
+  );
+  const animBusy = animState.mode === "previewing";
   const [activeCard, setActiveCard] = useState(null);
   useEffect(() => {
     const root = document.querySelector("[data-studio-controls]");
@@ -435,6 +446,7 @@ export default function InspectorRail({
                 <Chips
                   items={CAMERA_FRAMINGS}
                   onSelect={applyCameraPreset}
+                  disabled={animBusy}
                   isActive={(t) => !camState.live && activeCard === t}
                 />
                 <div className="sos-fields">
@@ -444,7 +456,7 @@ export default function InspectorRail({
                     value={camState.distancePct}
                     min={cameraStudio.DISTANCE_MIN}
                     max={cameraStudio.DISTANCE_MAX}
-                    disabled={!camState.ready}
+                    disabled={!camState.ready || animBusy}
                     onChange={cameraStudio.setDistancePct}
                   />
                   <CameraSlider
@@ -453,7 +465,7 @@ export default function InspectorRail({
                     value={camState.heightPct}
                     min={cameraStudio.HEIGHT_MIN}
                     max={cameraStudio.HEIGHT_MAX}
-                    disabled={!camState.ready}
+                    disabled={!camState.ready || animBusy}
                     onChange={cameraStudio.setHeightPct}
                   />
                 </div>
@@ -464,7 +476,7 @@ export default function InspectorRail({
                     data-testid="ui-camera-lock"
                     data-on={camState.lock || undefined}
                     aria-pressed={camState.lock}
-                    disabled={!camState.ready}
+                    disabled={!camState.ready || animBusy}
                     title={
                       camState.lock
                         ? "Lock focus is ON: the view stays centred on the model. Click to turn OFF."
@@ -509,6 +521,53 @@ export default function InspectorRail({
                   Materials panel.
                 </Hint>
               </>
+            ) : section.id === "animate" ? (
+              <>
+                <span className="sos-label">Preset</span>
+                <div className="sos-frow">
+                  <span className="sos-pchip" data-on data-testid="ui-anim-turntable">
+                    Turntable
+                  </span>
+                </div>
+                <span className="sos-label">Duration</span>
+                <div className="sos-frow">
+                  {animationStore.DURATIONS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className="sos-pchip"
+                      data-testid={`ui-anim-duration-${n}`}
+                      data-on={animState.durationS === n || undefined}
+                      aria-pressed={animState.durationS === n}
+                      disabled={animBusy}
+                      onClick={() => animationStore.setDurationS(n)}
+                    >
+                      {n} s
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="sos-btn sos-btn-ghost sos-rail-export"
+                  data-testid="ui-anim-play"
+                  disabled={!animState.ready && !animBusy}
+                  title={
+                    animBusy
+                      ? "Stop the turntable preview"
+                      : "Play the turntable preview: the model turns about its own centre (loops)"
+                  }
+                  onClick={() => (animBusy ? animationStore.stop() : animationStore.play())}
+                >
+                  {animBusy ? "Stop" : "Play"}
+                </button>
+                <Hint>
+                  {animBusy
+                    ? "Playing. Click the model or press Esc to stop."
+                    : animState.ready
+                      ? "Spins the model about its own centre; the camera stays put. Loops."
+                      : "Loading model"}
+                </Hint>
+              </>
             ) : (
               <>
                 <span className="sos-label">Format</span>
@@ -538,6 +597,7 @@ export default function InspectorRail({
                   type="button"
                   className="sos-btn sos-btn-ghost sos-rail-export"
                   data-testid="ui-rail-export-png"
+                  disabled={animBusy}
                   title="Export PNG — captures the current view with the chosen format (same as Capture Shot)"
                   onClick={exportPng}
                 >

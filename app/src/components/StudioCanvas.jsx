@@ -18,6 +18,8 @@ import { computeCameraShot, getBaseline, getCameraPreset } from "../camera/prese
 import * as cameraStudio from "../camera/cameraStudio";
 import { DEFAULT_LIGHTING } from "../lighting/profiles";
 import { computeExportSize } from "../capture/exportOptions";
+import { sampleAt } from "../animation/path";
+import * as animation from "../animation/animationStore";
 
 const FOV = 45;
 
@@ -328,6 +330,15 @@ function StudioStage({
   // stage's copy of App's focusLock. Neither is camera state.
   const lastCentreRef = useRef(null);
   const lockRef = useRef(focusLock);
+  // Turntable preview (Phase 16B Slice B) — the running preview { anim, start,
+  // preView } (null = idle), the pivot group the model spins on, the selection
+  // ring (hidden while it plays) and the Escape listener. Refs only: nothing
+  // here is React state, so a playing frame never renders React.
+  const animRunRef = useRef(null);
+  const pivotRef = useRef(null);
+  const ringRef = useRef(null);
+  const selectedRef = useRef(selected);
+  const escHandlerRef = useRef(null);
 
   const { scene: modelScene } = useGLTF(product.modelPath);
 
@@ -419,6 +430,87 @@ function StudioStage({
     }
   }, []);
 
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+
+  // Turntable preview. The selection outline (a child of the transform group,
+  // so it would not turn with the model) and the ring are hidden while it plays.
+  const setOverlaysHidden = useCallback((hidden) => {
+    const outline = transformRef.current?.getObjectByName("selection-outline");
+    if (outline) outline.visible = !hidden;
+    if (ringRef.current) ringRef.current.visible = hidden ? false : selectedRef.current;
+  }, []);
+
+  // Ends the preview. `restore` puts the camera and target back through the
+  // guard (so the view is not marked live and nothing is published as a user
+  // move); it is false when the stage is going away, because the old camera
+  // must never be applied to a new model. Never calls onViewLive and never
+  // touches Lock, the baseline or the slider percentages.
+  const stopPreview = useCallback(
+    ({ restore = true } = {}) => {
+      const run = animRunRef.current;
+      if (!run) return false;
+      animRunRef.current = null;
+      if (escHandlerRef.current) {
+        window.removeEventListener("keydown", escHandlerRef.current);
+        escHandlerRef.current = null;
+      }
+      const controls = controlsRef.current;
+      if (restore && controls) {
+        moveGuarded(() => {
+          camera.position.copy(run.preView.position);
+          controls.target.copy(run.preView.target);
+        });
+      }
+      if (controls) controls.enabled = true;
+      if (pivotRef.current) pivotRef.current.rotation.y = 0;
+      setOverlaysHidden(false);
+      invalidateShadowMap(gl);
+      animation.reportStopped();
+      return true;
+    },
+    [camera, gl, moveGuarded, setOverlaysHidden]
+  );
+
+  // Starts only from a user event (the rail's Play through the animation
+  // store), never from an effect. The camera does not move in this slice; its
+  // position and target are saved so Stop can put them back exactly.
+  const startPreview = useCallback(
+    (anim) => {
+      const controls = controlsRef.current;
+      if (!controls || !pivotRef.current || animRunRef.current) return false;
+      animRunRef.current = {
+        anim,
+        start: performance.now(),
+        preView: { position: camera.position.clone(), target: controls.target.clone() },
+      };
+      controls.enabled = false;
+      setOverlaysHidden(true);
+      const onKey = (e) => {
+        if (e.key === "Escape") stopPreview();
+      };
+      escHandlerRef.current = onKey;
+      window.addEventListener("keydown", onKey);
+      return true;
+    },
+    [camera, setOverlaysHidden, stopPreview]
+  );
+
+  // Register the preview commands with the animation store. On cleanup (the
+  // stage unmounting on a product switch) the preview ends WITHOUT restoring
+  // the old camera. Only the registering owner unregisters (StrictMode safe).
+  useEffect(() => {
+    const unregister = animation.registerApi({
+      play: startPreview,
+      stop: () => stopPreview(),
+    });
+    return () => {
+      stopPreview({ restore: false });
+      unregister();
+    };
+  }, [startPreview, stopPreview]);
+
   // Move the camera to a view and freeze its slider baseline, measured AFTER
   // the move (the controls may adjust it, e.g. the Top preset's pole clamp).
   // `baseline` is passed only when re-applying a saved view that carries one;
@@ -483,6 +575,9 @@ function StudioStage({
     if (!cameraRequest) return undefined;
     const { id: requestId, view, frame } = cameraRequest;
     if (!requestId && !view && !frame) return undefined;
+    // Backstop: a preset, saved view, session restore or reset ends a running
+    // preview first (restoring its camera), then the request applies.
+    stopPreview();
     // A saved live view (session restore): exact position, target, baseline.
     if (view) {
       applyView(
@@ -532,7 +627,7 @@ function StudioStage({
     }
     applyView(position, target, baseId, baseline);
     return undefined;
-  }, [cameraRequest, customView, fit, gl, product.frontAz, applyView, frameDefault]);
+  }, [cameraRequest, customView, fit, gl, product.frontAz, applyView, frameDefault, stopPreview]);
 
   // Keep the stage's copy of App's lock in step and refresh the store. Declared
   // before the follow effect below so the follow sees the new value.
@@ -550,6 +645,9 @@ function StudioStage({
   // centre is tracked even with Lock OFF so turning it ON never carries a
   // stale delta. Guarded: it neither marks the view live nor clears a preset.
   useEffect(() => {
+    // Backstop: a transform change (session restore / reset / inspector) ends a
+    // running preview first. A no-op when idle, which is every steady frame.
+    stopPreview();
     const c = liveCentre();
     const last = lastCentreRef.current;
     lastCentreRef.current = c;
@@ -559,7 +657,7 @@ function StudioStage({
     if (d.length() <= 1e-9) return;
     moveGuarded(() => controls.target.add(d));
     publish();
-  }, [transform, focusLock, fit, moveGuarded, liveCentre, publish]);
+  }, [transform, focusLock, fit, moveGuarded, liveCentre, publish, stopPreview]);
 
   // Mission 7.2 (Save Custom View) — exposes the LIVE camera position and
   // OrbitControls target so the App can snapshot the exact current view.
@@ -569,6 +667,7 @@ function StudioStage({
   const moveAndMarkLive = useCallback(
     (position) => {
       if (!position) return false;
+      stopPreview();
       moveGuarded(() => camera.position.fromArray(position));
       if (!liveRef.current) {
         liveRef.current = true;
@@ -577,7 +676,7 @@ function StudioStage({
       publish();
       return true;
     },
-    [camera, moveGuarded, publish, onViewLive]
+    [camera, moveGuarded, publish, onViewLive, stopPreview]
   );
 
   useEffect(() => {
@@ -599,6 +698,7 @@ function StudioStage({
       setLock: (next) => {
         const controls = controlsRef.current;
         if (!controls) return false;
+        stopPreview();
         if (next && baselineRef.current) {
           const before = controls.target.clone();
           const offset = new THREE.Vector3().fromArray(baselineRef.current.offset);
@@ -658,6 +758,7 @@ function StudioStage({
     publish,
     onViewLive,
     onLockChange,
+    stopPreview,
   ]);
 
   // App owns viewLive (it clears it on every preset / saved view / product
@@ -726,6 +827,17 @@ function StudioStage({
     if (!modelScene.visible) modelScene.visible = true;
   });
 
+  // Turntable preview: while it runs, turn the pivot group and ask for one
+  // shadow update so the shadow turns with the model. Returns at once when
+  // idle. Nothing here touches React state or the animation store.
+  useFrame(() => {
+    const run = animRunRef.current;
+    if (!run) return;
+    const t = ((performance.now() - run.start) / 1000) % run.anim.durationS;
+    pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
+    invalidateShadowMap(gl);
+  });
+
   // Raycast targets: the model's visible meshes, collected once per model.
   const modelMeshes = useMemo(() => {
     modelScene.updateMatrixWorld(true);
@@ -776,6 +888,11 @@ function StudioStage({
         downButton === 0 &&
         moved < CLICK_MOVE_TOLERANCE;
       if (!isClick) return;
+      // A click on the canvas ends a running preview instead of selecting.
+      if (animRunRef.current) {
+        stopPreview();
+        return;
+      }
 
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
@@ -804,7 +921,7 @@ function StudioStage({
       el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("pointerup", onPointerUp);
     };
-  }, [gl, camera, modelMeshes, modelScene, product.name, fit.size, onSelect, onClear]);
+  }, [gl, camera, modelMeshes, modelScene, product.name, fit.size, onSelect, onClear, stopPreview]);
 
   return (
     <>
@@ -868,6 +985,7 @@ function StudioStage({
 
       {/* Selection ring — thin light/gold ring around the model footprint */}
       <mesh
+        ref={ringRef}
         visible={selected}
         rotation={[-Math.PI / 2, 0, 0]}
         position={[fit.center.x, fit.floorY + 0.006, fit.center.z]}
@@ -897,7 +1015,15 @@ function StudioStage({
         rotation={[degToRad(transform.rx), degToRad(transform.ry), degToRad(transform.rz)]}
         scale={[transform.s, transform.s, transform.s]}
       >
-        <primitive object={modelScene} />
+        {/* Turntable pivot (Phase 16B Slice B): turns about the model's own
+            centre; the inner group cancels the offset, so at rotation 0 the
+            model sits exactly where it did without the pivot. Only the
+            preview's useFrame writes its rotation.y. */}
+        <group ref={pivotRef} position={fit.center}>
+          <group position={[-fit.center.x, -fit.center.y, -fit.center.z]}>
+            <primitive object={modelScene} />
+          </group>
+        </group>
       </group>
 
       {/* Left-drag orbits, right-drag pans (Lock focus OFF only), wheel zooms. No auto-rotate and no

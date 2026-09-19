@@ -1826,3 +1826,29 @@ button.sos-pchip[data-testid="ui-camera-lock"]:disabled {
 @media (prefers-reduced-motion: reduce) {
   .sos-mat-row, .sos-mat-preset, .sos-mat-cat, .sos-mat-mini { transition: none; }
 }
+
+/* Phase 16B Slice B — Turntable preview shield. While the preview plays the
+   store sets body[data-anim]; the controls that would fight it (camera
+   framing, sliders, Lock, session Save / Restore / Reset, PNG capture, the
+   header Export) go non-interactive and dim. No display change, so the layout
+   never jumps. The Animate section (#sos-card-animate) is not listed, so its
+   Stop button stays fully interactive. The rail's own buttons are also
+   disabled by InspectorRail; this covers the header and the engine panel. */
+body[data-anim] #sos-card-camera,
+body[data-anim] #sos-card-render,
+body[data-anim] [data-testid="ui-session-save"],
+body[data-anim] [data-testid="ui-session-restore"],
+body[data-anim] [data-testid="ui-session-reset"],
+body[data-anim] [data-testid="ui-export"],
+body[data-anim] [data-studio-controls] button[title$=" shot"],
+body[data-anim] [data-studio-controls] [data-testid="custom-view-card"],
+body[data-anim] [data-studio-controls] [data-testid="save-custom-view"],
+body[data-anim] [data-studio-controls] [data-testid="capture-shot"] {
+  pointer-events: none;
+  opacity: 0.45;
+}
+.sos-card-body button.sos-pchip:disabled,
+.sos-rail-export:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
