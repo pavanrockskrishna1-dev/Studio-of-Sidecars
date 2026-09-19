@@ -1,5 +1,31 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
+## Start here (updated through Phase 15B, HEAD `0bd3680`)
+
+- **What the app is:** the canonical app is the React 19 / Vite / three.js
+  (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
+  after the "React Studio (`app/src`)" heading below, and every new section at
+  the end of this file, is about it.
+- **Run it:** `cd app`, `npm run dev`, open `http://localhost:5173`.
+- **Legacy, not connected:** `deliverables/Premium_GLB_Commercial_Studio.html`
+  and `legacy_glb_studio/` are old single-file builds. `PROJECT_STATE.json`
+  describes that legacy build (V1–V6, Creator Hub, 223/223 checks), not the
+  React app. Do not edit them. The first ~90 lines of this file
+  (from "Deliverable" to "Known notes for the next maintainer") also describe
+  the legacy build only.
+- **Where to look below:**
+  1. Architecture (engine / shell / bridges / session / materials store)
+  2. Phase 15A
+  3. Phase 15B (HDR lighting)
+  4. Current Studio Status table
+  5. Open Issues (Next Phase)
+  6. Known Limitations
+  7. Project rules
+  8. Git Checkpoints changelog
+  - Older React notes: Mission 13C and Watchers Bootstrap (kept as written).
+
+---
+
 **Deliverable:** `deliverables/Premium_GLB_Commercial_Studio.html` — one single-file,
 fully offline HTML studio (everything inlined: engine, demos, V1–V6, Blender
 pipeline, brand studio and the new **Creator Hub**). Zip mirror:
@@ -110,8 +136,15 @@ Golden Hour, Night Neon, Backlit Rim) are now real one-click presets:
 - **Not touched:** `StudioControls.jsx`, `App.jsx`, `StudioCanvas.jsx`,
   `ui/content.js`, `lighting/profiles.js`, `assets/runtimeRegistry.js`.
   Materials/Render chips remain inert shells (their missions are separate).
+  **Superseded:** the Materials chips are wired to the materials store and the
+  Render chips to the engine's Format select / PNG capture (commits `9f38328`,
+  `701bc83`; see "Phase 15A" below). Only the header chips (RAIL_CHIPS) and the
+  Camera Distance/Height/Lock focus controls are still decorative.
 - **Persistence:** none added — lighting stays session-only React state, as
   before (Mission 13C Phase C was not taken on).
+  **Superseded:** Phase 15A added an explicit Save / Restore that stores the
+  lighting values in localStorage (`sos-studio-session-v1`). Nothing is saved
+  automatically; without a Save, lighting is still session-only.
 - **Verification:** 34/34 Playwright checks in a real browser (before/after
   values for all five presets, readout/state proof, highlight on/off,
   environment-switch cross-check, absent-panel no-op, input count stays 6,
@@ -178,3 +211,231 @@ Golden Hour, Night Neon, Backlit Rim) are now real one-click presets:
     flag. `video/webm;codecs=vp9` is the only codec that actually produces
     real, playable output on this machine; treat it as the only real
     browser-native export path.
+
+---
+
+## Architecture (React Studio, `app/src`)
+
+- **Two siblings.** `app/src/main.jsx` renders `<App/>` (the engine) and
+  `<StudioShell/>` (the UI, `ui/StudioShell.jsx`) side by side inside
+  `StrictMode`. The shell is a pointer-transparent fixed overlay; it is never
+  a child of the engine.
+- **Engine** = `App.jsx` (React state: product, environment, camera request,
+  custom view, lighting, export options, capture) + `components/StudioCanvas.jsx`
+  (the r3f canvas) + `components/StudioControls.jsx` (the engine's own control
+  panel, with the `data-testid` inputs the shell drives).
+- **Bridges.** Shell UI does not keep a second copy of engine state. It
+  drives the engine's own inputs:
+  - Lighting chips: set the six `data-testid="light-*"` slider inputs
+    (native value setter + dispatched `input` event) — `ui/InspectorRail.jsx`,
+    presets in `lighting/moodPresets.js`.
+  - Render Format chips: set the `data-testid="cap-format"` select
+    (`RENDER_CHIP_FORMATS` in `InspectorRail.jsx`).
+  - Export (header and rail): `ui/engineCapture.js` `exportPng()` clicks the
+    `data-testid="capture-shot"` button. No export code exists in the shell.
+  - Camera chips: click the engine's camera cards, found by
+    `[data-studio-controls] button[title="<Name> shot"]`.
+  - Model / environment: `ui/useEngineSelection.js` drives the engine's own
+    model and environment chips; the header reads the live environment from it.
+  Every bridge is a no-op (returns false, never throws) when the engine panel
+  is not mounted.
+- **Session API.** `App.jsx` calls `registerEngine({ snapshot, apply, reset })`
+  from `session/studioSession.js` in a `useEffect` (returns the unregister).
+  `studioSession.js` holds no engine state; it reads/writes through that API.
+  `StudioCanvas` exposes the live model transform to `App` through
+  `transformApiRef` ({ read, write, reset }).
+- **Materials store.** `materials/store.js` is a module singleton
+  (`subscribe`, `getSnapshot`, `applyPreset`, `resetModel`, `snapshotOverrides`,
+  `restoreOverrides`, …). `ui/MaterialsManager.jsx` and the rail's Materials
+  chips both use it (via `useSyncExternalStore` in the rail), and `apply.js`
+  writes to the three.js materials. Custom presets, favourites and per-model
+  last values persist separately through `materials/matDb.js` (IndexedDB).
+- **Rule:** do not create duplicate state for anything the engine already
+  owns. If the shell needs a value, read it from the engine's own input/store
+  or drive the engine's own control.
+
+## Phase 15A
+
+Commits: `9f38328` (loading screen, camera + materials chips), `dbbceef` +
+`6f8dfb2` (session; the two share one message, `dbbceef` is only the Navbar
+deletion), `701bc83` (Render section), `133a2a5` (header Export).
+
+- **Studio Shell: extended, not built here.** The shell (StudioShell, TopHeader,
+  VersionTabs, sidebar, rail) already existed from Mission 9.5 (`d6fb105`).
+  Phase 15A (`6f8dfb2`, `133a2a5`) extended `ui/TopHeader.jsx` and
+  `ui/VersionTabs.jsx`. `components/Navbar.jsx` was an empty (0-byte) stub from
+  the first app commit `c7a8224`; deleted in `dbbceef`.
+- **Loading screen** — `9f38328`. `components/LoadingScreen.jsx` uses drei
+  `useProgress`, so it shows real GLB (and texture) load progress. Mounted at the
+  end of `App.jsx`. `loading = active || total === 0`; it stays mounted and fades
+  out via CSS.
+- **Rail Camera chips** — `9f38328`. Click the engine's camera cards (see
+  Architecture), so the engine's presets in `camera/presets.js` run.
+- **Rail Materials chips** — `9f38328`. Map to presets in `materials/presets.js`
+  through `materialStore.applyPreset` (same store as MaterialsManager). Disabled
+  until a model's materials are ready. Candy Red → Racing Red and Tan Leather →
+  Brown Leather are nearest matches.
+- **Studio Session Save / Restore / Reset** — `6f8dfb2`
+  (`session/studioSession.js`, `ui/StudioShell.jsx`, `ui/TopHeader.jsx`).
+  - Storage: `localStorage` key `sos-studio-session-v1`, `version: 1`
+    (a different version reads as no session). Local only; not an export.
+  - Captured: project name override, product id, environment id, camera preset
+    id, saved custom view, lighting values, export options (format etc.), model
+    transform, and edited materials of the attached model
+    (`materials.snapshotOverrides()`; skipped when no model's materials are
+    attached).
+  - Not captured: a free-orbit camera position (only the preset id / saved custom
+    view), selection, undo history, panel/rail collapse state, the capture
+    preview. Whether runtime-imported assets restore is UNVERIFIED.
+  - Restore: unknown product/environment ids are skipped. If the product differs,
+    the stage-level part waits until the new product commits; materials wait up
+    to 20 s for the target model, then give up quietly.
+  - Reset: asks `window.confirm`, then returns environment, lighting, export
+    options, camera, transform and materials to defaults (`resetSession`).
+    It does not clear the saved session in localStorage.
+- **Editable project name** — `6f8dfb2`. `ui-project-name` input in the header;
+  follows the loaded asset's name until edited (`null` = follow); saved with the
+  session.
+- **Reserved badges on V2–V6** — `6f8dfb2`. `ui/VersionTabs.jsx`; only V1 is
+  active, the others are `aria-disabled` with a "Reserved" badge.
+- **Render section wired** — `701bc83`. Format chips (Reel 9:16 → `story-reel`,
+  Post 1:1 → `ig-square`, Hero 4:5 → `ig-portrait`, Wide 16:9 → `web-hero`) set the
+  engine's Format select; chips with no engine format show "Reserved". "Export
+  PNG" calls `exportPng()`.
+- **Header Export** — `133a2a5`. `ui/engineCapture.js` `exportPng()` is shared by
+  the header and the rail. It opens the capture preview; "Download PNG" there
+  saves the file.
+- **GitHub checkpoints:** all of the above is on `origin/main` (local `main` and
+  `origin/main` are both `0bd3680` at the time of writing). The repo has no git
+  tags.
+
+## Phase 15B — real HDR lighting
+
+Commits: `fb23ab1` (implementation + Aviation Hangar HDR), `0bd3680`
+(Steel Factory HDR).
+
+- **`EnvironmentLighting`** in `components/StudioCanvas.jsx`, a child of
+  `<Canvas>` next to (not inside) `StudioStage`. Sets `scene.environment` only;
+  it does not touch `scene.background`.
+- **Registry:** `environments/registry.js` entries may carry an optional `hdri`
+  path. No `hdri` → legacy behaviour.
+- **Loader:** `HDRLoader` from `three/examples/jsm/loaders/HDRLoader.js`
+  (`RGBELoader` is deprecated in three r186; installed three is 0.186.0).
+- **PMREM cache:** one `PMREMGenerator` per canvas; result render targets are
+  cached per environment id (plus one for the probe) and disposed on unmount.
+  Switching back to an HDR environment reuses the cache. The source texture is
+  disposed after conversion.
+- **Separate `LoadingManager`** (`hdrLoadingManager`), so drei `useProgress`, and
+  therefore `LoadingScreen`, never sees the HDR download.
+- **Fallback:** no `hdri`, or a load/convert failure → `RoomEnvironment` probe
+  (the pre-15B look). A failure logs one `console.warn`, marks that id failed,
+  and never throws. While an HDR is loading, the probe lights the model.
+  Late loads that resolve after a newer switch are cached, not applied.
+- **Suspense boundary** around `StudioStage` in `StudioCanvas.jsx`: the stage
+  is `key`-remounted per product and suspends while a GLB loads. Previously that
+  suspended the whole canvas, which hid the environment component and wiped its
+  cache on every product switch (per the code comment; the pre-fix behaviour
+  itself was not re-run). The boundary keeps `EnvironmentLighting` outside the
+  suspended subtree.
+- **Backdrop:** the JPG (`environment.file`) stays the visible
+  `scene.background`, loaded by the existing `TextureLoader` effect. The HDR only
+  lights the model.
+- **Selection:** the same environment selector; `environmentId` in `App.jsx` is
+  the only state. No duplicate state anywhere.
+- **Environments with an `hdri` today (2 of 11):**
+
+  | Environment | File in `app/public/environments/` | Bytes |
+  |---|---|---|
+  | Aviation Heritage Hangar | `hangar_interior_2k.hdr` | 6,939,075 |
+  | Industrial Steel Factory | `industrial_pipe_and_valve_01_2k.hdr` | 6,720,770 |
+
+  Source: Poly Haven, CC0 (as stated by the project owner; there is no
+  attribution/licence file in the repo — UNVERIFIED in-repo).
+- The other 9 environments keep the room-probe lighting plus JPG backdrop.
+- **Add another HDR:** drop a 2:1 equirectangular `.hdr` into
+  `app/public/environments/` and add one line, `hdri: "/environments/<file>.hdr"`,
+  to that environment's entry in `environments/registry.js`.
+
+## Current Studio Status
+
+| Module | Status | Note |
+|---|---|---|
+| Studio Canvas | Complete | r3f canvas with orbit, transform, capture, on-demand shadows and HDR/probe lighting (`components/StudioCanvas.jsx`). |
+| Asset Library | Complete | Registry-driven product/environment gallery plus GLB/HDR/EXR import manager (`ui/AssetLibrary.jsx`, `ui/ImportPanel.jsx`). |
+| Camera Studio | Partial | Presets and Save Custom View work; the rail's Distance, Height and Lock focus are decorative. |
+| Material Studio | Complete | Live PBR editing, presets, undo/reset, persistence and session capture (`materials/`, `ui/MaterialsManager.jsx`). |
+| Render Studio | Partial | PNG capture/export with format chips works; no video/Reel/MP4 export. |
+| Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
+| HDRI Environment Library | Partial | 2 of 11 environments have a real HDR; the other 9 use the probe plus a flat JPG. |
+| Animation Studio | Not Started | No animation code in `app/src` (no mixer/`useAnimations`, no auto-rotate). |
+
+Status is judged from code reading, not from a fresh browser run in this update.
+
+## Open Issues (Next Phase)
+
+1. Header crowding (environment name overlaps the Save button on smaller widths).
+2. Camera controls (Distance, Height, Lock Focus) are still decorative.
+3. Animation Studio not implemented.
+4. Reel/MP4 export not implemented.
+5. THE KOP branding renders clipped ("THE KOF") in every export. Believed to be in the model/texture, not in this React app's export code. UNVERIFIED at the source.
+6. Blender: CAM_Shot01_LowHero still requires repair (aimed at nothing). Blender work is frozen.
+
+## Known Limitations
+
+- **Environment JPGs are not panoramas.** The built-in `app/public/environments/*.jpg`
+  are flat 3:2 photos (1920 px derivatives), so they cannot be used as lighting;
+  that is why HDR files are separate. (3:2 is from the owner; image dimensions
+  were not re-measured in this update.)
+- **Imported HDR/EXR lose the HDR.** `assets/thumbnail.js`
+  (`renderHdriPreviews`) renders a tone-mapped equirect JPEG for the backdrop;
+  only that JPG is used. Imported HDRs do not light the model. (The import path
+  still uses the deprecated `RGBELoader`.)
+- **Lighting profiles were not retuned for HDR.** `lighting/profiles.js` and
+  `lighting/moodPresets.js` are unchanged since Missions 9 and 13C (git log);
+  HDR environments use the same rig values as before.
+- **Older sessions carry old lighting values.** `restoreSession` applies the
+  saved `lighting` object verbatim, so a session saved before 15B keeps its
+  pre-HDR values.
+- **Loading overlay on environment switch.** The backdrop JPG is loaded with
+  `new THREE.TextureLoader()` on the default manager (`StudioCanvas.jsx`), which
+  `useProgress` sees, so `LoadingScreen` turns on for every environment switch.
+  Same on the pre-HDR baseline. Whether it is visible to the eye: UNVERIFIED.
+- **Visual-only UI:** Learn Studio, Help and Settings (`ui/TopHeader.jsx`); the
+  rail header chips (`RAIL_CHIPS` in `ui/content.js`); the rail's Distance,
+  Height and Lock focus.
+- **No auto-rotate and no animation code** (`StudioCanvas.jsx` states this;
+  grep of `app/src` finds no animation mixer).
+- **Lint warning still present:** `react-hooks/exhaustive-deps` on
+  `product.frontAz` in `StudioCanvas.jsx` (line 436 at the time of writing).
+  `npx eslint src/components/StudioCanvas.jsx` reports 0 errors, 1 warning. See
+  "Known latent risk" above.
+- **Software rendering in the automated tests.** The automated agent browser
+  tests for 15A/15B (headless Chromium, SwiftShader) ran in software rendering.
+  The owner's manual checks in Edge used the machine's normal browser graphics
+  (GPU model not verified). The earlier Watchers Bootstrap Fix 3 video test did
+  run on a real GPU. HDR on a real GPU is UNVERIFIED.
+
+## Project rules
+
+- Nothing reaches GitHub until it is committed and pushed via GitHub Desktop.
+- Test on `http://localhost:5173` first.
+- Do not run Arena and Claude Code on the same repo at the same time.
+- Every task needs real evidence (diff, lint, build, browser proof), not "it works".
+
+## Git Checkpoints
+
+The repo has no git tags and no commit message uses "v0.14/v0.15", so the version
+labels below are a grouping of the log by date and topic (owner's labels;
+boundaries UNVERIFIED against any release note).
+
+- **Before v0.14** — everything up to `5354bb3` (2026-09-13 to 2026-09-17):
+  Missions 9, 9.5, 10C, 10E, 11A, 13C (`a12bb22`…`5316148`, PR #1 `068632d`),
+  model packs `dc98912`, `9319bd2`, hydration/lint/GPU-export notes `81c9d3f`,
+  KOP Shot Pack `2a3f5af`, dog scrub evidence `21f8e2f`, merge `5354bb3`.
+- **v0.14** — 2026-09-19: `9f38328` only (LoadingScreen, rail Camera and
+  Materials chips; details in the Phase 15A section).
+- **v0.15A** — 2026-09-19: `dbbceef` + `6f8dfb2` (Studio Session, project name,
+  Reserved tabs, Navbar removed), `701bc83` (Render section), `133a2a5` (header
+  Export via `exportPng`).
+- **v0.15B** — 2026-09-19: `fb23ab1` (HDR lighting + probe fallback + Aviation
+  Hangar HDR), `0bd3680` (Steel Factory HDR).
