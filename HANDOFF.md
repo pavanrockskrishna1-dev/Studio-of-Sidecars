@@ -362,7 +362,7 @@ Commits: `fb23ab1` (implementation + Aviation Hangar HDR), `0bd3680`
 |---|---|---|
 | Studio Canvas | Complete | r3f canvas with orbit, transform, capture, on-demand shadows and HDR/probe lighting (`components/StudioCanvas.jsx`). |
 | Asset Library | Complete | Registry-driven product/environment gallery plus GLB/HDR/EXR import manager (`ui/AssetLibrary.jsx`, `ui/ImportPanel.jsx`). |
-| Camera Studio | Partial | Presets and Save Custom View work; the rail's Distance, Height and Lock focus are decorative. |
+| Camera Studio | Partial | Presets and Save Custom View work; the rail's Distance, Height and Lock focus are now marked Reserved (still not wired; wiring is planned as the next engine-level feature). |
 | Material Studio | Complete | Live PBR editing, presets, undo/reset, persistence and session capture (`materials/`, `ui/MaterialsManager.jsx`). |
 | Render Studio | Partial | PNG capture/export with format chips works; no video/Reel/MP4 export. |
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
@@ -373,12 +373,19 @@ Status is judged from code reading, not from a fresh browser run in this update.
 
 ## Open Issues (Next Phase)
 
-1. Header crowding (environment name overlaps the Save button on smaller widths).
-2. Camera controls (Distance, Height, Lock Focus) are still decorative.
-3. Animation Studio not implemented.
-4. Reel/MP4 export not implemented.
-5. THE KOP branding renders clipped ("THE KOF") in every export. Believed to be in the model/texture, not in this React app's export code. UNVERIFIED at the source.
-6. Blender: CAM_Shot01_LowHero still requires repair (aimed at nothing). Blender work is frozen.
+1. Camera controls (Distance, Height, Lock Focus) are marked Reserved in the rail but still not wired; wiring is planned as the next engine-level feature (Camera Studio v0.16).
+2. Animation Studio not implemented.
+3. Reel/MP4 export not implemented.
+4. THE KOP branding renders clipped ("THE KOF") in every export. Believed to be in the model/texture, not in this React app's export code. UNVERIFIED at the source.
+5. Blender: CAM_Shot01_LowHero still requires repair (aimed at nothing). Blender work is frozen.
+
+## Resolved
+
+- **Header crowding** — commit `1724d36` ("Fix header crowding"; it came after the
+  two v0.15B commits, so it is not part of v0.15B). CSS only in
+  `ui/ui-shell.css`: the brand no longer shrinks, the environment pill shrinks
+  with an ellipsis, the brand tag hides at <=1400px and button labels collapse
+  to icons at <=1320px.
 
 ## Known Limitations
 
@@ -401,8 +408,9 @@ Status is judged from code reading, not from a fresh browser run in this update.
   `useProgress` sees, so `LoadingScreen` turns on for every environment switch.
   Same on the pre-HDR baseline. Whether it is visible to the eye: UNVERIFIED.
 - **Visual-only UI:** Learn Studio, Help and Settings (`ui/TopHeader.jsx`); the
-  rail header chips (`RAIL_CHIPS` in `ui/content.js`); the rail's Distance,
-  Height and Lock focus.
+  rail header chips (`RAIL_CHIPS` in `ui/content.js`). The rail's Distance,
+  Height and Lock focus are now marked Reserved (still not wired; wiring is
+  planned as the next engine-level feature).
 - **No auto-rotate and no animation code** (`StudioCanvas.jsx` states this;
   grep of `app/src` finds no animation mixer).
 - **Lint warning still present:** `react-hooks/exhaustive-deps` on
@@ -439,3 +447,7 @@ boundaries UNVERIFIED against any release note).
   Export via `exportPng`).
 - **v0.15B** — 2026-09-19: `fb23ab1` (HDR lighting + probe fallback + Aviation
   Hangar HDR), `0bd3680` (Steel Factory HDR).
+- **Phase 15C (uncommitted at time of writing)** — rail Camera section: Distance,
+  Height and Lock focus on product replaced by inert Reserved chips ("Planned for
+  Camera Studio v0.16."); `VisualField` removed from `ui/InspectorRail.jsx`.
+- **Header crowding fix** — `1724d36` (after v0.15B; see Resolved).

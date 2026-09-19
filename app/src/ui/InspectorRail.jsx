@@ -137,6 +137,9 @@ const MATERIAL_CHIP_PRESETS = {
    reads. A chip with no real system behind it is marked Reserved.
    -------------------------------------------------------------------------- */
 
+// Camera controls the engine does not have yet: shown, labelled, inert.
+const CAMERA_RESERVED = ["Distance", "Height", "Lock focus on product"];
+
 const FORMAT_SELECT = '[data-testid="cap-format"]';
 
 // chip label → engine export preset id (capture/exportOptions.js EXPORT_PRESETS)
@@ -187,24 +190,6 @@ function Chips({ items, onSelect, activeMoodId, isActive, disabled }) {
           </span>
         );
       })}
-    </div>
-  );
-}
-
-// Read-only value bar: the mockup's slider look without pretending to drive
-// anything. Kept as a div (not an <input>) so it can never steal focus or
-// fire a change the engine would ignore.
-function VisualField({ label, value, fill }) {
-  return (
-    <div className="sos-field">
-      <div className="sos-field-top">
-        <span className="sos-label">{label}</span>
-        <span className="sos-field-val">{value}</span>
-      </div>
-      <div className="sos-slider" aria-hidden="true">
-        <i style={{ width: fill }} />
-        <b style={{ left: fill }} />
-      </div>
     </div>
   );
 }
@@ -385,15 +370,18 @@ export default function InspectorRail({
                   onSelect={applyCameraPreset}
                   isActive={() => false}
                 />
-                <div className="sos-fields">
-                  <VisualField label="Distance" value="1.8 m" fill="46%" />
-                  <VisualField label="Height" value="0.9 m" fill="38%" />
-                </div>
-                <div className="sos-switchrow">
-                  <span className="sos-label">Lock focus on product</span>
-                  <span className="sos-switch" aria-hidden="true">
-                    <b />
-                  </span>
+                <div className="sos-frow">
+                  {CAMERA_RESERVED.map((t) => (
+                    <span
+                      key={t}
+                      className="sos-pchip"
+                      aria-disabled="true"
+                      title="Planned for Camera Studio v0.16."
+                    >
+                      {t}
+                      <span className="sos-pchip-badge">Reserved</span>
+                    </span>
+                  ))}
                 </div>
                 <Hint>One-tap framing — drives the engine's camera presets.</Hint>
               </>
