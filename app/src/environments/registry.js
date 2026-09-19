@@ -54,6 +54,8 @@ export const ENVIRONMENTS = [
     name: "Industrial Steel Factory",
     label: "Steel Factory",
     file: "/environments/industrial_steel_factory.jpg",
+    // Real equirect HDR that lights the model (the JPG stays the backdrop).
+    hdri: "/environments/industrial_pipe_and_valve_01_2k.hdr",
     mood: "steel hall · cool daylight + warm lamps",
   },
   {
