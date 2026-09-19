@@ -145,9 +145,6 @@ const MATERIAL_CHIP_PRESETS = {
    reads. A chip with no real system behind it is marked Reserved.
    -------------------------------------------------------------------------- */
 
-// Camera control the engine does not have yet: shown, labelled, inert.
-const CAMERA_RESERVED = ["Lock focus on product"];
-
 const FORMAT_SELECT = '[data-testid="cap-format"]';
 
 // chip label → engine export preset id (capture/exportOptions.js EXPORT_PRESETS)
@@ -461,21 +458,28 @@ export default function InspectorRail({
                   />
                 </div>
                 <div className="sos-frow">
-                  {CAMERA_RESERVED.map((t) => (
-                    <span
-                      key={t}
-                      className="sos-pchip"
-                      aria-disabled="true"
-                      title="Planned for Camera Studio v0.16."
-                    >
-                      {t}
-                      <span className="sos-pchip-badge">Reserved</span>
-                    </span>
-                  ))}
+                  <button
+                    type="button"
+                    className="sos-pchip"
+                    data-testid="ui-camera-lock"
+                    data-on={camState.lock || undefined}
+                    aria-pressed={camState.lock}
+                    disabled={!camState.ready}
+                    title={
+                      camState.lock
+                        ? "Lock focus is ON: the view stays centred on the model. Click to turn OFF."
+                        : "Lock focus is OFF. Click to centre the view on the model and lock it."
+                    }
+                    onClick={() => cameraStudio.setLock(!camState.lock)}
+                  >
+                    Lock focus on product
+                  </button>
                 </div>
                 <Hint>
                   One-tap framing. Distance is % of the shot's distance; Height
                   tilts the view. Moving the camera makes it Custom (unsaved).
+                  Lock ON keeps the view centred on the model and disables
+                  right-drag pan.
                 </Hint>
               </>
             ) : section.id === "lighting" ? (

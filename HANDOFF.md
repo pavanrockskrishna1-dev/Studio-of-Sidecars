@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 15C and Phase 16A Slice A, HEAD `a8a5ac9`; Slice A is uncommitted)
+## Start here (updated through Phase 15C, Phase 16A Slice A and Slice B, HEAD `a23e3d0`; Slice B is uncommitted)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -356,7 +356,7 @@ Commits: `fb23ab1` (implementation + Aviation Hangar HDR), `0bd3680`
   `app/public/environments/` and add one line, `hdri: "/environments/<file>.hdr"`,
   to that environment's entry in `environments/registry.js`.
 
-## Phase 16A Slice A — Camera Studio sliders (uncommitted at time of writing)
+## Phase 16A Slice A — Camera Studio sliders (commit `a23e3d0`)
 
 Files: `camera/cameraStudio.js` (new), `camera/presets.js` (`getBaseline` only),
 `components/StudioCanvas.jsx`, `App.jsx`, `components/StudioControls.jsx`
@@ -389,10 +389,62 @@ Files: `camera/cameraStudio.js` (new), `camera/presets.js` (`getBaseline` only),
   live and highlights the Framing chips from the engine cards' `data-active`.
   Save Custom View while live keeps the original baseline on the saved view
   (`customView` gained optional `baseId`, `dist0`, `elev0`, `offset`).
-- **Session (not changed):** `studioSession.js` and the snapshot format are
-  untouched. A session saved during an unsaved custom view restores the last
-  preset until Slice B. Restore still clears `viewLive`.
-- **Not touched:** CAM-001, CAM-002, FOV, keyframes, Lock focus, distance limits.
+- **Session (as of Slice A):** `studioSession.js` and the snapshot format were
+  untouched; a session saved during an unsaved custom view restored the last
+  preset. **Superseded by Slice B** (below), which saves and restores the live view.
+- **Not touched in Slice A:** CAM-001, CAM-002, FOV, keyframes, Lock focus,
+  distance limits.
+
+## Phase 16A Slice B — Lock focus and session capture of the camera (uncommitted at time of writing)
+
+Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
+`ui/InspectorRail.jsx`, `ui/ui-shell.css`. `session/studioSession.js` and
+`components/StudioControls.jsx` are unchanged.
+
+- **Default behaviour change:** Lock focus is ON by default (and after a product
+  switch, a session Reset, and a restore of a session that has no saved lock). With
+  Lock ON, **right-drag pan is disabled** (`OrbitControls enablePan={!focusLock}`);
+  turn Lock OFF in the rail to pan.
+- **State:** `focusLock` is a `useState(true)` in `App` only. `StudioCanvas` /
+  `StudioStage` get `focusLock` and `onLockChange`. The store snapshot
+  (`{distancePct, heightPct, live, lock, ready}`) mirrors it read-only (idle lock
+  `true`); only the stage publishes it. New null-safe `cameraStudio.setLock(bool)`
+  (false when no stage).
+- **Follow rule (Lock ON):** the stage tracks the model centre
+  `liveCentre() = fit.center * transform.matrixWorld` (the rigid transform, no
+  Box3). When the transform changes, the orbit **target** moves by the same delta;
+  the camera position is untouched. Runs inside `moveGuarded`, so it does not mark
+  the view live and does not clear the preset highlight; it publishes, so the
+  Distance/Height percentages change (`dist0` is not re-frozen). The centre is
+  tracked with Lock OFF too so switching ON never carries a stale delta. The follow
+  effect is declared after the camera-request effect on purpose: in a commit that
+  carries both a new transform and a view request, `applyView` has refreshed
+  `lastCentreRef` first (load-bearing order, commented in the code).
+- **Lock command:** `api.setLock(next)` is an event, not an effect on the prop, so
+  mount, product switch and session restore never retarget. ON: target becomes
+  `liveCentre() + baseline.offset` (camera unchanged); the view is marked live only
+  if the target moved by more than 1e-6. OFF: no camera or live change.
+- **Rail:** the Reserved "Lock focus on product" chip is now a toggle
+  (`data-testid="ui-camera-lock"`, `aria-pressed`, disabled until the stage is
+  ready, gold `data-on` style). `CAMERA_RESERVED` was removed.
+- **Frame default is now a request:** Reset and the "restore without a preset"
+  path send `{ id: null, seq + 1, frame: true }` instead of calling
+  `resetView()` directly, so the frame is applied in the same commit as the new
+  transform (before, Reset framed the old transform's centre). `resetView` is still
+  in the camera API.
+- **Session field (no version bump):** `engine.camera = { position, target, fov,
+  lock, live, baseId, baseline: { dist0, elev0, offset } }`, written only while the
+  stage is mounted. `fov` is saved but not applied. `cameraPresetId` is still the
+  last preset id, so an older build ignores `camera` and restores that preset.
+  Restore validates defensively (finite length-3 arrays, boolean lock/live; a bad
+  block falls back to today's behaviour). Lock: saved boolean, else ON. If `live`
+  is true and the numbers are valid, a `view` request re-applies the exact
+  position/target/baseline (`applyView(..., live = true)`) and `viewLive` is set;
+  the saved Custom View slot is not overwritten. Otherwise presets are recomputed
+  as before and `viewLive` is cleared. A missing/invalid baseline is re-measured.
+  The product-switch (pending) path applies lock/live after the switch reset.
+- **Not touched:** CAM-001, CAM-002, FOV changes, keyframes/animation, distance
+  limits, preset data.
 
 ## Known Camera Bugs
 
@@ -410,7 +462,7 @@ Deferred, not fixed by Phase 16A Slice A:
 |---|---|---|
 | Studio Canvas | Complete | r3f canvas with orbit, transform, capture, on-demand shadows and HDR/probe lighting (`components/StudioCanvas.jsx`). |
 | Asset Library | Complete | Registry-driven product/environment gallery plus GLB/HDR/EXR import manager (`ui/AssetLibrary.jsx`, `ui/ImportPanel.jsx`). |
-| Camera Studio | Partial | Presets and Save Custom View work. Phase 16A Slice A (uncommitted): the rail's Distance and Height sliders are live and drive the real camera, with a "Custom (unsaved)" state. Lock focus on product is still a Reserved chip. See "Phase 16A Slice A" and "Known Camera Bugs". |
+| Camera Studio | Partial | Presets and Save Custom View work. Phase 16A Slice A (`a23e3d0`): the rail's Distance and Height sliders are live, with a "Custom (unsaved)" state. Phase 16A Slice B (uncommitted): Lock focus is a real toggle (ON by default; the orbit target follows the transformed model, right-drag pan is off while ON) and the live camera is saved in the session. See "Phase 16A Slice A/B" and "Known Camera Bugs". |
 | Material Studio | Complete | Live PBR editing, presets, undo/reset, persistence and session capture (`materials/`, `ui/MaterialsManager.jsx`). |
 | Render Studio | Partial | PNG capture/export with format chips works; no video/Reel/MP4 export. |
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
@@ -421,7 +473,7 @@ Status is judged from code reading, not from a fresh browser run in this update.
 
 ## Open Issues (Next Phase)
 
-1. Camera Studio: Distance and Height are live (Phase 16A Slice A, uncommitted). Lock focus on product is still Reserved (no behaviour). Next: Slice B (session capture of a live view), then the CAM-002 fix; see "Known Camera Bugs".
+1. Camera Studio: Distance, Height (Slice A, `a23e3d0`) and Lock focus plus session capture of the live camera (Slice B, uncommitted) are live. Next: the CAM-002 fix; see "Known Camera Bugs".
 2. Animation Studio not implemented.
 3. Reel/MP4 export not implemented.
 4. THE KOP branding renders clipped ("THE KOF") in every export. Believed to be in the model/texture, not in this React app's export code. UNVERIFIED at the source.
@@ -456,9 +508,12 @@ Status is judged from code reading, not from a fresh browser run in this update.
   `useProgress` sees, so `LoadingScreen` turns on for every environment switch.
   Same on the pre-HDR baseline. Whether it is visible to the eye: UNVERIFIED.
 - **Visual-only UI:** Learn Studio, Help and Settings (`ui/TopHeader.jsx`); the
-  rail header chips (`RAIL_CHIPS` in `ui/content.js`). The rail's Lock focus on
-  product is a Reserved chip (Distance and Height became live in Phase 16A
-  Slice A).
+  rail header chips (`RAIL_CHIPS` in `ui/content.js`). The rail's Camera controls
+  are all live now (Distance and Height in Phase 16A Slice A, Lock focus in
+  Slice B); none is Reserved any more.
+- **Right-drag pan is disabled by default.** Lock focus is ON by default, and
+  with it ON right-drag pan does nothing. Turn Lock OFF in the rail's Camera
+  section to pan.
 - **No auto-rotate and no animation code** (`StudioCanvas.jsx` states this;
   grep of `app/src` finds no animation mixer).
 - **Lint:** the `product.frontAz` `exhaustive-deps` warning in `StudioCanvas.jsx`
@@ -501,5 +556,8 @@ boundaries UNVERIFIED against any release note).
   update HANDOFF"): rail Camera section's Distance, Height and Lock focus on
   product became inert Reserved chips; `VisualField` removed from
   `ui/InspectorRail.jsx`.
-- **Phase 16A Slice A (uncommitted at time of writing)** — Camera Studio Distance
-  and Height sliders, shared camera store, "Custom (unsaved)" state.
+- **Phase 16A Slice A** — `a23e3d0` ("Phase 16A Slice A: Camera store,
+  Distance/Height sliders, Custom (unsaved) view"): Camera Studio Distance and
+  Height sliders, shared camera store, "Custom (unsaved)" state.
+- **Phase 16A Slice B (uncommitted at time of writing)** — Lock focus toggle and
+  follow rule, frame-default request, `engine.camera` in the session.

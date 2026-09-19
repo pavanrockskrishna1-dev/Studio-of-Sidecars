@@ -311,6 +311,8 @@ function StudioStage({
   lighting,
   viewLive,
   onViewLive,
+  focusLock,
+  onLockChange,
 }) {
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef(null);
@@ -322,6 +324,10 @@ function StudioStage({
   const applyingRef = useRef(0);
   const liveRef = useRef(false);
   const transformRef = useRef(null);
+  // Lock focus (Slice B) — the model centre the target last followed, and the
+  // stage's copy of App's focusLock. Neither is camera state.
+  const lastCentreRef = useRef(null);
+  const lockRef = useRef(focusLock);
 
   const { scene: modelScene } = useGLTF(product.modelPath);
 
@@ -388,8 +394,18 @@ function StudioStage({
         baseline
       ),
       live: liveRef.current,
+      lock: lockRef.current,
     });
   }, [camera]);
+
+  // The model's current centre: the rigid transform applied to the fitted
+  // centre (not a bounding box, so rotation does not inflate or drift it).
+  const liveCentre = useCallback(() => {
+    const group = transformRef.current;
+    if (!group) return fit.center.clone();
+    group.updateMatrixWorld(true);
+    return fit.center.clone().applyMatrix4(group.matrixWorld);
+  }, [fit]);
 
   // Every programmatic camera move runs inside this guard so the controls'
   // change event it causes is not mistaken for a user move.
@@ -405,9 +421,10 @@ function StudioStage({
 
   // Move the camera to a view and freeze its slider baseline, measured AFTER
   // the move (the controls may adjust it, e.g. the Top preset's pole clamp).
-  // `baseline` is passed only when re-applying a saved view that carries one.
+  // `baseline` is passed only when re-applying a saved view that carries one;
+  // `live` is true only when restoring a saved live (unsaved custom) view.
   const applyView = useCallback(
-    (position, target, baseId, baseline) => {
+    (position, target, baseId, baseline, live = false) => {
       moveGuarded(() => {
         camera.position.copy(position);
         camera.far = fit.distance * 10 + 10;
@@ -423,10 +440,11 @@ function StudioStage({
           baseId,
           fit.center
         );
-      liveRef.current = false;
+      liveRef.current = live;
+      lastCentreRef.current = liveCentre();
       publish();
     },
-    [camera, fit, moveGuarded, publish]
+    [camera, fit, moveGuarded, publish, liveCentre]
   );
 
   const frameDefault = useCallback(() => {
@@ -462,7 +480,25 @@ function StudioStage({
   // three.js camera; positioning it imperatively (as here) is the standard
   // r3f pattern, not a violation the immutability rule is meant to catch.
   useEffect(() => {
-    if (!cameraRequest || !cameraRequest.id) return undefined;
+    if (!cameraRequest) return undefined;
+    const { id: requestId, view, frame } = cameraRequest;
+    if (!requestId && !view && !frame) return undefined;
+    // A saved live view (session restore): exact position, target, baseline.
+    if (view) {
+      applyView(
+        new THREE.Vector3().fromArray(view.position),
+        new THREE.Vector3().fromArray(view.target),
+        view.baseId ?? null,
+        view.baseline,
+        true
+      );
+      return undefined;
+    }
+    // Frame default (Reset, or a restored session with no preset).
+    if (!requestId) {
+      frameDefault();
+      return undefined;
+    }
     let position;
     let target;
     let baseId = cameraRequest.id;
@@ -496,7 +532,34 @@ function StudioStage({
     }
     applyView(position, target, baseId, baseline);
     return undefined;
-  }, [cameraRequest, customView, fit, gl, product.frontAz, applyView]);
+  }, [cameraRequest, customView, fit, gl, product.frontAz, applyView, frameDefault]);
+
+  // Keep the stage's copy of App's lock in step and refresh the store. Declared
+  // before the follow effect below so the follow sees the new value.
+  useEffect(() => {
+    lockRef.current = focusLock;
+    publish();
+  }, [focusLock, publish]);
+
+  // Lock focus follow: when the model is transformed, move the orbit TARGET by
+  // the same amount as the model centre; the camera itself is untouched. The
+  // ordering is load-bearing: this effect is declared AFTER the camera-request
+  // effect so that, in a commit that carries both a new transform and a view
+  // request (session restore, Reset), applyView has already refreshed
+  // lastCentreRef from the new transform and no stale delta is applied. The
+  // centre is tracked even with Lock OFF so turning it ON never carries a
+  // stale delta. Guarded: it neither marks the view live nor clears a preset.
+  useEffect(() => {
+    const c = liveCentre();
+    const last = lastCentreRef.current;
+    lastCentreRef.current = c;
+    const controls = controlsRef.current;
+    if (!last || !controls || !lockRef.current) return;
+    const d = c.clone().sub(last);
+    if (d.length() <= 1e-9) return;
+    moveGuarded(() => controls.target.add(d));
+    publish();
+  }, [transform, focusLock, fit, moveGuarded, liveCentre, publish]);
 
   // Mission 7.2 (Save Custom View) — exposes the LIVE camera position and
   // OrbitControls target so the App can snapshot the exact current view.
@@ -522,12 +585,35 @@ function StudioStage({
     const api = {
       readView: () => ({
         position: camera.position.toArray(),
+        fov: camera.fov,
         target: controlsRef.current
           ? controlsRef.current.target.toArray()
           : [0, 0, 0],
         ...(baselineRef.current ?? {}),
       }),
       resetView: frameDefault,
+      // Lock focus command (an event, not an effect on the prop, so mount,
+      // product switch and session restore never retarget). Turning ON
+      // re-centres the target on the model at the baseline offset and leaves
+      // the camera where it is; turning OFF changes nothing in the camera.
+      setLock: (next) => {
+        const controls = controlsRef.current;
+        if (!controls) return false;
+        if (next && baselineRef.current) {
+          const before = controls.target.clone();
+          const offset = new THREE.Vector3().fromArray(baselineRef.current.offset);
+          moveGuarded(() => controls.target.copy(liveCentre()).add(offset));
+          if (controls.target.distanceTo(before) > 1e-6 && !liveRef.current) {
+            liveRef.current = true;
+            onViewLive?.(true);
+          }
+        }
+        lastCentreRef.current = liveCentre();
+        lockRef.current = next;
+        publish();
+        onLockChange?.(next);
+        return true;
+      },
       setDistancePct: (pct) => {
         const controls = controlsRef.current;
         const baseline = baselineRef.current;
@@ -562,7 +648,17 @@ function StudioStage({
         cameraStudio.reset();
       }
     };
-  }, [cameraApiRef, camera, frameDefault, moveAndMarkLive]);
+  }, [
+    cameraApiRef,
+    camera,
+    frameDefault,
+    moveAndMarkLive,
+    moveGuarded,
+    liveCentre,
+    publish,
+    onViewLive,
+    onLockChange,
+  ]);
 
   // App owns viewLive (it clears it on every preset / saved view / product
   // switch / session change); keep the stage's copy and the store in step.
@@ -804,7 +900,7 @@ function StudioStage({
         <primitive object={modelScene} />
       </group>
 
-      {/* Left-drag orbits, right-drag pans, wheel zooms. No auto-rotate and no
+      {/* Left-drag orbits, right-drag pans (Lock focus OFF only), wheel zooms. No auto-rotate and no
           damping inertia: the camera must stop the instant the pointer is
           released (continuous orbit is reserved for an explicit future
           Auto-Rotate feature). */}
@@ -812,6 +908,7 @@ function StudioStage({
         ref={controlsRef}
         enableDamping={false}
         enableZoom
+        enablePan={!focusLock}
         onChange={handleControlsChange}
       />
     </>
@@ -829,6 +926,8 @@ export default function StudioCanvas({
   lighting = DEFAULT_LIGHTING,
   viewLive = false,
   onViewLive = null,
+  focusLock = true,
+  onLockChange = null,
 }) {
   const [selection, setSelection] = useState(null);
   const [transform, setTransform] = useState({ ...DEFAULT_TRANSFORM });
@@ -926,6 +1025,8 @@ export default function StudioCanvas({
             lighting={lighting}
             viewLive={viewLive}
             onViewLive={onViewLive}
+            focusLock={focusLock}
+            onLockChange={onLockChange}
           />
         </Suspense>
         <CaptureBridge captureRef={captureRef} />

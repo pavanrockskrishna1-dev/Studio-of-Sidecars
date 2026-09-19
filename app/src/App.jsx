@@ -33,6 +33,10 @@ export default function App() {
   // restore or reset. It only decides whether a preset card counts as active;
   // the camera is the truth.
   const [viewLive, setViewLive] = useState(false);
+  // Camera Studio (Phase 16A Slice B) — Lock focus: while ON the orbit target
+  // follows the model's centre when it is transformed, and right-drag pan is
+  // off. This is the only copy; the rail and the stage read it.
+  const [focusLock, setFocusLock] = useState(true);
   // Phase 15A (Studio Session) — StudioCanvas registers read/write/reset for
   // its live model transform here (same ref pattern as cameraApiRef).
   const transformApiRef = useRef(null);
@@ -74,7 +78,10 @@ export default function App() {
     setCameraRequest({ id: null, seq: 0 });
     setCustomView(null);
     setViewLive(false);
+    setFocusLock(true);
   }
+
+  const handleLockChange = useCallback((next) => setFocusLock(next), []);
 
   const handleCameraPreset = (id) => {
     setViewLive(false);
@@ -151,17 +158,45 @@ export default function App() {
   // Phase 15A — the stage-level part of a session (camera preset, saved custom
   // view, transform). `frame` re-applies the default hero framing when the
   // session had no preset active (skipped across a product switch: the new
-  // stage frames itself on mount).
+  // stage frames itself on mount). Slice B: a session saved with a live view
+  // (snap.camera.live) restores that exact view through a `view` request; the
+  // saved lock is restored either way (missing = ON, as in a pre-Slice-B save).
   const applyStageState = useCallback((snap, frame) => {
     const custom = snap.customView ?? null;
+    const cam = snap.camera;
+    const isVec3 = (a) => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite);
+    const liveView = cam?.live === true && isVec3(cam.position) && isVec3(cam.target);
+    const b = cam?.baseline;
+    const baseline =
+      b && Number.isFinite(b.dist0) && b.dist0 > 0 && Number.isFinite(b.elev0) && isVec3(b.offset)
+        ? {
+            baseId: typeof cam.baseId === "string" ? cam.baseId : null,
+            dist0: b.dist0,
+            elev0: b.elev0,
+            offset: b.offset,
+          }
+        : undefined;
+    setFocusLock(typeof cam?.lock === "boolean" ? cam.lock : true);
     setCustomView(custom);
-    setViewLive(false);
+    setViewLive(liveView);
     const id = snap.cameraPresetId;
-    if (id && (id !== "custom" || custom)) {
+    if (liveView) {
+      setCameraRequest((prev) => ({
+        id: id ?? null,
+        seq: prev.seq + 1,
+        view: {
+          position: cam.position,
+          target: cam.target,
+          baseId: baseline ? baseline.baseId : null,
+          baseline,
+        },
+      }));
+    } else if (id && (id !== "custom" || custom)) {
       setCameraRequest((prev) => ({ id, seq: prev.seq + 1 }));
+    } else if (frame) {
+      setCameraRequest((prev) => ({ id: null, seq: prev.seq + 1, frame: true }));
     } else {
       setCameraRequest({ id: null, seq: 0 });
-      if (frame) cameraStudioApiRef.current?.resetView?.();
     }
     transformApiRef.current?.write(snap.transform);
   }, []);
@@ -180,15 +215,34 @@ export default function App() {
   useEffect(
     () =>
       registerEngine({
-        snapshot: () => ({
-          productId,
-          environmentId,
-          cameraPresetId: cameraRequest.id,
-          customView,
-          lighting,
-          exportOpts,
-          transform: transformApiRef.current?.read() ?? null,
-        }),
+        snapshot: () => {
+          // Slice B: the live camera, only while the stage is mounted. fov is
+          // saved for the record but not applied on restore.
+          const v = cameraStudioApiRef.current?.readView?.();
+          const cameraView = v
+            ? {
+                position: v.position,
+                target: v.target,
+                fov: v.fov,
+                lock: focusLock,
+                live: viewLive,
+                baseId: v.baseId ?? null,
+                ...(Number.isFinite(v.dist0)
+                  ? { baseline: { dist0: v.dist0, elev0: v.elev0, offset: v.offset } }
+                  : {}),
+              }
+            : null;
+          return {
+            productId,
+            environmentId,
+            cameraPresetId: cameraRequest.id,
+            customView,
+            lighting,
+            exportOpts,
+            transform: transformApiRef.current?.read() ?? null,
+            ...(cameraView ? { camera: cameraView } : {}),
+          };
+        },
         apply: (snap) => {
           const productOk = getProduct(snap.productId).id === snap.productId;
           const envOk = getEnvironment(snap.environmentId).id === snap.environmentId;
@@ -207,12 +261,22 @@ export default function App() {
           setExportOpts(DEFAULT_EXPORT_OPTS);
           setCustomView(null);
           setViewLive(false);
-          setCameraRequest({ id: null, seq: 0 });
-          cameraStudioApiRef.current?.resetView?.();
+          setFocusLock(true);
+          setCameraRequest((prev) => ({ id: null, seq: prev.seq + 1, frame: true }));
           transformApiRef.current?.reset();
         },
       }),
-    [productId, environmentId, cameraRequest.id, customView, lighting, exportOpts, applyStageState]
+    [
+      productId,
+      environmentId,
+      cameraRequest.id,
+      customView,
+      lighting,
+      exportOpts,
+      focusLock,
+      viewLive,
+      applyStageState,
+    ]
   );
 
   // Safety net: release any live object URL if the App unmounts.
@@ -236,6 +300,8 @@ export default function App() {
         lighting={lighting}
         viewLive={viewLive}
         onViewLive={setViewLive}
+        focusLock={focusLock}
+        onLockChange={handleLockChange}
       />
       <StudioControls
         environmentId={environment.id}

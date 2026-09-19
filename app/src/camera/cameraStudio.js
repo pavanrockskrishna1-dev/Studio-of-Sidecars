@@ -16,6 +16,8 @@
    Known limit: from the Top preset (elev0 ~ 90deg) the "up" half has no room
    above the camera, so positive Height is a silent no-op there.
 
+   Lock focus (Slice B): the snapshot also mirrors App's lock flag, read-only.
+
    The math helpers are pure (plain arrays / numbers, radians) and need no
    three.js. */
 
@@ -105,7 +107,13 @@ export function positionForHeight(position, target, elev0, h, azimuth = 0) {
 
 /* ---- store ---------------------------------------------------------------- */
 
-const IDLE = Object.freeze({ distancePct: 100, heightPct: 0, live: false, ready: false });
+const IDLE = Object.freeze({
+  distancePct: 100,
+  heightPct: 0,
+  live: false,
+  lock: true,
+  ready: false,
+});
 let snapshot = IDLE;
 const listeners = new Set();
 
@@ -121,6 +129,7 @@ function replace(next) {
     next.distancePct === snapshot.distancePct &&
     next.heightPct === snapshot.heightPct &&
     next.live === snapshot.live &&
+    next.lock === snapshot.lock &&
     next.ready === snapshot.ready
   ) {
     return;
@@ -131,8 +140,8 @@ function replace(next) {
 
 // Stage only: replaces the snapshot ONLY if a displayed value changed, so
 // azimuth-only orbiting never causes a subscriber render.
-export function publish({ distancePct, heightPct, live }) {
-  replace({ distancePct, heightPct, live, ready: true });
+export function publish({ distancePct, heightPct, live, lock }) {
+  replace({ distancePct, heightPct, live, lock, ready: true });
 }
 
 // Stage only: the stage went away (unmount / product switch).
@@ -140,8 +149,8 @@ export function reset() {
   replace(IDLE);
 }
 
-// The stage registers { readView, resetView, setDistancePct, setHeightPct }
-// here; App hands this ref to StudioCanvas as cameraApiRef.
+// The stage registers { readView, resetView, setDistancePct, setHeightPct,
+// setLock } here; App hands this ref to StudioCanvas as cameraApiRef.
 export const apiRef = { current: null };
 
 // Null-safe commands: false when no stage is registered (Suspense, product
@@ -156,4 +165,12 @@ export function setHeightPct(pct) {
   const api = apiRef.current;
   if (!api || !api.setHeightPct || !Number.isFinite(pct)) return false;
   return api.setHeightPct(Math.max(HEIGHT_MIN, Math.min(HEIGHT_MAX, pct)));
+}
+
+// Lock focus (Slice B). The lock itself lives in App; the stage retargets the
+// controls when it is turned ON and then reports the new value to App.
+export function setLock(next) {
+  const api = apiRef.current;
+  if (!api || !api.setLock || typeof next !== "boolean") return false;
+  return api.setLock(next);
 }
