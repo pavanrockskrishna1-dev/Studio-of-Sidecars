@@ -12,6 +12,7 @@ import {
   moodPresetId,
 } from "../lighting/moodPresets";
 import * as materialStore from "../materials/store";
+import * as cameraStudio from "../camera/cameraStudio";
 import { exportPng } from "./engineCapture";
 
 /* ==========================================================================
@@ -104,6 +105,13 @@ function readLiveLighting() {
    an unknown name is a graceful no-op.
    -------------------------------------------------------------------------- */
 
+// The engine's cards carry data-active (true while that preset is the active,
+// not-live view). Chip highlight follows them; null when none / no panel.
+function readActiveCameraCard() {
+  const el = document.querySelector('[data-studio-controls] button[data-active="true"]');
+  return el ? el.title.replace(/ shot$/, "") : null;
+}
+
 function applyCameraPreset(name) {
   const el = document.querySelector(
     `[data-studio-controls] button[title="${name} shot"]`
@@ -137,8 +145,8 @@ const MATERIAL_CHIP_PRESETS = {
    reads. A chip with no real system behind it is marked Reserved.
    -------------------------------------------------------------------------- */
 
-// Camera controls the engine does not have yet: shown, labelled, inert.
-const CAMERA_RESERVED = ["Distance", "Height", "Lock focus on product"];
+// Camera control the engine does not have yet: shown, labelled, inert.
+const CAMERA_RESERVED = ["Lock focus on product"];
 
 const FORMAT_SELECT = '[data-testid="cap-format"]';
 
@@ -190,6 +198,34 @@ function Chips({ items, onSelect, activeMoodId, isActive, disabled }) {
           </span>
         );
       })}
+    </div>
+  );
+}
+
+// Range input bound to the camera store. The slider pins at its ends while the
+// mouse wheel can go further, so the label always shows the true number.
+function CameraSlider({ label, testId, value, min, max, disabled, onChange }) {
+  return (
+    <div className="sos-field">
+      <div className="sos-field-top">
+        <label className="sos-label" htmlFor={testId}>
+          {label}
+        </label>
+        <span className="sos-field-val" data-testid={`${testId}-value`}>
+          {value}%
+        </span>
+      </div>
+      <input
+        id={testId}
+        data-testid={testId}
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={Math.max(min, Math.min(max, value))}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
     </div>
   );
 }
@@ -262,6 +298,33 @@ export default function InspectorRail({
       document.removeEventListener("change", sync, true);
     };
   }, [openId]);
+
+  // Camera: sliders and the Custom (unsaved) tag read the camera store (a
+  // read-only snapshot of the live camera); the framing chips highlight from
+  // the engine cards' data-active, which App clears while the view is live.
+  const camState = useSyncExternalStore(
+    cameraStudio.subscribe,
+    cameraStudio.getSnapshot,
+    cameraStudio.getSnapshot
+  );
+  const [activeCard, setActiveCard] = useState(null);
+  useEffect(() => {
+    const root = document.querySelector("[data-studio-controls]");
+    if (!root) return undefined;
+    const sync = () => setActiveCard(readActiveCameraCard());
+    const t = setTimeout(sync, 0);
+    const observer = new MutationObserver(sync);
+    observer.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-active"],
+    });
+    return () => {
+      clearTimeout(t);
+      observer.disconnect();
+    };
+  }, []);
 
   // Materials chips read the live materials store (the one MaterialsManager
   // subscribes to): they enable once a model's materials are ready and
@@ -364,12 +427,39 @@ export default function InspectorRail({
           >
             {section.id === "camera" ? (
               <>
-                <span className="sos-label">Framing</span>
+                <div className="sos-field-top">
+                  <span className="sos-label">Framing</span>
+                  {camState.live ? (
+                    <span className="sos-pchip-badge" data-testid="ui-camera-live-tag">
+                      Custom (unsaved)
+                    </span>
+                  ) : null}
+                </div>
                 <Chips
                   items={CAMERA_FRAMINGS}
                   onSelect={applyCameraPreset}
-                  isActive={() => false}
+                  isActive={(t) => !camState.live && activeCard === t}
                 />
+                <div className="sos-fields">
+                  <CameraSlider
+                    label="Distance"
+                    testId="ui-camera-distance"
+                    value={camState.distancePct}
+                    min={cameraStudio.DISTANCE_MIN}
+                    max={cameraStudio.DISTANCE_MAX}
+                    disabled={!camState.ready}
+                    onChange={cameraStudio.setDistancePct}
+                  />
+                  <CameraSlider
+                    label="Height"
+                    testId="ui-camera-height"
+                    value={camState.heightPct}
+                    min={cameraStudio.HEIGHT_MIN}
+                    max={cameraStudio.HEIGHT_MAX}
+                    disabled={!camState.ready}
+                    onChange={cameraStudio.setHeightPct}
+                  />
+                </div>
                 <div className="sos-frow">
                   {CAMERA_RESERVED.map((t) => (
                     <span
@@ -383,7 +473,10 @@ export default function InspectorRail({
                     </span>
                   ))}
                 </div>
-                <Hint>One-tap framing — drives the engine's camera presets.</Hint>
+                <Hint>
+                  One-tap framing. Distance is % of the shot's distance; Height
+                  tilts the view. Moving the camera makes it Custom (unsaved).
+                </Hint>
               </>
             ) : section.id === "lighting" ? (
               <>

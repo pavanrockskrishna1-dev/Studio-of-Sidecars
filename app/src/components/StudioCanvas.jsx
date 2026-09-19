@@ -14,7 +14,8 @@ import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import { PRODUCTS } from "../products/registry";
 import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
-import { computeCameraShot, getCameraPreset } from "../camera/presets";
+import { computeCameraShot, getBaseline, getCameraPreset } from "../camera/presets";
+import * as cameraStudio from "../camera/cameraStudio";
 import { DEFAULT_LIGHTING } from "../lighting/profiles";
 import { computeExportSize } from "../capture/exportOptions";
 
@@ -308,9 +309,18 @@ function StudioStage({
   customView,
   cameraApiRef,
   lighting,
+  viewLive,
+  onViewLive,
 }) {
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef(null);
+  // Camera Studio (Phase 16A) — frozen slider baseline of the last applied
+  // view, the count of programmatic camera moves in flight, and whether the
+  // view has been changed since (mirrored to App as viewLive). None of this is
+  // camera state: the live camera and controls target stay the only truth.
+  const baselineRef = useRef(null);
+  const applyingRef = useRef(0);
+  const liveRef = useRef(false);
   const transformRef = useRef(null);
 
   const { scene: modelScene } = useGLTF(product.modelPath);
@@ -365,7 +375,60 @@ function StudioStage({
   // Phase 15A: the default hero framing is a callable so Reset Studio Session
   // can re-apply it (exposed as cameraApiRef.resetView); the effect below
   // still runs it on every fit change exactly as before.
-  // eslint-disable-next-line react-hooks/immutability
+  // Publish the camera's slider values (distance %, height %) to the shared
+  // camera store. The store ignores a publish that changes no displayed value.
+  const publish = useCallback(() => {
+    const controls = controlsRef.current;
+    const baseline = baselineRef.current;
+    if (!controls || !baseline) return;
+    cameraStudio.publish({
+      ...cameraStudio.readMetrics(
+        camera.position.toArray(),
+        controls.target.toArray(),
+        baseline
+      ),
+      live: liveRef.current,
+    });
+  }, [camera]);
+
+  // Every programmatic camera move runs inside this guard so the controls'
+  // change event it causes is not mistaken for a user move.
+  const moveGuarded = useCallback((move) => {
+    applyingRef.current += 1;
+    try {
+      move();
+      controlsRef.current?.update();
+    } finally {
+      applyingRef.current -= 1;
+    }
+  }, []);
+
+  // Move the camera to a view and freeze its slider baseline, measured AFTER
+  // the move (the controls may adjust it, e.g. the Top preset's pole clamp).
+  // `baseline` is passed only when re-applying a saved view that carries one.
+  const applyView = useCallback(
+    (position, target, baseId, baseline) => {
+      moveGuarded(() => {
+        camera.position.copy(position);
+        camera.far = fit.distance * 10 + 10;
+        camera.updateProjectionMatrix();
+        camera.lookAt(target);
+        controlsRef.current?.target.copy(target);
+      });
+      baselineRef.current =
+        baseline ??
+        getBaseline(
+          camera.position.toArray(),
+          (controlsRef.current?.target ?? target).toArray(),
+          baseId,
+          fit.center
+        );
+      liveRef.current = false;
+      publish();
+    },
+    [camera, fit, moveGuarded, publish]
+  );
+
   const frameDefault = useCallback(() => {
     // Product-shot angle: slightly below model center. The offset scales with
     // model HEIGHT (not camera distance) so it reads the same at any scale —
@@ -373,20 +436,16 @@ function StudioStage({
     const dy = -0.1 * fit.size.y;
     const horiz = Math.sqrt(fit.distance * fit.distance - dy * dy);
     const dirH = new THREE.Vector2(0.35, 1).normalize();
-    camera.position.set(
-      fit.center.x + dirH.x * horiz,
-      fit.center.y + dy,
-      fit.center.z + dirH.y * horiz
+    applyView(
+      new THREE.Vector3(
+        fit.center.x + dirH.x * horiz,
+        fit.center.y + dy,
+        fit.center.z + dirH.y * horiz
+      ),
+      fit.center,
+      null
     );
-    // eslint-disable-next-line react-hooks/immutability
-    camera.far = fit.distance * 10 + 10;
-    camera.updateProjectionMatrix();
-    camera.lookAt(fit.center);
-    if (controlsRef.current) {
-      controlsRef.current.target.copy(fit.center);
-      controlsRef.current.update();
-    }
-  }, [fit, camera]);
+  }, [fit, applyView]);
 
   useEffect(() => {
     frameDefault();
@@ -402,15 +461,27 @@ function StudioStage({
   // react-three-fiber's useThree() intentionally returns the live, mutable
   // three.js camera; positioning it imperatively (as here) is the standard
   // r3f pattern, not a violation the immutability rule is meant to catch.
-  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => {
     if (!cameraRequest || !cameraRequest.id) return undefined;
     let position;
     let target;
+    let baseId = cameraRequest.id;
+    let baseline;
     if (cameraRequest.id === "custom") {
       if (!customView) return undefined;
       position = new THREE.Vector3().fromArray(customView.position);
       target = new THREE.Vector3().fromArray(customView.target);
+      // A view saved from this stage carries the baseline it was reached from,
+      // so slider percentages do not jump on save / restore.
+      baseId = customView.baseId ?? "custom";
+      if (customView.dist0 > 0) {
+        baseline = {
+          baseId,
+          dist0: customView.dist0,
+          elev0: customView.elev0,
+          offset: customView.offset,
+        };
+      }
     } else {
       const preset = getCameraPreset(cameraRequest.id);
       if (!preset) return undefined;
@@ -423,36 +494,94 @@ function StudioStage({
         FOV
       ));
     }
-    camera.position.copy(position);
-    // eslint-disable-next-line react-hooks/immutability
-    camera.far = fit.distance * 10 + 10;
-    camera.updateProjectionMatrix();
-    camera.lookAt(target);
-    if (controlsRef.current) {
-      controlsRef.current.target.copy(target);
-      controlsRef.current.update();
-    }
+    applyView(position, target, baseId, baseline);
     return undefined;
-  }, [cameraRequest, customView, fit, camera, gl]);
+  }, [cameraRequest, customView, fit, gl, product.frontAz, applyView]);
 
   // Mission 7.2 (Save Custom View) — exposes the LIVE camera position and
   // OrbitControls target so the App can snapshot the exact current view.
   // Read-only: saving never moves the camera or touches any other state.
+  // Camera Studio: the Distance / Height commands. Each moves the real camera
+  // (guarded) around the controls target, marks the view live and publishes.
+  const moveAndMarkLive = useCallback(
+    (position) => {
+      if (!position) return false;
+      moveGuarded(() => camera.position.fromArray(position));
+      if (!liveRef.current) {
+        liveRef.current = true;
+        onViewLive?.(true);
+      }
+      publish();
+      return true;
+    },
+    [camera, moveGuarded, publish, onViewLive]
+  );
+
   useEffect(() => {
     if (!cameraApiRef) return undefined;
-    cameraApiRef.current = {
+    const api = {
       readView: () => ({
         position: camera.position.toArray(),
         target: controlsRef.current
           ? controlsRef.current.target.toArray()
           : [0, 0, 0],
+        ...(baselineRef.current ?? {}),
       }),
       resetView: frameDefault,
+      setDistancePct: (pct) => {
+        const controls = controlsRef.current;
+        const baseline = baselineRef.current;
+        if (!controls || !baseline) return false;
+        return moveAndMarkLive(
+          cameraStudio.positionForDistance(
+            camera.position.toArray(),
+            controls.target.toArray(),
+            (baseline.dist0 * pct) / 100
+          )
+        );
+      },
+      setHeightPct: (pct) => {
+        const controls = controlsRef.current;
+        const baseline = baselineRef.current;
+        if (!controls || !baseline) return false;
+        return moveAndMarkLive(
+          cameraStudio.positionForHeight(
+            camera.position.toArray(),
+            controls.target.toArray(),
+            baseline.elev0,
+            pct / 100,
+            controls.getAzimuthalAngle()
+          )
+        );
+      },
     };
+    cameraApiRef.current = api;
     return () => {
-      cameraApiRef.current = null;
+      if (cameraApiRef.current === api) {
+        cameraApiRef.current = null;
+        cameraStudio.reset();
+      }
     };
-  }, [cameraApiRef, camera, frameDefault]);
+  }, [cameraApiRef, camera, frameDefault, moveAndMarkLive]);
+
+  // App owns viewLive (it clears it on every preset / saved view / product
+  // switch / session change); keep the stage's copy and the store in step.
+  useEffect(() => {
+    liveRef.current = viewLive;
+    publish();
+  }, [viewLive, publish]);
+
+  // OrbitControls fires "change" (at most once per frame, from update()) only
+  // when the camera or target really moved. An unguarded one is a user move
+  // (orbit / pan / wheel): the view is now live. No per-frame React state —
+  // the store only notifies when a displayed value changed.
+  const handleControlsChange = useCallback(() => {
+    if (applyingRef.current === 0 && baselineRef.current && !liveRef.current) {
+      liveRef.current = true;
+      onViewLive?.(true);
+    }
+    publish();
+  }, [publish, onViewLive]);
 
   // Mission 9 (Lighting Foundation) — shadow ortho frustum derived from the
   // model bounds and the FIXED key-light direction, never from the view
@@ -683,6 +812,7 @@ function StudioStage({
         ref={controlsRef}
         enableDamping={false}
         enableZoom
+        onChange={handleControlsChange}
       />
     </>
   );
@@ -697,6 +827,8 @@ export default function StudioCanvas({
   cameraApiRef = null,
   transformApiRef = null,
   lighting = DEFAULT_LIGHTING,
+  viewLive = false,
+  onViewLive = null,
 }) {
   const [selection, setSelection] = useState(null);
   const [transform, setTransform] = useState({ ...DEFAULT_TRANSFORM });
@@ -792,6 +924,8 @@ export default function StudioCanvas({
             customView={customView}
             cameraApiRef={cameraApiRef}
             lighting={lighting}
+            viewLive={viewLive}
+            onViewLive={onViewLive}
           />
         </Suspense>
         <CaptureBridge captureRef={captureRef} />

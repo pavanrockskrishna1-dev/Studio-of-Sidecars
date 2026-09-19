@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 15B, HEAD `0bd3680`)
+## Start here (updated through Phase 15C and Phase 16A Slice A, HEAD `a8a5ac9`; Slice A is uncommitted)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -356,13 +356,61 @@ Commits: `fb23ab1` (implementation + Aviation Hangar HDR), `0bd3680`
   `app/public/environments/` and add one line, `hdri: "/environments/<file>.hdr"`,
   to that environment's entry in `environments/registry.js`.
 
+## Phase 16A Slice A — Camera Studio sliders (uncommitted at time of writing)
+
+Files: `camera/cameraStudio.js` (new), `camera/presets.js` (`getBaseline` only),
+`components/StudioCanvas.jsx`, `App.jsx`, `components/StudioControls.jsx`
+(`data-active` on the camera cards only), `ui/InspectorRail.jsx`,
+`ui/ui-shell.css` (range styling).
+
+- **Rule:** the live three.js camera and the OrbitControls target are the only
+  source of truth. `cameraStudio.js` is a read-only snapshot
+  (`{distancePct, heightPct, live, ready}`) recomputed from them; only the stage
+  writes it. It also owns the module-level `apiRef` that `App` passes to
+  `StudioCanvas` as `cameraApiRef`, and the null-safe commands
+  `setDistancePct` / `setHeightPct` (false when no stage is registered).
+- **Distance:** % of the frozen baseline distance `dist0` (slider 50-200, default
+  100). The mouse wheel is unrestricted; the slider pins at its ends and the
+  label shows the true number.
+- **Height:** tilt at constant distance (elevation only), piecewise so 0% is the
+  baseline elevation `elev0`; -100% = `min(-30deg, elev0)`, +100% =
+  `max(75deg, elev0)`, clamped to +/-89deg (widened to include `elev0` so 0% is
+  always the baseline). Known limit: on the Top preset (`elev0` ~ 84deg) the
+  "up" half is a silent no-op.
+- **Baseline:** `{baseId, dist0, elev0, offset}` frozen after each preset /
+  default / saved-view apply (measured after, since preset targets carry the
+  H_BIAS/V_BIAS offset), not recomputed on resize. `offset` is the target minus
+  the model centre; nothing reads it yet.
+- **Live vs Custom:** `App` state `viewLive` is true after any unguarded camera
+  change or slider move and false after a preset, saved Custom view, product
+  switch, session restore or reset. The stage guards its own moves with an
+  applying counter; sync is OrbitControls `onChange` -> publish (store notifies
+  only when a displayed value changed). The rail shows "Custom (unsaved)" while
+  live and highlights the Framing chips from the engine cards' `data-active`.
+  Save Custom View while live keeps the original baseline on the saved view
+  (`customView` gained optional `baseId`, `dist0`, `elev0`, `offset`).
+- **Session (not changed):** `studioSession.js` and the snapshot format are
+  untouched. A session saved during an unsaved custom view restores the last
+  preset until Slice B. Restore still clears `viewLive`.
+- **Not touched:** CAM-001, CAM-002, FOV, keyframes, Lock focus, distance limits.
+
+## Known Camera Bugs
+
+Deferred, not fixed by Phase 16A Slice A:
+
+- **CAM-001:** camera presets ignore a transformed model (they frame the model's
+  original bounds, not its current transform).
+- **CAM-002:** the Top preset's elevation reference is off: with the biased
+  target the camera sits ~84deg above the target, not 90deg. To be fixed after
+  Slice B.
+
 ## Current Studio Status
 
 | Module | Status | Note |
 |---|---|---|
 | Studio Canvas | Complete | r3f canvas with orbit, transform, capture, on-demand shadows and HDR/probe lighting (`components/StudioCanvas.jsx`). |
 | Asset Library | Complete | Registry-driven product/environment gallery plus GLB/HDR/EXR import manager (`ui/AssetLibrary.jsx`, `ui/ImportPanel.jsx`). |
-| Camera Studio | Partial | Presets and Save Custom View work; the rail's Distance, Height and Lock focus are now marked Reserved (still not wired; wiring is planned as the next engine-level feature). |
+| Camera Studio | Partial | Presets and Save Custom View work. Phase 16A Slice A (uncommitted): the rail's Distance and Height sliders are live and drive the real camera, with a "Custom (unsaved)" state. Lock focus on product is still a Reserved chip. See "Phase 16A Slice A" and "Known Camera Bugs". |
 | Material Studio | Complete | Live PBR editing, presets, undo/reset, persistence and session capture (`materials/`, `ui/MaterialsManager.jsx`). |
 | Render Studio | Partial | PNG capture/export with format chips works; no video/Reel/MP4 export. |
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
@@ -373,7 +421,7 @@ Status is judged from code reading, not from a fresh browser run in this update.
 
 ## Open Issues (Next Phase)
 
-1. Camera controls (Distance, Height, Lock Focus) are marked Reserved in the rail but still not wired; wiring is planned as the next engine-level feature (Camera Studio v0.16).
+1. Camera Studio: Distance and Height are live (Phase 16A Slice A, uncommitted). Lock focus on product is still Reserved (no behaviour). Next: Slice B (session capture of a live view), then the CAM-002 fix; see "Known Camera Bugs".
 2. Animation Studio not implemented.
 3. Reel/MP4 export not implemented.
 4. THE KOP branding renders clipped ("THE KOF") in every export. Believed to be in the model/texture, not in this React app's export code. UNVERIFIED at the source.
@@ -408,15 +456,16 @@ Status is judged from code reading, not from a fresh browser run in this update.
   `useProgress` sees, so `LoadingScreen` turns on for every environment switch.
   Same on the pre-HDR baseline. Whether it is visible to the eye: UNVERIFIED.
 - **Visual-only UI:** Learn Studio, Help and Settings (`ui/TopHeader.jsx`); the
-  rail header chips (`RAIL_CHIPS` in `ui/content.js`). The rail's Distance,
-  Height and Lock focus are now marked Reserved (still not wired; wiring is
-  planned as the next engine-level feature).
+  rail header chips (`RAIL_CHIPS` in `ui/content.js`). The rail's Lock focus on
+  product is a Reserved chip (Distance and Height became live in Phase 16A
+  Slice A).
 - **No auto-rotate and no animation code** (`StudioCanvas.jsx` states this;
   grep of `app/src` finds no animation mixer).
-- **Lint warning still present:** `react-hooks/exhaustive-deps` on
-  `product.frontAz` in `StudioCanvas.jsx` (line 436 at the time of writing).
-  `npx eslint src/components/StudioCanvas.jsx` reports 0 errors, 1 warning. See
-  "Known latent risk" above.
+- **Lint:** the `product.frontAz` `exhaustive-deps` warning in `StudioCanvas.jsx`
+  no longer appears: Phase 16A Slice A added `product.frontAz` to the
+  camera-request effect's dependencies while rewriting it (`npm run lint`: 0
+  errors, 0 warnings at that point). The "Known latent risk" note above is
+  therefore addressed.
 - **Software rendering in the automated tests.** The automated agent browser
   tests for 15A/15B (headless Chromium, SwiftShader) ran in software rendering.
   The owner's manual checks in Edge used the machine's normal browser graphics
@@ -447,7 +496,10 @@ boundaries UNVERIFIED against any release note).
   Export via `exportPng`).
 - **v0.15B** — 2026-09-19: `fb23ab1` (HDR lighting + probe fallback + Aviation
   Hangar HDR), `0bd3680` (Steel Factory HDR).
-- **Phase 15C (uncommitted at time of writing)** — rail Camera section: Distance,
-  Height and Lock focus on product replaced by inert Reserved chips ("Planned for
-  Camera Studio v0.16."); `VisualField` removed from `ui/InspectorRail.jsx`.
 - **Header crowding fix** — `1724d36` (after v0.15B; see Resolved).
+- **Phase 15C** — `a8a5ac9` ("Phase 15C: mark decorative Camera controls Reserved;
+  update HANDOFF"): rail Camera section's Distance, Height and Lock focus on
+  product became inert Reserved chips; `VisualField` removed from
+  `ui/InspectorRail.jsx`.
+- **Phase 16A Slice A (uncommitted at time of writing)** — Camera Studio Distance
+  and Height sliders, shared camera store, "Custom (unsaved)" state.

@@ -156,6 +156,7 @@ function CameraRow({
             <button
               key={p.id}
               title={`${p.name} shot`}
+              data-active={active ? "true" : "false"}
               onClick={() => onPreset(p.id)}
               style={{
                 fontFamily: "inherit",
@@ -190,6 +191,7 @@ function CameraRow({
           <button
             key="custom"
             data-testid="custom-view-card"
+            data-active={customActive ? "true" : "false"}
             title="Restore saved custom view"
             onClick={() => onPreset("custom")}
             style={{

@@ -137,3 +137,22 @@ export function computeCameraShot(fit, preset, frontAz, aspect, fovDeg) {
 
   return { position, target };
 }
+
+// Camera Studio (Phase 16A) — the frozen slider baseline, measured from the
+// camera and orbit target AFTER a view has been applied (preset targets are
+// biased by H_BIAS/V_BIAS, so it cannot be predicted from the preset alone).
+// Plain arrays in, plain numbers out. dist0 = |camera - target|, elev0 = the
+// camera's elevation above the target in radians, offset = target - model
+// center. baseId is the preset id the view came from (null = default framing).
+export function getBaseline(position, target, baseId, center) {
+  const vx = position[0] - target[0];
+  const vy = position[1] - target[1];
+  const vz = position[2] - target[2];
+  const dist0 = Math.hypot(vx, vy, vz);
+  return {
+    baseId: baseId ?? null,
+    dist0,
+    elev0: dist0 > 0 ? Math.asin(Math.max(-1, Math.min(1, vy / dist0))) : 0,
+    offset: [target[0] - center.x, target[1] - center.y, target[2] - center.z],
+  };
+}

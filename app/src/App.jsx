@@ -5,6 +5,7 @@ import StudioControls from "./components/StudioControls";
 import CapturePreview from "./components/CapturePreview";
 import LoadingScreen from "./components/LoadingScreen";
 import { registerEngine } from "./session/studioSession";
+import { apiRef as cameraStudioApiRef } from "./camera/cameraStudio";
 import { getProduct } from "./products/registry";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "./environments/registry";
 import { getLightingProfile } from "./lighting/profiles";
@@ -27,7 +28,11 @@ export default function App() {
   // localStorage, never on disk, gone on refresh. Cleared together with the
   // camera request when the product switches; environment swaps keep it.
   const [customView, setCustomView] = useState(null);
-  const cameraApiRef = useRef(null);
+  // Camera Studio (Phase 16A) — true from any unguarded camera change (orbit,
+  // wheel) or slider move until a preset, saved view, product switch, session
+  // restore or reset. It only decides whether a preset card counts as active;
+  // the camera is the truth.
+  const [viewLive, setViewLive] = useState(false);
   // Phase 15A (Studio Session) — StudioCanvas registers read/write/reset for
   // its live model transform here (same ref pattern as cameraApiRef).
   const transformApiRef = useRef(null);
@@ -68,10 +73,13 @@ export default function App() {
     setPrevProductId(productId);
     setCameraRequest({ id: null, seq: 0 });
     setCustomView(null);
+    setViewLive(false);
   }
 
-  const handleCameraPreset = (id) =>
+  const handleCameraPreset = (id) => {
+    setViewLive(false);
     setCameraRequest((prev) => ({ id, seq: prev.seq + 1 }));
+  };
 
   // Environment switch also loads that environment's lighting profile.
   const handleEnvironmentSelect = useCallback((id) => {
@@ -90,9 +98,10 @@ export default function App() {
   // Custom card reads as the active view immediately after saving. Saving
   // again simply overwrites the single slot.
   const handleSaveCustomView = useCallback(() => {
-    const api = cameraApiRef.current;
+    const api = cameraStudioApiRef.current;
     if (!api) return;
     setCustomView(api.readView());
+    setViewLive(false);
     setCameraRequest((prev) => ({ id: "custom", seq: prev.seq + 1 }));
   }, []);
 
@@ -146,12 +155,13 @@ export default function App() {
   const applyStageState = useCallback((snap, frame) => {
     const custom = snap.customView ?? null;
     setCustomView(custom);
+    setViewLive(false);
     const id = snap.cameraPresetId;
     if (id && (id !== "custom" || custom)) {
       setCameraRequest((prev) => ({ id, seq: prev.seq + 1 }));
     } else {
       setCameraRequest({ id: null, seq: 0 });
-      if (frame) cameraApiRef.current?.resetView?.();
+      if (frame) cameraStudioApiRef.current?.resetView?.();
     }
     transformApiRef.current?.write(snap.transform);
   }, []);
@@ -196,8 +206,9 @@ export default function App() {
           setLighting(getLightingProfile(DEFAULT_ENVIRONMENT_ID));
           setExportOpts(DEFAULT_EXPORT_OPTS);
           setCustomView(null);
+          setViewLive(false);
           setCameraRequest({ id: null, seq: 0 });
-          cameraApiRef.current?.resetView?.();
+          cameraStudioApiRef.current?.resetView?.();
           transformApiRef.current?.reset();
         },
       }),
@@ -220,16 +231,18 @@ export default function App() {
         cameraRequest={cameraRequest}
         captureRef={captureRef}
         customView={customView}
-        cameraApiRef={cameraApiRef}
+        cameraApiRef={cameraStudioApiRef}
         transformApiRef={transformApiRef}
         lighting={lighting}
+        viewLive={viewLive}
+        onViewLive={setViewLive}
       />
       <StudioControls
         environmentId={environment.id}
         onEnvironmentSelect={handleEnvironmentSelect}
         productId={product.id}
         onProductSelect={setProductId}
-        activePresetId={cameraRequest.id}
+        activePresetId={viewLive ? null : cameraRequest.id}
         onCameraPreset={handleCameraPreset}
         onCaptureShot={handleCaptureShot}
         hasCustomView={customView !== null}
