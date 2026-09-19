@@ -128,7 +128,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  min-width: 0;
+  flex: none; /* never squeezed: its nowrap text would spill onto the siblings */
   padding-left: 5px;
 }
 
@@ -179,11 +179,17 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 1 auto;
   min-width: 0;
   padding: 5px 12px 5px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--sos-line);
+}
+
+/* the name/sub wrapper must be allowed to shrink so the name can ellipsize */
+.sos-env > span:not(.sos-dot) {
+  min-width: 0;
 }
 
 .sos-dot {
@@ -196,6 +202,7 @@
 }
 
 .sos-env-name {
+  display: block;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--sos-text);
@@ -1209,13 +1216,16 @@ button.sos-pchip {
   }
 }
 
-@media (max-width: 1140px) {
-  .sos-shell {
-    --sos-side-w: 216px;
-    --sos-rail-w: 284px; /* flush with the engine panel's column */
+/* header crowding: the bar is only (viewport - side gutter) wide, so the brand
+   tag goes first, then the action labels collapse to icons so the project
+   name and environment pill keep room */
+@media (max-width: 1400px) {
+  .sos-brand-tag {
+    display: none;
   }
+}
 
-  /* header actions collapse to icons so the session controls fit */
+@media (max-width: 1320px) {
   .sos-btn-label {
     display: none;
   }
@@ -1225,8 +1235,14 @@ button.sos-pchip {
     width: 30px;
     justify-content: center;
   }
+}
 
-  .sos-brand-tag,
+@media (max-width: 1140px) {
+  .sos-shell {
+    --sos-side-w: 216px;
+    --sos-rail-w: 284px; /* flush with the engine panel's column */
+  }
+
   .sos-env-sub {
     display: none;
   }
