@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 15C, Phase 16A Slice A and Slice B, HEAD `a23e3d0`; Slice B is uncommitted)
+## Start here (updated through Phase 15C, Phase 16A Slice A and Slice B, CAM-002 fix; HEAD `3c05965`, the Slice B commit; the CAM-002 fix is uncommitted)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -395,7 +395,7 @@ Files: `camera/cameraStudio.js` (new), `camera/presets.js` (`getBaseline` only),
 - **Not touched in Slice A:** CAM-001, CAM-002, FOV, keyframes, Lock focus,
   distance limits.
 
-## Phase 16A Slice B — Lock focus and session capture of the camera (uncommitted at time of writing)
+## Phase 16A Slice B — Lock focus and session capture of the camera (commit `3c05965`)
 
 Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 `ui/InspectorRail.jsx`, `ui/ui-shell.css`. `session/studioSession.js` and
@@ -448,13 +448,12 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 
 ## Known Camera Bugs
 
-Deferred, not fixed by Phase 16A Slice A:
+Still open:
 
 - **CAM-001:** camera presets ignore a transformed model (they frame the model's
   original bounds, not its current transform).
-- **CAM-002:** the Top preset's elevation reference is off: with the biased
-  target the camera sits ~84deg above the target, not 90deg. To be fixed after
-  Slice B.
+
+Resolved: **CAM-002** (Top preset elevation), see "Resolved" below.
 
 ## Current Studio Status
 
@@ -462,7 +461,7 @@ Deferred, not fixed by Phase 16A Slice A:
 |---|---|---|
 | Studio Canvas | Complete | r3f canvas with orbit, transform, capture, on-demand shadows and HDR/probe lighting (`components/StudioCanvas.jsx`). |
 | Asset Library | Complete | Registry-driven product/environment gallery plus GLB/HDR/EXR import manager (`ui/AssetLibrary.jsx`, `ui/ImportPanel.jsx`). |
-| Camera Studio | Partial | Presets and Save Custom View work. Phase 16A Slice A (`a23e3d0`): the rail's Distance and Height sliders are live, with a "Custom (unsaved)" state. Phase 16A Slice B (uncommitted): Lock focus is a real toggle (ON by default; the orbit target follows the transformed model, right-drag pan is off while ON) and the live camera is saved in the session. See "Phase 16A Slice A/B" and "Known Camera Bugs". |
+| Camera Studio | Partial | Presets and Save Custom View work. Phase 16A Slice A (`a23e3d0`): the rail's Distance and Height sliders are live, with a "Custom (unsaved)" state. Phase 16A Slice B (`3c05965`): Lock focus is a real toggle (ON by default; the orbit target follows the transformed model, right-drag pan is off while ON) and the live camera is saved in the session. See "Phase 16A Slice A/B" and "Known Camera Bugs". |
 | Material Studio | Complete | Live PBR editing, presets, undo/reset, persistence and session capture (`materials/`, `ui/MaterialsManager.jsx`). |
 | Render Studio | Partial | PNG capture/export with format chips works; no video/Reel/MP4 export. |
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
@@ -473,7 +472,7 @@ Status is judged from code reading, not from a fresh browser run in this update.
 
 ## Open Issues (Next Phase)
 
-1. Camera Studio: Distance, Height (Slice A, `a23e3d0`) and Lock focus plus session capture of the live camera (Slice B, uncommitted) are live. Next: the CAM-002 fix; see "Known Camera Bugs".
+1. Camera Studio: Distance, Height (Slice A, `a23e3d0`) and Lock focus plus session capture of the live camera (Slice B, `3c05965`) are live; CAM-002 is fixed (uncommitted). Next: CAM-001; see "Known Camera Bugs".
 2. Animation Studio not implemented.
 3. Reel/MP4 export not implemented.
 4. THE KOP branding renders clipped ("THE KOF") in every export. Believed to be in the model/texture, not in this React app's export code. UNVERIFIED at the source.
@@ -486,6 +485,22 @@ Status is judged from code reading, not from a fresh browser run in this update.
   `ui/ui-shell.css`: the brand no longer shrinks, the environment pill shrinks
   with an ellipsis, the brand tag hides at <=1400px and button labels collapse
   to icons at <=1320px.
+
+- **CAM-002 (Top preset elevation), fix uncommitted at time of writing.** The
+  preset elevation was measured from the model centre, but the camera orbits the
+  biased target (H_BIAS/V_BIAS), so Top sat ~83.8deg above the target. Fix in
+  `camera/presets.js` `computeCameraShot` only: for `elev >= 90` the position is
+  now `target + distance * (0, sin 89deg, cos 89deg)`; the target and distance
+  are unchanged. Top is **89deg** from the actual target, not 90: at exactly 90
+  the spherical azimuth is undefined (OrbitControls could jump it) and the
+  Height mapping already clamps at +/-89deg, so 89 keeps baseline, sliders and
+  orbit consistent (Height "up" from Top stays a silent no-op). The tilt is
+  toward +z so screen-up is still -z. Front, Side, 3/4, Rear and Low Hero are
+  numerically unchanged (max diff 4e-15 on Coffee Bike and Cessna 172). Old
+  sessions that saved `cameraPresetId: "top"` without a live view (or with no
+  `engine.camera`) restore the corrected Top because it is recomputed; sessions
+  saved with a live view, and a Custom view saved from the old Top, restore
+  their exact saved numbers.
 
 ## Known Limitations
 
@@ -559,5 +574,9 @@ boundaries UNVERIFIED against any release note).
 - **Phase 16A Slice A** — `a23e3d0` ("Phase 16A Slice A: Camera store,
   Distance/Height sliders, Custom (unsaved) view"): Camera Studio Distance and
   Height sliders, shared camera store, "Custom (unsaved)" state.
-- **Phase 16A Slice B (uncommitted at time of writing)** — Lock focus toggle and
-  follow rule, frame-default request, `engine.camera` in the session.
+- **Phase 16A Slice B** — `3c05965` ("Phase 16A Slice B: Lock focus, follow rule,
+  camera saved in session"): Lock focus toggle and follow rule, frame-default
+  request, `engine.camera` in the session.
+- **CAM-002 fix (uncommitted at time of writing)** — Top preset elevation now
+  measured from the biased target (89deg); `app/src/camera/presets.js` and this
+  file only.

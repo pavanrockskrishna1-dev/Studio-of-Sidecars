@@ -6,7 +6,8 @@ import * as THREE from "three";
 //
 // az    = azimuth in degrees RELATIVE to the model's front (0 = front, 90 = right
 //         side, 180 = rear). The absolute camera azimuth is frontAz + az.
-// elev  = elevation in degrees above the model center (90 = straight down, <0 = from below)
+// elev  = elevation in degrees above the model center (<0 = from below). 90 = Top:
+//         see TOP_ELEV, measured from the biased target instead
 // fill  = fraction of the tighter view axis the subject should occupy
 // thumb = small schematic used to render the preset's visual card (camera apex
 //         and aim point in the thumbnail's 48x30 viewBox)
@@ -17,6 +18,12 @@ import * as THREE from "three";
 const FILL = 0.58;
 const H_BIAS = 0.08; // model center at ~42% of screen width
 const V_BIAS = 0.04; // model center at ~54% of screen height
+// A preset with elev >= 90 is a top view. Its elevation is measured from the
+// biased TARGET the camera orbits (not from the model center), and it stops
+// one degree short of the pole: at exactly 90 the spherical azimuth is
+// undefined (OrbitControls would jump it) and the Slice A/B Height mapping
+// clamps at +/-89 anyway, so 89 keeps baseline, sliders and orbit consistent.
+const TOP_ELEV = 89;
 
 export const CAMERA_PRESETS = [
   {
@@ -123,7 +130,7 @@ export function computeCameraShot(fit, preset, frontAz, aspect, fovDeg) {
   const distUp = extUp / Math.tan(vFov / 2);
   const distance = Math.max(distRight, distUp) / preset.fill + extFwd;
 
-  const position = fit.center.clone().addScaledVector(dir, distance);
+  let position = fit.center.clone().addScaledVector(dir, distance);
 
   // Nudge the aim point up-right so the subject sits left-of-center and a
   // touch below center — clear of the top-right controls, while the orbit
@@ -134,6 +141,14 @@ export function computeCameraShot(fit, preset, frontAz, aspect, fovDeg) {
     .clone()
     .addScaledVector(right, halfW * 2 * H_BIAS)
     .addScaledVector(up, halfH * 2 * V_BIAS);
+
+  if (preset.elev >= 90) {
+    // Tilt toward +z so screen-up stays -z, exactly as the straight-down basis.
+    const t = THREE.MathUtils.degToRad(TOP_ELEV);
+    position = target
+      .clone()
+      .add(new THREE.Vector3(0, Math.sin(t), Math.cos(t)).multiplyScalar(distance));
+  }
 
   return { position, target };
 }
