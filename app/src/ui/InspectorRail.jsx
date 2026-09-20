@@ -14,6 +14,7 @@ import {
 import * as materialStore from "../materials/store";
 import * as cameraStudio from "../camera/cameraStudio";
 import * as animationStore from "../animation/animationStore";
+import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
 
 /* ==========================================================================
@@ -314,7 +315,26 @@ export default function InspectorRail({
     animationStore.getSnapshot,
     animationStore.getSnapshot
   );
-  const animBusy = animState.mode === "previewing";
+  const animPreviewing = animState.mode === "previewing";
+  const animExporting = animState.mode === "exporting";
+  // Any non-idle mode disables the controls that would fight the animation.
+  const animBusy = animState.mode !== "idle";
+  // Whether this browser can export an MP4 at all (checked once, on mount;
+  // null = still checking). The result is ignored if the rail unmounted.
+  const [exportSupport, setExportSupport] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    checkExportSupport().then((r) => {
+      if (alive) setExportSupport(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const handleExportClick = useCallback(async () => {
+    const r = await exportReel();
+    if (r.ok) saveBlob(r.blob, r.filename);
+  }, []);
   const [activeCard, setActiveCard] = useState(null);
   useEffect(() => {
     const root = document.querySelector("[data-studio-controls]");
@@ -550,22 +570,52 @@ export default function InspectorRail({
                   type="button"
                   className="sos-btn sos-btn-ghost sos-rail-export"
                   data-testid="ui-anim-play"
-                  disabled={!animState.ready && !animBusy}
+                  disabled={animExporting || (!animState.ready && !animPreviewing)}
                   title={
-                    animBusy
+                    animPreviewing
                       ? "Stop the turntable preview"
                       : "Play the turntable preview: the model turns about its own centre (loops)"
                   }
-                  onClick={() => (animBusy ? animationStore.stop() : animationStore.play())}
+                  onClick={() => (animPreviewing ? animationStore.stop() : animationStore.play())}
                 >
-                  {animBusy ? "Stop" : "Play"}
+                  {animPreviewing ? "Stop" : "Play"}
                 </button>
                 <Hint>
-                  {animBusy
+                  {animPreviewing
                     ? "Playing. Click the model or press Esc to stop."
                     : animState.ready
                       ? "Spins the model about its own centre; the camera stays put. Loops."
                       : "Loading model"}
+                </Hint>
+                <span className="sos-label">Reel export</span>
+                <button
+                  type="button"
+                  className="sos-btn sos-btn-ghost sos-rail-export"
+                  data-testid="ui-anim-export"
+                  disabled={
+                    animExporting
+                      ? false
+                      : !(animState.ready && animState.mode === "idle" && exportSupport?.ok)
+                  }
+                  title={
+                    animExporting
+                      ? "Cancel the running export"
+                      : "Render the turntable at 1080x1920 and save it as an MP4"
+                  }
+                  onClick={animExporting ? animationStore.cancelExport : handleExportClick}
+                >
+                  {animExporting ? "Cancel export" : "Export Reel (MP4)"}
+                </button>
+                <Hint>
+                  {animExporting
+                    ? `Exporting ${animState.progress}% - keep this tab visible.`
+                    : exportSupport === null
+                      ? "Checking MP4 support..."
+                      : !exportSupport.ok
+                        ? `${exportSupport.reason} MP4 export needs a current Edge or Chrome on localhost or https.`
+                        : animState.message
+                          ? animState.message
+                          : "1080x1920 - 30 fps - silent. On this PC an export can take a while: keep this tab visible."}
                 </Hint>
               </>
             ) : (

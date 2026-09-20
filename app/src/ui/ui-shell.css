@@ -1852,3 +1852,11 @@ body[data-anim] [data-studio-controls] [data-testid="capture-shot"] {
   opacity: 0.5;
   cursor: default;
 }
+
+/* Phase 16B Slice D1 - during an MP4 export the visible canvas is resized to the
+   export size (1080x1920); the browser would show that buffer stretched over the
+   window. Hide it while body[data-anim="export"] is set. Only the canvas: the
+   Animate card stays interactive so Cancel works. */
+body[data-anim="export"] canvas {
+  visibility: hidden;
+}

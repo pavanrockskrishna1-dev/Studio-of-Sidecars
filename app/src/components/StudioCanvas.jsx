@@ -698,13 +698,14 @@ function StudioStage({
       beginExport,
       stepExport,
       endExport: () => finishExport({ restoreCamera: true, render: true }),
+      getCanvas: () => gl.domElement,
     });
     return () => {
       stopPreview({ restore: false });
       finishExport({ restoreCamera: false, render: false });
       unregister();
     };
-  }, [startPreview, stopPreview, beginExport, stepExport, finishExport]);
+  }, [startPreview, stopPreview, beginExport, stepExport, finishExport, gl.domElement]);
 
   // Move the camera to a view and freeze its slider baseline, measured AFTER
   // the move (the controls may adjust it, e.g. the Top preset's pole clamp).

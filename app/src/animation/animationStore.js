@@ -5,22 +5,33 @@
    commands in. The Inspector Rail reads the snapshot with useSyncExternalStore
    and calls play / stop / setDurationS, which go through the stage.
 
-   The snapshot is { mode, ready, durationS }; mode is "idle" | "previewing" |
-   "exporting" (Slice C: deterministic frame stepping, see beginExport below). It changes on Play, Stop, a
-   duration chip and when the stage registers or goes away, and NEVER per frame:
+   The snapshot is { mode, ready, durationS, progress, message }; mode is
+   "idle" | "previewing" | "exporting" (Slice C: deterministic frame stepping,
+   see beginExport below), progress is an integer 0-100 and message a string
+   (both written by the MP4 exporter through setStatus, throttled by it). It
+   changes on Play, Stop, a duration chip, an export status update and when the
+   stage registers or goes away, and NEVER per frame:
    the spin angle lives in a ref inside the stage and is applied straight to the
    pivot group. The store holds no camera and no model state.
 
-   The one DOM side effect: mode "previewing" or "exporting" sets
-   document.body.dataset.anim so the shell CSS can shield the controls that
-   would fight the animation. */
+   The one DOM side effect: document.body.dataset.anim is "1" while previewing
+   and "export" while exporting (removed on idle), so the shell CSS can shield
+   the controls that would fight the animation. */
 
 import { makeTurntable, validateAnimation } from "./path";
 
 export const DURATIONS = [4, 8, 12];
 const DEFAULT_DURATION_S = 8;
 
-let snapshot = Object.freeze({ mode: "idle", ready: false, durationS: DEFAULT_DURATION_S });
+let snapshot = Object.freeze({
+  mode: "idle",
+  ready: false,
+  durationS: DEFAULT_DURATION_S,
+  progress: 0,
+  message: "",
+});
+// Set by cancelExport(), read by the exporter between frames.
+let cancelRequested = false;
 const listeners = new Set();
 
 export function subscribe(fn) {
@@ -36,14 +47,17 @@ function replace(patch) {
   if (
     next.mode === snapshot.mode &&
     next.ready === snapshot.ready &&
-    next.durationS === snapshot.durationS
+    next.durationS === snapshot.durationS &&
+    next.progress === snapshot.progress &&
+    next.message === snapshot.message
   ) {
     return;
   }
   const modeChanged = next.mode !== snapshot.mode;
   snapshot = Object.freeze(next);
   if (modeChanged && typeof document !== "undefined") {
-    if (next.mode !== "idle") document.body.dataset.anim = "1";
+    if (next.mode === "previewing") document.body.dataset.anim = "1";
+    else if (next.mode === "exporting") document.body.dataset.anim = "export";
     else delete document.body.dataset.anim;
   }
   for (const fn of listeners) fn();
@@ -61,7 +75,7 @@ export function registerApi(api) {
   return () => {
     if (apiRef.current !== api) return;
     apiRef.current = null;
-    replace({ mode: "idle", ready: false });
+    replace({ mode: "idle", ready: false, progress: 0 });
   };
 }
 
@@ -109,8 +123,9 @@ export function beginExport(opts = {}) {
   if (!api || !api.beginExport || snapshot.mode !== "idle") return false;
   const anim = makeTurntable({ durationS: snapshot.durationS });
   if (!validateAnimation(anim).ok) return false;
+  cancelRequested = false;
   if (!api.beginExport({ ...opts, anim })) return false;
-  replace({ mode: "exporting" });
+  replace({ mode: "exporting", progress: 0, message: "" });
   return true;
 }
 
@@ -132,4 +147,37 @@ export function endExport() {
   const ended = api.endExport();
   replace({ mode: "idle" });
   return ended;
+}
+
+/* ---- Slice D1: MP4 export status ----------------------------------------- */
+
+// Written by the exporter only. Just these two fields; the exporter throttles
+// how often it calls this (about 4 times a second), never per frame.
+export function setStatus({ progress, message } = {}) {
+  const patch = {};
+  if (progress !== undefined) {
+    const p = Math.round(Number(progress));
+    patch.progress = Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 0;
+  }
+  if (message !== undefined) patch.message = String(message);
+  replace(patch);
+}
+
+// Asks a running export to stop at the next frame. True only while exporting.
+export function cancelExport() {
+  if (snapshot.mode !== "exporting") return false;
+  cancelRequested = true;
+  return true;
+}
+
+export const isCancelRequested = () => cancelRequested;
+
+export function clearCancel() {
+  cancelRequested = false;
+}
+
+// The stage's canvas (the one stepExport draws on), or null with no stage.
+export function getCanvas() {
+  const api = apiRef.current;
+  return api && api.getCanvas ? api.getCanvas() : null;
 }
