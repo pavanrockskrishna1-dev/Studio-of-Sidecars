@@ -12,7 +12,10 @@ import {
   reelPose,
   elevationForBaseAngle,
   panToAnchor,
+  platformReelPose,
 } from "../src/animation/path.js";
+import { backdropImageAspect } from "../src/capture/backdropCrop.js";
+import { ENVIRONMENTS } from "../src/environments/registry.js";
 import { fitDistance } from "../src/camera/presets.js";
 
 let failed = 0;
@@ -573,6 +576,154 @@ const deepSame = (a, b) => {
       " m, new target y = " + fmt(bike.target[1]) +
       "  (design report estimate: about 0.46 m up; a large disagreement means the report or the code is wrong, investigate before finishing)"
   );
+}
+
+/* ---- Slice E2: platformReelPose ---- */
+{
+  const DEGR = Math.PI / 180;
+  const nrm = (a) => { const l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; };
+  const crs = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dt = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const sb = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  // independent floor angle: camera height above the base over horizontal distance
+  const floorAngle = (pos, base) => Math.atan2(pos[1] - base[1], Math.hypot(pos[0] - base[0], pos[2] - base[2])) / DEGR;
+  // independent look-at + pinhole projection
+  const projectFrac = (pos, tgt, pt, fov, aspect) => {
+    const f = nrm(sb(tgt, pos));
+    const r = nrm(crs(f, [0, 1, 0]));
+    const u = crs(r, f);
+    const d = sb(pt, pos);
+    const cz = dt(d, f);
+    const tn = Math.tan((fov * DEGR) / 2);
+    return { x: (dt(d, r) / (cz * tn * aspect) + 1) / 2, y: (1 - dt(d, u) / (cz * tn)) / 2 };
+  };
+  const azOfOffset = (pos, tgt) => Math.atan2(pos[0] - tgt[0], pos[2] - tgt[2]) / DEGR;
+  const wrap180 = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
+  const inputFor = (o) => ({ floorAngleDeg: 8, anchor: { x: 0.499, y: 0.727 }, fovDeg: 45, aspect: 270 / 480, ...o });
+
+  const samples = [
+    ["Coffee Bike", inputFor({ livePosition: [1.3509, 0.1657, 3.8597], liveTarget: [0, 0.3052, 0], centre: [0, 0.3052, 0], basePoint: [0, 0, 0], distance: 4.0917 })],
+    ["Cessna", inputFor({ livePosition: [13.674, 0.6949, 38.89], liveTarget: [0.0625, 1.28, 0], centre: [0.0625, 1.28, 0], basePoint: [0.0625, 0, 0], distance: 41.207 })],
+  ];
+  for (const [label, inp] of samples) {
+    const out = platformReelPose(inp);
+    check("platformReelPose " + label + " (from the design report, SAMPLE): returns a pose", out !== null);
+    const fa = floorAngle(out.position, inp.basePoint);
+    check("platformReelPose " + label + ": floor angle measured independently equals 8 deg", near(fa, 8, 1e-6), "floor angle = " + fmt(fa) + " deg (returned " + fmt(out.floorAngleDeg) + ")");
+    const pr = projectFrac(out.position, out.target, inp.basePoint, inp.fovDeg, inp.aspect);
+    check("platformReelPose " + label + ": the base projects onto the anchor", near(pr.x, inp.anchor.x, 1e-9) && near(pr.y, inp.anchor.y, 1e-9), "(" + fmt(pr.x) + ", " + fmt(pr.y) + ")");
+    const dd = Math.hypot(...sb(out.position, out.target));
+    check("platformReelPose " + label + ": distance to the target unchanged", near(dd, inp.distance, 1e-9), "distance = " + fmt(dd));
+    const daz = wrap180(azOfOffset(out.position, out.target) - azOfOffset(inp.livePosition, inp.liveTarget));
+    check("platformReelPose " + label + ": azimuth equals the live azimuth", Math.abs(daz) <= 1e-9, "d azimuth = " + fmt(daz) + " deg");
+    console.log("INFO  " + label + " SAMPLE: elevationDeg = " + fmt(out.elevationDeg) + ", shift.up = " + fmt(out.shift.up) + " m, shift.right = " + fmt(out.shift.right) + " m, camera height above the floor = " + fmt(out.position[1] - inp.basePoint[1]) + " m");
+  }
+
+  // robustness: 200 deterministic pseudo-random valid inputs
+  {
+    let s = 20260921;
+    const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+    let nonNull = 0;
+    let bad = 0;
+    let worstFloor = 0;
+    let worstProj = 0;
+    const aspects = [9 / 16, 4 / 5, 1];
+    for (let i = 0; i < 200; i += 1) {
+      const dist = 2 + rnd() * 43;
+      const az = rnd() * 2 * Math.PI;
+      const el = (-10 + rnd() * 50) * DEGR;
+      const centre = [(rnd() - 0.5) * 4, 0.3 + rnd() * 2, (rnd() - 0.5) * 4];
+      const liveTarget = [centre[0] + (rnd() - 0.5) * 0.4, centre[1] + (rnd() - 0.5) * 0.4, centre[2] + (rnd() - 0.5) * 0.4];
+      const liveDist = 1.5 + rnd() * 20;
+      const livePosition = [
+        liveTarget[0] + liveDist * Math.cos(el) * Math.sin(az),
+        liveTarget[1] + liveDist * Math.sin(el),
+        liveTarget[2] + liveDist * Math.cos(el) * Math.cos(az),
+      ];
+      const basePoint = [centre[0], centre[1] - dist * (0.02 + rnd() * 0.08), centre[2]];
+      const inp = {
+        livePosition, liveTarget, centre, basePoint, distance: dist,
+        floorAngleDeg: 6 + rnd() * 4,
+        anchor: { x: 0.3 + rnd() * 0.4, y: 0.55 + rnd() * 0.3 },
+        fovDeg: 45,
+        aspect: aspects[i % 3],
+      };
+      const out = platformReelPose(inp);
+      if (out === null) continue;
+      nonNull += 1;
+      const fa = Math.abs(floorAngle(out.position, basePoint) - inp.floorAngleDeg);
+      const pr = projectFrac(out.position, out.target, basePoint, 45, inp.aspect);
+      const pe = Math.max(Math.abs(pr.x - inp.anchor.x), Math.abs(pr.y - inp.anchor.y));
+      worstFloor = Math.max(worstFloor, fa);
+      worstProj = Math.max(worstProj, pe);
+      if (fa > 1e-6 || pe > 1e-9) bad += 1;
+    }
+    check("platformReelPose robustness: at least 190 of 200 random inputs give a pose", nonNull >= 190, nonNull + " non-null of 200");
+    check("platformReelPose robustness: every non-null result meets the floor angle (1e-6 deg) and the projection (1e-9)", bad === 0, "worst floor angle error " + fmt(worstFloor) + " deg, worst projection error " + fmt(worstProj));
+  }
+
+  // determinism
+  {
+    const a = platformReelPose(samples[0][1]);
+    const b = platformReelPose(samples[0][1]);
+    check("platformReelPose is deterministic: the same input twice gives deep-equal output", JSON.stringify(a) === JSON.stringify(b));
+    check("platformReelPose returns fresh arrays (the input arrays are not reused)", a.position !== samples[0][1].livePosition && a.target !== samples[0][1].liveTarget);
+  }
+
+  // null cases
+  {
+    const base = samples[0][1];
+    const nul = (label, over) => check("platformReelPose returns null for " + label, platformReelPose({ ...base, ...over }) === null);
+    nul("floorAngleDeg 0", { floorAngleDeg: 0 });
+    nul("floorAngleDeg 89.5", { floorAngleDeg: 89.5 });
+    nul("floorAngleDeg NaN", { floorAngleDeg: NaN });
+    nul("a NaN in livePosition", { livePosition: [NaN, 0.1657, 3.8597] });
+    nul("a NaN in liveTarget", { liveTarget: [0, NaN, 0] });
+    nul("a NaN in centre", { centre: [0, 0.3052, NaN] });
+    nul("a NaN in basePoint", { basePoint: [0, NaN, 0] });
+    nul("distance 0", { distance: 0 });
+    nul("aspect 0", { aspect: 0 });
+    nul("anchor.x NaN", { anchor: { x: NaN, y: 0.727 } });
+    nul("a missing anchor", { anchor: null });
+    nul("fovDeg 0", { fovDeg: 0 });
+    check("platformReelPose returns null for a missing input object", platformReelPose(undefined) === null);
+    // no elevation in [-30, 60] can reach the angle: the base is 100 m above the camera range
+    const unreachable = platformReelPose({ ...base, basePoint: [0, 100, 0], floorAngleDeg: 3 });
+    check("platformReelPose returns null when no elevation in [-30, 60] reaches the angle (base 100 m above the camera)", unreachable === null);
+  }
+
+  // INFO: the approach NOT used (elevationForBaseAngle combined with panToAnchor)
+  {
+    const inp = samples[0][1];
+    const phi = elevationForBaseAngle(8, 0.3052, 4.0917);
+    const rp = reelPose(inp.livePosition, inp.liveTarget, inp.centre, inp.distance, phi);
+    const combined = panToAnchor(rp, inp.basePoint, inp.anchor, 45, inp.aspect);
+    console.log("INFO  combining elevationForBaseAngle (" + fmt(phi) + " deg) with panToAnchor gives a floor angle of " + fmt(floorAngle(combined.position, inp.basePoint)) + " deg; expected about 14 degrees (design estimate); this is why E2 solves it numerically");
+  }
+}
+
+/* ---- Slice E2: backdropImageAspect ---- */
+{
+  const tex = (over = {}) => ({ background: { isTexture: true, mapping: 300, rotation: 0, image: { width: 1264, height: 843 }, ...over } });
+  check("backdropImageAspect: reads width / height of a plain UV texture", near(backdropImageAspect(tex()), 1264 / 843, 1e-12), fmt(backdropImageAspect(tex())));
+  check("backdropImageAspect: falls back to naturalWidth / naturalHeight", near(backdropImageAspect(tex({ image: { naturalWidth: 1920, naturalHeight: 1281 } })), 1920 / 1281, 1e-12));
+  check("backdropImageAspect: null for no background, a non-texture, other mapping, rotation, no size, no scene",
+    [{ background: null }, { background: { r: 0 } }, tex({ isTexture: false }), tex({ mapping: 301 }), tex({ rotation: 0.3 }), tex({ image: null }), tex({ image: {} }), tex({ image: { width: 0, height: 0 } }), null, undefined]
+      .every((s) => backdropImageAspect(s) === null));
+}
+
+/* ---- Slice E2: registry data ---- */
+{
+  const withPlatform = ["propeller-pistons-loft", "aviation-heritage-hangar"];
+  for (const id of withPlatform) {
+    const e = ENVIRONMENTS.find((x) => x.id === id);
+    const pl = e && e.platform;
+    const okFields = pl && ["cx", "cy", "rx", "ry"].every((k) => typeof pl[k] === "number" && Number.isFinite(pl[k]) && pl[k] > 0 && pl[k] < 1);
+    check("registry " + id + ": platform fields are finite and inside (0, 1)", Boolean(okFields), pl ? JSON.stringify(pl) : "missing");
+    check("registry " + id + ": floorAngleDeg 8 and reelAnchorRy 0", e && e.floorAngleDeg === 8 && e.reelAnchorRy === 0, e ? "floorAngleDeg=" + e.floorAngleDeg + " reelAnchorRy=" + e.reelAnchorRy : "missing");
+  }
+  const others = ENVIRONMENTS.filter((e) => !withPlatform.includes(e.id));
+  check("registry: the other nine environments have no platform, floorAngleDeg or reelAnchorRy", others.length === 9 && others.every((e) => !("platform" in e) && !("floorAngleDeg" in e) && !("reelAnchorRy" in e)), others.length + " others checked");
 }
 
 /* ---- purity ---- */

@@ -261,3 +261,64 @@ export function panToAnchor(pose, basePoint, targetFrac, fovDeg, aspect) {
   const move = (p) => [p[0] + a * r[0] + b * u[0], p[1] + a * r[1] + b * u[1], p[2] + a * r[2] + b * u[2]];
   return { position: move(pose.position), target: move(pose.target), shift: { right: a, up: b } };
 }
+
+// Slice E2: the Reel pose that puts the model's base on the platform painted in
+// the photo. For a camera elevation phi the pose is reelPose(..., phi) followed
+// by panToAnchor (the pan raises or lowers the camera, so the floor angle has to
+// be solved AFTER the pan, not from elevationForBaseAngle, which would count the
+// raise twice). floorAngle(phi) is the elevation of the camera above the base
+// point as seen from the base; phi in [-30, 60] is found by bisection so that
+// floorAngle equals floorAngleDeg. All inputs are plain numbers and arrays:
+// { livePosition, liveTarget, centre, basePoint, distance, floorAngleDeg,
+//   anchor: { x, y }, fovDeg, aspect }. Returns { position, target,
+// elevationDeg, floorAngleDeg (achieved), shift } (fresh arrays) or null when
+// an input is invalid, a step returns null, or no elevation in range reaches the
+// angle.
+export function platformReelPose(input) {
+  const { livePosition, liveTarget, centre, basePoint, distance, floorAngleDeg, anchor, fovDeg, aspect } =
+    input || {};
+  if (!isNum(floorAngleDeg) || floorAngleDeg <= 0 || floorAngleDeg >= 89) return null;
+  if (!isVec3(basePoint)) return null;
+  const poseAt = (phi) => {
+    const rp = reelPose(livePosition, liveTarget, centre, distance, phi);
+    return rp ? panToAnchor(rp, basePoint, anchor, fovDeg, aspect) : null;
+  };
+  const angleOf = (p) =>
+    (Math.atan2(
+      p.position[1] - basePoint[1],
+      Math.hypot(p.position[0] - basePoint[0], p.position[2] - basePoint[2])
+    ) *
+      180) /
+    Math.PI;
+  const f = (phi) => {
+    const p = poseAt(phi);
+    return p ? angleOf(p) - floorAngleDeg : NaN;
+  };
+  let lo = -30;
+  let hi = 60;
+  let flo = f(lo);
+  const fhi0 = f(hi);
+  if (!Number.isFinite(flo) || !Number.isFinite(fhi0)) return null;
+  if (flo * fhi0 > 0) return null;
+  for (let i = 0; i < 80; i += 1) {
+    const mid = (lo + hi) / 2;
+    const fm = f(mid);
+    if (!Number.isFinite(fm)) return null;
+    if (flo * fm <= 0) {
+      hi = mid;
+    } else {
+      lo = mid;
+      flo = fm;
+    }
+  }
+  const phi = (lo + hi) / 2;
+  const p = poseAt(phi);
+  if (!p) return null;
+  return {
+    position: p.position,
+    target: p.target,
+    elevationDeg: phi,
+    floorAngleDeg: angleOf(p),
+    shift: p.shift,
+  };
+}

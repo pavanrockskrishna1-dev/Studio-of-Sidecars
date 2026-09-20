@@ -99,3 +99,17 @@ export function photoToFrame(platform, imageAspect, targetAspect, focus = { x: 0
     ry: ry / c.repeatY,
   };
 }
+
+// Slice E2: the real image aspect (width / height) of a plain UV-mapped texture
+// on scene.background, using the same conditions as withBackdropCrop; null in
+// every other case (no background, not a texture, other mapping, rotated, no
+// image size).
+export function backdropImageAspect(scene) {
+  const bg = scene ? scene.background : null;
+  if (!(bg && bg.isTexture === true && bg.mapping === UV_MAPPING && bg.rotation === 0 && bg.image)) {
+    return null;
+  }
+  const iw = bg.image.width || bg.image.naturalWidth;
+  const ih = bg.image.height || bg.image.naturalHeight;
+  return isPositive(iw) && isPositive(ih) ? iw / ih : null;
+}

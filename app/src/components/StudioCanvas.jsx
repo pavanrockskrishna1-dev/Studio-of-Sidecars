@@ -18,9 +18,14 @@ import { computeCameraShot, fitDistance, getBaseline, getCameraPreset } from "..
 import * as cameraStudio from "../camera/cameraStudio";
 import { DEFAULT_LIGHTING } from "../lighting/profiles";
 import { computeExportSize, REEL_EXPORT } from "../capture/exportOptions";
-import { reelPose, sampleAt } from "../animation/path";
+import { platformReelPose, reelPose, sampleAt } from "../animation/path";
 import * as animation from "../animation/animationStore";
-import { withBackdropCrop } from "../capture/backdropCrop";
+import {
+  backdropImageAspect,
+  needsCoverCrop,
+  photoToFrame,
+  withBackdropCrop,
+} from "../capture/backdropCrop";
 
 const FOV = 45;
 
@@ -356,6 +361,13 @@ function StudioStage({
   // target size, the turntable spec, the Distance % read at begin, and what
   // endExport restores. A ref, never React state.
   const exportRunRef = useRef(null);
+  // The current environment for stepExport (Slice E2). A ref, so switching the
+  // environment does not change stepExport's identity (that would re-register
+  // the animation api and end a running preview).
+  const environmentRef = useRef(environment);
+  useEffect(() => {
+    environmentRef.current = environment;
+  }, [environment]);
 
   const { scene: modelScene } = useGLTF(product.modelPath);
 
@@ -437,6 +449,20 @@ function StudioStage({
     group.updateMatrixWorld(true);
     return fit.center.clone().applyMatrix4(group.matrixWorld);
   }, [fit]);
+
+  // World position of the model's base centre (Slice E2): x and z of the live
+  // centre, y = the world y of the floor point under it (the transform applied
+  // to (centre.x, floorY, centre.z)).
+  const liveBase = useCallback(() => {
+    const c = liveCentre();
+    const group = transformRef.current;
+    const p = new THREE.Vector3(fit.center.x, fit.floorY, fit.center.z);
+    if (group) {
+      group.updateMatrixWorld(true);
+      p.applyMatrix4(group.matrixWorld);
+    }
+    return [c.x, p.y, c.z];
+  }, [fit, liveCentre]);
 
   // Every programmatic camera move runs inside this guard so the controls'
   // change event it causes is not mistaken for a user move.
@@ -654,12 +680,33 @@ function StudioStage({
         const aspect = run.width / run.height;
         const distance =
           fitDistance(fit.size, aspect, REEL_EXPORT.fovDeg, 0.7) * (run.pct / 100);
-        const pose = reelPose(
-          run.saved.position.toArray(),
-          run.saved.target.toArray(),
-          liveCentre().toArray(),
-          distance
-        );
+        const livePosition = run.saved.position.toArray();
+        const liveTarget = run.saved.target.toArray();
+        const centreArr = liveCentre().toArray();
+        // Slice E2: portrait / square frames on an environment with a painted
+        // platform put the model's base on it (the elevation is solved so the
+        // floor is seen at the photo's angle; the Height slider is ignored).
+        // Anything missing or invalid falls back to today's pose, silently.
+        let pose = null;
+        const env = environmentRef.current;
+        if (needsCoverCrop(aspect) && env && env.platform) {
+          const imageAspect = backdropImageAspect(scene);
+          const frame = imageAspect ? photoToFrame(env.platform, imageAspect, aspect) : null;
+          if (frame) {
+            pose = platformReelPose({
+              livePosition,
+              liveTarget,
+              centre: centreArr,
+              basePoint: liveBase(),
+              distance,
+              floorAngleDeg: env.floorAngleDeg ?? 8,
+              anchor: { x: frame.cx, y: frame.cy + (env.reelAnchorRy ?? 0) * frame.ry },
+              fovDeg: REEL_EXPORT.fovDeg,
+              aspect,
+            });
+          }
+        }
+        if (!pose) pose = reelPose(livePosition, liveTarget, centreArr, distance);
         if (!pose) throw new Error("Reel pose is not valid (distance " + distance + ")");
         setCameraProjection(camera, {
           aspect,
@@ -681,7 +728,7 @@ function StudioStage({
         return { ok: false, resized: false };
       }
     },
-    [gl, scene, camera, fit, liveCentre, moveGuarded, finishExport]
+    [gl, scene, camera, fit, liveCentre, liveBase, moveGuarded, finishExport]
   );
 
   // Any engine change that moves the camera or the model ends a running

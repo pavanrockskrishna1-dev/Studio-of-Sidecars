@@ -14,6 +14,16 @@ export const ENVIRONMENTS = [
     name: "Propeller & Pistons Loft",
     label: "Pistons Loft",
     file: "/environments/propeller-pistons-loft.jpg",
+    // Phase 16B Slice E2 - the round platform painted into the photo, for the
+    // Reel MP4 (model on the platform). ESTIMATES measured from the JPG (design
+    // report, plus or minus 3-4 px): fractions of the PHOTO, origin top-left,
+    // y down. floorAngleDeg is the photo's implied camera elevation (about 8,
+    // plus or minus 1.5). reelAnchorRy moves the model's base down by that many
+    // platform ry from the platform centre (0 = centre, 0.33 = about the front
+    // third). Environments without these fields keep today's Reel framing.
+    platform: { cx: 0.4996, cy: 0.7268, rx: 0.2282, ry: 0.0478 },
+    floorAngleDeg: 8,
+    reelAnchorRy: 0,
     mood: "hero environment · locked",
     hero: true,
   },
@@ -43,6 +53,10 @@ export const ENVIRONMENTS = [
     name: "Aviation Heritage Hangar",
     label: "Aviation Hangar",
     file: "/environments/aviation_heritage_hangar.jpg",
+    // Slice E2 platform data (estimates, same meaning as on the Pistons Loft).
+    platform: { cx: 0.4992, cy: 0.7264, rx: 0.2284, ry: 0.0472 },
+    floorAngleDeg: 8,
+    reelAnchorRy: 0,
     // Optional real equirect HDR that lights the model (image-based lighting);
     // the JPG above stays the visible backdrop. Entries without one use the
     // built-in RoomEnvironment probe.
