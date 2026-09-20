@@ -172,11 +172,20 @@ export function sampleAt(anim, t) {
 // any input is not 3 finite numbers, the live offset has no length, or the
 // distance is not a positive finite number. Elevation is clamped to +/-89
 // degrees like the rest of the path engine.
-export function reelPose(livePosition, liveTarget, centre, distance) {
+// Slice E1: the optional fifth argument elevationDeg replaces the live elevation
+// (still clamped to +/-89 degrees; the azimuth still comes from the live
+// offset). undefined or null keeps the behaviour above exactly; any other
+// non-finite value (NaN, Infinity, a string) gives null.
+export function reelPose(livePosition, liveTarget, centre, distance, elevationDeg) {
   if (!isVec3(livePosition) || !isVec3(liveTarget) || !isVec3(centre)) return null;
   if (!isNum(distance) || distance <= 0) return null;
-  const { r, theta, phi } = toSpherical(livePosition, liveTarget);
+  const override = elevationDeg !== undefined && elevationDeg !== null;
+  if (override && !isNum(elevationDeg)) return null;
+  const { r, theta, phi: livePhi } = toSpherical(livePosition, liveTarget);
   if (!Number.isFinite(r) || r <= 1e-9) return null;
+  const phi = override
+    ? Math.max(-PHI_LIMIT, Math.min(PHI_LIMIT, (elevationDeg * Math.PI) / 180))
+    : livePhi;
   const cp = Math.cos(phi);
   return {
     position: [
@@ -186,4 +195,69 @@ export function reelPose(livePosition, liveTarget, centre, distance) {
     ],
     target: [centre[0], centre[1], centre[2]],
   };
+}
+
+// Slice E1 (model on the platform) -------------------------------------------
+
+const RAD = Math.PI / 180;
+
+// The camera elevation phi (degrees above the target, clamped to +/-89) at
+// which the FLOOR is seen at elevation angle thetaDeg from the model's base
+// point, when the target sits heightAboveFloor above the floor point under it
+// and the camera is `distance` from the target:
+//   r * sin(theta - phi) = h * cos(theta)   ->   phi = theta - asin(h*cos(theta)/r)
+// null when thetaDeg is not in (0, 90), heightAboveFloor is not finite,
+// distance is not a positive finite number, or the ratio is outside [-1, 1].
+export function elevationForBaseAngle(thetaDeg, heightAboveFloor, distance) {
+  if (!isNum(thetaDeg) || thetaDeg <= 0 || thetaDeg >= 90) return null;
+  if (!isNum(heightAboveFloor)) return null;
+  if (!isNum(distance) || distance <= 0) return null;
+  const theta = thetaDeg * RAD;
+  const ratio = (heightAboveFloor * Math.cos(theta)) / distance;
+  if (!Number.isFinite(ratio) || Math.abs(ratio) > 1) return null;
+  const phiDeg = (theta - Math.asin(ratio)) / RAD;
+  return Math.max(-89, Math.min(89, phiDeg));
+}
+
+const vsub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const vdot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const vcross = (a, b) => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+const vlen = (a) => Math.hypot(a[0], a[1], a[2]);
+
+// Translates the camera and its target together, in the image plane, so that
+// basePoint (world) appears at targetFrac ({ x, y }: fractions of the frame,
+// x from the left, y from the TOP). Orientation and distance do not change.
+// pose = { position, target }. Returns { position, target, shift: { right, up } }
+// (new arrays) or null for non-finite input, position equal to target, a view
+// straight up or down, fovDeg outside (0, 180), aspect <= 0, or a base point
+// that is not in front of the camera.
+export function panToAnchor(pose, basePoint, targetFrac, fovDeg, aspect) {
+  if (!pose || !isVec3(pose.position) || !isVec3(pose.target) || !isVec3(basePoint)) return null;
+  if (!targetFrac || !isNum(targetFrac.x) || !isNum(targetFrac.y)) return null;
+  if (!isNum(fovDeg) || fovDeg <= 0 || fovDeg >= 180) return null;
+  if (!isNum(aspect) || aspect <= 0) return null;
+  const fl = vlen(vsub(pose.target, pose.position));
+  if (!(fl > 0)) return null;
+  const f = vsub(pose.target, pose.position).map((v) => v / fl);
+  const rc = vcross(f, [0, 1, 0]);
+  const rl = vlen(rc);
+  if (rl < 1e-9) return null;
+  const r = rc.map((v) => v / rl);
+  const u = vcross(r, f);
+  const d = vsub(basePoint, pose.position);
+  const cx = vdot(d, r);
+  const cy = vdot(d, u);
+  const cz = vdot(d, f);
+  if (!(cz > 1e-9)) return null;
+  const tn = Math.tan((fovDeg * RAD) / 2);
+  const tx = 2 * targetFrac.x - 1;
+  const ty = 1 - 2 * targetFrac.y;
+  const a = cx - tx * cz * tn * aspect;
+  const b = cy - ty * cz * tn;
+  const move = (p) => [p[0] + a * r[0] + b * u[0], p[1] + a * r[1] + b * u[1], p[2] + a * r[2] + b * u[2]];
+  return { position: move(pose.position), target: move(pose.target), shift: { right: a, up: b } };
 }

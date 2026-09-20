@@ -10,6 +10,8 @@ import {
   frameTimes,
   sampleAt,
   reelPose,
+  elevationForBaseAngle,
+  panToAnchor,
 } from "../src/animation/path.js";
 import { fitDistance } from "../src/camera/presets.js";
 
@@ -274,6 +276,304 @@ check("reelPose returns fresh arrays", (() => {
   const p = reelPose(okPos, okTgt, c, 5);
   return p.target !== c && p.position !== okPos;
 })());
+
+/* ---- Slice E1: reelPose regression against the HEAD version ---- */
+// VERBATIM from git HEAD (git show HEAD:app/src/animation/path.js): the helpers
+// and reelPose exactly as they were before the optional elevationDeg argument.
+const HEAD_PHI_LIMIT = (89 * Math.PI) / 180;
+const headIsNum = (n) => typeof n === "number" && Number.isFinite(n);
+const headIsVec3 = (a) => Array.isArray(a) && a.length === 3 && a.every(headIsNum);
+function headToSpherical(position, target) {
+  const x = position[0] - target[0];
+  const y = position[1] - target[1];
+  const z = position[2] - target[2];
+  const r = Math.hypot(x, y, z);
+  const phi = r > 0 ? Math.asin(Math.max(-1, Math.min(1, y / r))) : 0;
+  return {
+    r,
+    theta: Math.atan2(x, z),
+    phi: Math.max(-HEAD_PHI_LIMIT, Math.min(HEAD_PHI_LIMIT, phi)),
+  };
+}
+function headReelPose(livePosition, liveTarget, centre, distance) {
+  if (!headIsVec3(livePosition) || !headIsVec3(liveTarget) || !headIsVec3(centre)) return null;
+  if (!headIsNum(distance) || distance <= 0) return null;
+  const { r, theta, phi } = headToSpherical(livePosition, liveTarget);
+  if (!Number.isFinite(r) || r <= 1e-9) return null;
+  const cp = Math.cos(phi);
+  return {
+    position: [
+      centre[0] + distance * cp * Math.sin(theta),
+      centre[1] + distance * Math.sin(phi),
+      centre[2] + distance * cp * Math.cos(theta),
+    ],
+    target: [centre[0], centre[1], centre[2]],
+  };
+}
+// end of the verbatim copy
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const deepSame = (a, b) => {
+  if (a === null || b === null) return a === b;
+  if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((v, i) => deepSame(v, b[i]));
+  if (typeof a === "object") {
+    const ka = Object.keys(a);
+    return typeof b === "object" && ka.length === Object.keys(b).length && ka.every((k) => deepSame(a[k], b[k]));
+  }
+  return Object.is(a, b);
+};
+{
+  const rnd = mulberry32(20260920);
+  const rv = (s) => [(rnd() - 0.5) * s, (rnd() - 0.5) * s, (rnd() - 0.5) * s];
+  let n = 0;
+  let same4 = 0;
+  let sameU = 0;
+  let sameN = 0;
+  let nulls = 0;
+  for (let i = 0; i < 2000; i += 1) {
+    const live = rv(20);
+    const tgt = rv(10);
+    const cen = rv(6);
+    let dist = rnd() * 50 + 0.01;
+    let args = [live, tgt, cen, dist];
+    const kind = i % 20;
+    if (kind === 0) args = [live.slice(), live.slice(), cen, dist]; // zero-length offset
+    else if (kind === 1) args = [live, tgt, cen, 0];
+    else if (kind === 2) args = [live, tgt, cen, -dist];
+    else if (kind === 3) args = [[NaN, 1, 2], tgt, cen, dist];
+    else if (kind === 4) args = [live, tgt, [0, Infinity, 0], dist];
+    else if (kind === 5) args = [live, tgt, cen, NaN];
+    else if (kind === 6) args = [[1, 2], tgt, cen, dist];
+    else if (kind === 7) args = [[0, 100, 0.0001], [0, 0, 0], cen, dist]; // near the pole
+    const old = headReelPose(...args);
+    if (old === null) nulls += 1;
+    n += 1;
+    if (deepSame(old, reelPose(...args))) same4 += 1;
+    if (deepSame(old, reelPose(...args, undefined))) sameU += 1;
+    if (deepSame(old, reelPose(...args, null))) sameN += 1;
+  }
+  check("reelPose regression vs HEAD (4 args): identical output for all inputs", same4 === n, "compared " + (n) + " inputs (" + (nulls) + " of them null cases), identical " + (same4));
+  check("reelPose regression vs HEAD (5th argument undefined): identical", sameU === n, "identical " + (sameU) + " of " + (n));
+  check("reelPose regression vs HEAD (5th argument null): identical", sameN === n, "identical " + (sameN) + " of " + (n));
+}
+
+/* ---- Slice E1: reelPose elevationDeg ---- */
+{
+  const live = [3, 1, 4];
+  const tgt = [0.2, 0.5, 0.1];
+  const cen = [1, 0.6, -2];
+  const dist = 7;
+  const azOf = (pos, t) => Math.atan2(pos[0] - t[0], pos[2] - t[2]);
+  const liveAz = azOf(live, tgt);
+  const p = reelPose(live, tgt, cen, dist, 3.76);
+  const elev = (Math.asin((p.position[1] - p.target[1]) / Math.hypot(...p.position.map((v, i) => v - p.target[i]))) * 180) / Math.PI;
+  const d = Math.hypot(...p.position.map((v, i) => v - p.target[i]));
+  check("reelPose elevationDeg 3.76: elevation equals 3.76", near(elev, 3.76, 1e-9), "elevation=" + (fmt(elev)));
+  check("reelPose elevationDeg 3.76: azimuth equals the live azimuth", near(azOf(p.position, p.target), liveAz, 1e-9), "dAz=" + (fmt(azOf(p.position, p.target) - liveAz)));
+  check("reelPose elevationDeg 3.76: distance and target unchanged", near(d, dist, 1e-9) && p.target.every((v, i) => v === cen[i]), "dist=" + (fmt(d)));
+  const el = (q) => (Math.asin((q.position[1] - q.target[1]) / Math.hypot(...q.position.map((v, i) => v - q.target[i]))) * 180) / Math.PI;
+  check("reelPose elevationDeg 89.9 comes back at 89", near(el(reelPose(live, tgt, cen, dist, 89.9)), 89, 1e-9), fmt(el(reelPose(live, tgt, cen, dist, 89.9))));
+  check("reelPose elevationDeg -95 comes back at -89", near(el(reelPose(live, tgt, cen, dist, -95)), -89, 1e-9), fmt(el(reelPose(live, tgt, cen, dist, -95))));
+  check("reelPose elevationDeg 0 gives a horizontal camera", near(el(reelPose(live, tgt, cen, dist, 0)), 0, 1e-12));
+  check("reelPose elevationDeg NaN returns null", reelPose(live, tgt, cen, dist, NaN) === null);
+  check("reelPose elevationDeg Infinity returns null", reelPose(live, tgt, cen, dist, Infinity) === null);
+  check("reelPose elevationDeg -Infinity returns null", reelPose(live, tgt, cen, dist, -Infinity) === null);
+  check('reelPose elevationDeg "3" returns null', reelPose(live, tgt, cen, dist, "3") === null);
+  check("reelPose elevationDeg on a null case is still null", reelPose(live, live.slice(), cen, dist, 3.76) === null);
+  const fresh = reelPose(live, tgt, cen, dist, 3.76);
+  check("reelPose elevationDeg returns fresh arrays", fresh.target !== cen && fresh.position !== live);
+}
+
+/* ---- Slice E1: elevationForBaseAngle ---- */
+{
+  let count = 0;
+  let worst = 0;
+  let bad = 0;
+  for (let theta = 3; theta <= 15; theta += 1) {
+    for (const h of [0.05, 0.3052, 0.6, 1.28, 2, 3, -0.4]) {
+      for (const r of [2, 4.0917, 8, 20, 41.207, 60]) {
+        const phi = elevationForBaseAngle(theta, h, r);
+        if (phi === null) continue;
+        // independent recomputation: the camera sits r from the target at
+        // elevation phi; the floor point is h below the target
+        const ph = (phi * Math.PI) / 180;
+        const seen = (Math.atan2(r * Math.sin(ph) + h, r * Math.cos(ph)) * 180) / Math.PI;
+        const err = Math.abs(seen - theta);
+        worst = Math.max(worst, err);
+        count += 1;
+        if (err > 1e-7) bad += 1;
+      }
+    }
+  }
+  check("elevationForBaseAngle round trip: floor is seen at theta", count >= 200 && bad === 0, (count) + " combinations, worst error " + (fmt(worst)) + " deg");
+  const bike = elevationForBaseAngle(8, 0.3052, 4.0917);
+  const cessna = elevationForBaseAngle(8, 1.28, 41.207);
+  check("elevationForBaseAngle Coffee Bike sample (theta 8, h 0.3052, d 4.0917) = 3.76 deg (from the design report, SAMPLE inputs)", near(bike, 3.76, 0.01), "got " + (fmt(bike)));
+  check("elevationForBaseAngle Cessna sample (theta 8, h 1.28, d 41.207) = 6.24 deg (from the design report, SAMPLE inputs)", near(cessna, 6.24, 0.01), "got " + (fmt(cessna)));
+  const nulls = [
+    ["theta 0", [0, 1, 5]], ["theta 90", [90, 1, 5]], ["theta NaN", [NaN, 1, 5]], ["theta negative", [-5, 1, 5]],
+    ["theta 91", [91, 1, 5]], ["theta Infinity", [Infinity, 1, 5]],
+    ["distance 0", [8, 1, 0]], ["distance negative", [8, 1, -3]], ["distance NaN", [8, 1, NaN]], ["distance Infinity", [8, 1, Infinity]],
+    ["heightAboveFloor NaN", [8, NaN, 5]], ["heightAboveFloor Infinity", [8, Infinity, 5]],
+    ["|h cos(theta) / r| > 1 (h 10, r 1, theta 8)", [8, 10, 1]], ["|h cos(theta) / r| > 1 (h -10, r 1)", [8, -10, 1]],
+  ];
+  for (const [label, a] of nulls) check("elevationForBaseAngle returns null for " + (label), elevationForBaseAngle(...a) === null);
+  const hi = elevationForBaseAngle(89.5, -1, 1);
+  check("elevationForBaseAngle is clamped to +89 deg (theta 89.5, h -1, r 1: formula gives 90)", hi === 89, "got " + (fmt(hi)));
+  const lo = elevationForBaseAngle(1, 1 / Math.cos((1 * Math.PI) / 180), 1);
+  check("elevationForBaseAngle at the -89 boundary (ratio exactly 1) is -89", near(lo, -89, 1e-9), "got " + (fmt(lo)));
+  check("elevationForBaseAngle with h 0 returns theta", near(elevationForBaseAngle(8, 0, 10), 8, 1e-12));
+  check("elevationForBaseAngle accepts a negative height (target below the floor point)", elevationForBaseAngle(8, -0.5, 10) !== null);
+}
+
+/* ---- Slice E1: panToAnchor ---- */
+{
+  const DEGR = Math.PI / 180;
+  // independent look-at + pinhole projection (does not call panToAnchor)
+  const nrm = (a) => { const l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; };
+  const crs = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dt = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const sb = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const basisOf = (pos, tgt) => {
+    const f = nrm(sb(tgt, pos));
+    const r = nrm(crs(f, [0, 1, 0]));
+    const u = crs(r, f);
+    return { f, r, u };
+  };
+  const projectFrac = (pos, tgt, pt, fov, aspect) => {
+    const { f, r, u } = basisOf(pos, tgt);
+    const d = sb(pt, pos);
+    const cz = dt(d, f);
+    const tn = Math.tan((fov * DEGR) / 2);
+    const ndcX = dt(d, r) / (cz * tn * aspect);
+    const ndcY = dt(d, u) / (cz * tn);
+    return { x: (ndcX + 1) / 2, y: (1 - ndcY) / 2, cz };
+  };
+  const poseAt = (azDeg, elDeg, dist, target) => {
+    const az = azDeg * DEGR;
+    const el = elDeg * DEGR;
+    return {
+      position: [
+        target[0] + dist * Math.cos(el) * Math.sin(az),
+        target[1] + dist * Math.sin(el),
+        target[2] + dist * Math.cos(el) * Math.cos(az),
+      ],
+      target: target.slice(),
+    };
+  };
+  const poses = [
+    poseAt(0, 5, 4, [0.3, 0.6, -0.2]),
+    poseAt(60, -10, 2.5, [1, 2, 3]),
+    poseAt(135, 20, 12, [-2, 0.4, 1]),
+    poseAt(200, 35, 30, [5, 1.3, -4]),
+    poseAt(270, 60, 45, [0, 0, 0]),
+    poseAt(320, 8, 8, [-1.5, 3, 0.5]),
+    poseAt(-40, 2, 41, [0.06, 1.28, 0]),
+  ];
+  const fracs = [{ x: 0.5, y: 0.727 }, { x: 0.499, y: 0.727 }, { x: 0.3, y: 0.4 }];
+  const aspects = [9 / 16, 4 / 5, 1];
+  const fov = 45;
+  let combos = 0;
+  let worstProj = 0;
+  let worstFwd = 0;
+  let worstDist = 0;
+  let worstMove = 0;
+  let allFresh = true;
+  let anyNull = false;
+  for (const pose of poses) {
+    const b0 = basisOf(pose.position, pose.target);
+    // a base point in front of the camera, a little off the target
+    const base = [pose.target[0] + 0.15, pose.target[1] - 0.4, pose.target[2] - 0.1];
+    for (const fr of fracs) {
+      for (const aspect of aspects) {
+        const before = JSON.stringify(pose);
+        const out = panToAnchor(pose, base, fr, fov, aspect);
+        if (!out) { anyNull = true; continue; }
+        combos += 1;
+        const got = projectFrac(out.position, out.target, base, fov, aspect);
+        worstProj = Math.max(worstProj, Math.abs(got.x - fr.x), Math.abs(got.y - fr.y));
+        const b1 = basisOf(out.position, out.target);
+        worstFwd = Math.max(worstFwd, ...b1.f.map((v, i) => Math.abs(v - b0.f[i])));
+        const d0 = Math.hypot(...sb(pose.position, pose.target));
+        const d1 = Math.hypot(...sb(out.position, out.target));
+        worstDist = Math.max(worstDist, Math.abs(d1 - d0));
+        const dPos = sb(out.position, pose.position);
+        worstMove = Math.max(worstMove, ...dPos.map((v, i) => Math.abs(v - (out.shift.right * b0.r[i] + out.shift.up * b0.u[i]))));
+        if (out.position === pose.position || out.target === pose.target || JSON.stringify(pose) !== before) allFresh = false;
+      }
+    }
+  }
+  check("panToAnchor: no null for valid inputs", !anyNull);
+  check("panToAnchor: the base projects onto the requested frame fraction", combos >= 6 * 3 * 3 && worstProj <= 1e-9, (combos) + " pose/fraction/aspect combinations, worst error " + (fmt(worstProj)));
+  check("panToAnchor: forward vector unchanged", worstFwd <= 1e-12, "worst " + (fmt(worstFwd)));
+  check("panToAnchor: camera-to-target distance unchanged", worstDist <= 1e-9, "worst " + (fmt(worstDist)));
+  check("panToAnchor: position shift equals shift.right * r + shift.up * u", worstMove <= 1e-12, "worst " + (fmt(worstMove)));
+  check("panToAnchor: returned arrays are fresh and the input is not mutated", allFresh);
+  {
+    // a base that already projects exactly onto the fraction: shift is 0
+    const pose = poses[2];
+    const fr = { x: 0.499, y: 0.727 };
+    const aspect = 9 / 16;
+    const { f, r, u } = basisOf(pose.position, pose.target);
+    const cz = 9;
+    const tn = Math.tan((fov * DEGR) / 2);
+    const tx = 2 * fr.x - 1;
+    const ty = 1 - 2 * fr.y;
+    const base = [0, 1, 2].map((i) => pose.position[i] + f[i] * cz + r[i] * tx * cz * tn * aspect + u[i] * ty * cz * tn);
+    const out = panToAnchor(pose, base, fr, fov, aspect);
+    check("panToAnchor: a base already on the target fraction gives a zero shift", Math.abs(out.shift.right) <= 1e-9 && Math.abs(out.shift.up) <= 1e-9, "right=" + (fmt(out.shift.right)) + " up=" + (fmt(out.shift.up)));
+  }
+  {
+    const pose = poses[0];
+    const fr = { x: 0.5, y: 0.7 };
+    const ok = [1, 1, 1];
+    const behind = pose.position.map((v, i) => v + (pose.position[i] - pose.target[i]));
+    const { f } = basisOf(pose.position, pose.target);
+    const onPlane = [0, 1, 2].map((i) => pose.position[i] + basisOf(pose.position, pose.target).r[i] * 2);
+    void f;
+    check("panToAnchor: null for a base behind the camera", panToAnchor(pose, behind, fr, fov, 0.5625) === null);
+    check("panToAnchor: null for a base exactly on the camera plane (cz = 0)", panToAnchor(pose, onPlane, fr, fov, 0.5625) === null);
+    const down = { position: [0, 5, 0], target: [0, 0, 0] };
+    check("panToAnchor: null when looking straight down", panToAnchor(down, [0, 0, 0], fr, fov, 0.5625) === null);
+    const up = { position: [0, -5, 0], target: [0, 0, 0] };
+    check("panToAnchor: null when looking straight up", panToAnchor(up, [0, 0.5, 0], fr, fov, 0.5625) === null);
+    check("panToAnchor: null when position equals target", panToAnchor({ position: [1, 1, 1], target: [1, 1, 1] }, ok, fr, fov, 0.5625) === null);
+    check("panToAnchor: null for NaN in the position", panToAnchor({ position: [NaN, 1, 2], target: pose.target }, ok, fr, fov, 0.5625) === null);
+    check("panToAnchor: null for NaN in the target", panToAnchor({ position: pose.position, target: [0, NaN, 0] }, ok, fr, fov, 0.5625) === null);
+    check("panToAnchor: null for NaN in the base point", panToAnchor(pose, [0, NaN, 0], fr, fov, 0.5625) === null);
+    check("panToAnchor: null for targetFrac.x NaN", panToAnchor(pose, ok, { x: NaN, y: 0.5 }, fov, 0.5625) === null);
+    check("panToAnchor: null for targetFrac.y Infinity", panToAnchor(pose, ok, { x: 0.5, y: Infinity }, fov, 0.5625) === null);
+    check("panToAnchor: null for a missing targetFrac", panToAnchor(pose, ok, null, fov, 0.5625) === null);
+    check("panToAnchor: null for fov 0", panToAnchor(pose, ok, fr, 0, 0.5625) === null);
+    check("panToAnchor: null for fov 180", panToAnchor(pose, ok, fr, 180, 0.5625) === null);
+    check("panToAnchor: null for fov NaN", panToAnchor(pose, ok, fr, NaN, 0.5625) === null);
+    check("panToAnchor: null for aspect 0", panToAnchor(pose, ok, fr, fov, 0) === null);
+    check("panToAnchor: null for a negative aspect", panToAnchor(pose, ok, fr, fov, -0.5) === null);
+    check("panToAnchor: null for a missing pose", panToAnchor(null, ok, fr, fov, 0.5625) === null);
+  }
+  // INFO (not pass/fail): the design-report Coffee Bike sample
+  const bike = panToAnchor(
+    { position: [1.3509, 0.1657, 3.8597], target: [0, 0.3052, 0] },
+    [0, 0, 0],
+    { x: 0.499, y: 0.727 },
+    45,
+    270 / 480
+  );
+  console.log(
+    "INFO  Coffee Bike design-report sample: shift.up = " + fmt(bike.shift.up) + " m, shift.right = " + fmt(bike.shift.right) +
+      " m, new target y = " + fmt(bike.target[1]) +
+      "  (design report estimate: about 0.46 m up; a large disagreement means the report or the code is wrong, investigate before finishing)"
+  );
+}
 
 /* ---- purity ---- */
 const src = readFileSync(new URL("../src/animation/path.js", import.meta.url), "utf8");

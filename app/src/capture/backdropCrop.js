@@ -78,3 +78,24 @@ export function withBackdropCrop(scene, targetAspect, render) {
     bg.updateMatrix();
   }
 }
+
+// Slice E1: where a platform painted in the photo lands in a cover-cropped
+// frame. platform = { cx, cy, rx, ry } as fractions of the PHOTO (cx and rx of
+// its width, cy and ry of its height, origin top-left, y down). Returns the
+// same four numbers as fractions of the FRAME (width and height, origin
+// top-left), or null when coverCrop is null or a field is not finite. It does
+// not apply the aspect <= 1 rule; that stays with the caller. Texture v runs
+// bottom-up, so the window's top edge in the photo is 1 - repeatY - offsetY.
+export function photoToFrame(platform, imageAspect, targetAspect, focus = { x: 0.5, y: 0.5 }) {
+  const c = coverCrop(imageAspect, targetAspect, focus);
+  if (!c || !platform) return null;
+  const { cx, cy, rx, ry } = platform;
+  if (![cx, cy, rx, ry].every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+  const topOffset = 1 - c.repeatY - c.offsetY;
+  return {
+    cx: (cx - c.offsetX) / c.repeatX,
+    cy: (cy - topOffset) / c.repeatY,
+    rx: rx / c.repeatX,
+    ry: ry / c.repeatY,
+  };
+}
