@@ -43,3 +43,16 @@ export function exportFilename(opts = {}, transparent = false) {
   if (transparent || opts.background === "transparent") parts.push("transparent");
   return `${parts.join("-")}.png`;
 }
+
+// Phase 16B (Slice E3) - the three fixed social presets whose PNG uses exactly
+// the framing the Reel MP4 uses (StudioCanvas.jsx computeReelView). "current",
+// the landscape presets and unknown ids keep the live camera framing.
+export const REEL_FRAMED_PRESETS = ["story-reel", "ig-portrait", "ig-square"];
+
+// True only for one of those ids with a finite, positive, portrait-or-square
+// size (width / height <= 1).
+export function usesReelFraming(presetId, width, height) {
+  if (!REEL_FRAMED_PRESETS.includes(presetId)) return false;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
+  return width / height <= 1 + 1e-9;
+}

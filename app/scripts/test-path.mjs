@@ -16,6 +16,7 @@ import {
 } from "../src/animation/path.js";
 import { backdropImageAspect } from "../src/capture/backdropCrop.js";
 import { ENVIRONMENTS } from "../src/environments/registry.js";
+import { EXPORT_PRESETS, REEL_FRAMED_PRESETS, usesReelFraming } from "../src/capture/exportOptions.js";
 import { fitDistance } from "../src/camera/presets.js";
 
 let failed = 0;
@@ -724,6 +725,29 @@ const deepSame = (a, b) => {
   }
   const others = ENVIRONMENTS.filter((e) => !withPlatform.includes(e.id));
   check("registry: the other nine environments have no platform, floorAngleDeg or reelAnchorRy", others.length === 9 && others.every((e) => !("platform" in e) && !("floorAngleDeg" in e) && !("reelAnchorRy" in e)), others.length + " others checked");
+}
+
+/* ---- Slice E3: usesReelFraming ---- */
+{
+  const yes = [
+    ["story-reel", 1080, 1920], ["ig-portrait", 1080, 1350], ["ig-square", 1080, 1080],
+    ["story-reel", 2160, 3840], ["ig-portrait", 2160, 2700], ["ig-square", 2160, 2160],
+    ["story-reel", 4320, 7680], ["ig-portrait", 4320, 5400], ["ig-square", 4320, 4320],
+  ];
+  for (const [id, w, h] of yes) {
+    check("usesReelFraming true for " + id + " " + w + "x" + h, usesReelFraming(id, w, h) === true);
+  }
+  const no = [
+    ["current", 900, 1400], ["web-hero", 1600, 900], ["thumbnail", 1280, 720], ["story-reel", 1920, 1080],
+    ["nope", 1080, 1920], [undefined, 1080, 1920], [null, 1080, 1920], ["story-reel", NaN, 1920], ["story-reel", 0, 1920],
+    ["story-reel", 1080, 0], ["story-reel", -1080, 1920], ["story-reel", 1080, Infinity], ["ig-square", 1081, 1080],
+  ];
+  for (const [id, w, h] of no) {
+    check("usesReelFraming false for (" + String(id) + ", " + w + ", " + h + ")", usesReelFraming(id, w, h) === false);
+  }
+  check("every id in REEL_FRAMED_PRESETS exists in EXPORT_PRESETS", REEL_FRAMED_PRESETS.every((id) => EXPORT_PRESETS.some((p) => p.id === id)), JSON.stringify(REEL_FRAMED_PRESETS));
+  check("REEL_FRAMED_PRESETS does not contain current, web-hero or thumbnail", ["current", "web-hero", "thumbnail"].every((id) => !REEL_FRAMED_PRESETS.includes(id)));
+  check("every REEL_FRAMED_PRESETS preset has its own portrait or square size in EXPORT_PRESETS", REEL_FRAMED_PRESETS.every((id) => { const p = EXPORT_PRESETS.find((x) => x.id === id); return usesReelFraming(id, p.width, p.height); }));
 }
 
 /* ---- purity ---- */

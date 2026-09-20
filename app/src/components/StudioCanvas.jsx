@@ -17,7 +17,7 @@ import SelectionInspector from "./SelectionInspector";
 import { computeCameraShot, fitDistance, getBaseline, getCameraPreset } from "../camera/presets";
 import * as cameraStudio from "../camera/cameraStudio";
 import { DEFAULT_LIGHTING } from "../lighting/profiles";
-import { computeExportSize, REEL_EXPORT } from "../capture/exportOptions";
+import { computeExportSize, REEL_EXPORT, usesReelFraming } from "../capture/exportOptions";
 import { platformReelPose, reelPose, sampleAt } from "../animation/path";
 import * as animation from "../animation/animationStore";
 import {
@@ -149,7 +149,7 @@ function renderExportFrame(gl, scene, camera, width, height, transparent) {
   };
 }
 
-function CaptureBridge({ captureRef }) {
+function CaptureBridge({ captureRef, reelViewRef }) {
   const { gl, scene, camera } = useThree();
   useEffect(() => {
     if (!captureRef) return undefined;
@@ -159,14 +159,28 @@ function CaptureBridge({ captureRef }) {
         gl.domElement.height,
         opts
       );
-      const restore = renderExportFrame(
-        gl,
-        scene,
-        camera,
-        width,
-        height,
-        opts.background === "transparent"
-      );
+      // Slice E3: the three fixed social presets are framed exactly like the
+      // Reel MP4. The stage puts the camera on the Reel pose (and returns the
+      // function that puts it back) before the render below; anything else, and
+      // any failure to compute the pose, runs today's code untouched.
+      const restorePose =
+        usesReelFraming(opts.presetId, width, height) && reelViewRef && reelViewRef.current
+          ? reelViewRef.current.applyPngPose(width, height)
+          : null;
+      let restore;
+      try {
+        restore = renderExportFrame(
+          gl,
+          scene,
+          camera,
+          width,
+          height,
+          opts.background === "transparent"
+        );
+      } catch (err) {
+        if (restorePose) restorePose();
+        throw err;
+      }
       return new Promise((resolve, reject) => {
         gl.domElement.toBlob(
           (blob) => {
@@ -179,12 +193,16 @@ function CaptureBridge({ captureRef }) {
           },
           "image/png"
         );
+        // toBlob has copied the bitmap at call time (HTML spec), so the camera
+        // goes back in this SAME synchronous task: the live frame loop can never
+        // draw the export pose to the visible canvas.
+        if (restorePose) restorePose();
       });
     };
     return () => {
       captureRef.current = null;
     };
-  }, [captureRef, gl, scene, camera]);
+  }, [captureRef, reelViewRef, gl, scene, camera]);
   return null;
 }
 
@@ -333,6 +351,7 @@ function StudioStage({
   onViewLive,
   focusLock,
   onLockChange,
+  reelViewRef,
 }) {
   const { scene, camera, gl, setFrameloop, get } = useThree();
   const controlsRef = useRef(null);
@@ -365,6 +384,9 @@ function StudioStage({
   // environment does not change stepExport's identity (that would re-register
   // the animation api and end a running preview).
   const environmentRef = useRef(environment);
+  // True only inside the synchronous window in which a portrait PNG export has the
+  // camera on the Reel pose (Slice E3); publish() is skipped meanwhile.
+  const pngPoseRef = useRef(false);
   useEffect(() => {
     environmentRef.current = environment;
   }, [environment]);
@@ -426,7 +448,7 @@ function StudioStage({
   const publish = useCallback(() => {
     // An export moves the camera to the Reel pose every step; the sliders and
     // the store must not follow it (nothing is published until endExport).
-    if (exportRunRef.current) return;
+    if (exportRunRef.current || pngPoseRef.current) return;
     const controls = controlsRef.current;
     const baseline = baselineRef.current;
     if (!controls || !baseline) return;
@@ -649,6 +671,96 @@ function StudioStage({
     [gl, camera, finishExport, setFrameloop, setOverlaysHidden]
   );
 
+  // The Reel framing (Slice E3: shared by stepExport and the portrait PNG export).
+  // Portrait / square frames on an environment with a painted platform put the
+  // model's base on it (the elevation is solved so the floor is seen at the
+  // photo's angle; the Height slider is ignored); anything else, or any missing
+  // or invalid input, gives the plain reelPose (centre target, live azimuth and
+  // elevation). distance = fitDistance x Distance % / 100. Returns
+  // { position, target, far } (fresh arrays) or null.
+  const computeReelView = useCallback(
+    ({ width, height, livePosition, liveTarget, pct }) => {
+      const aspect = width / height;
+      const distance = fitDistance(fit.size, aspect, REEL_EXPORT.fovDeg, 0.7) * (pct / 100);
+      const centreArr = liveCentre().toArray();
+      let pose = null;
+      const env = environmentRef.current;
+      if (needsCoverCrop(aspect) && env && env.platform) {
+        const imageAspect = backdropImageAspect(scene);
+        const frame = imageAspect ? photoToFrame(env.platform, imageAspect, aspect) : null;
+        if (frame) {
+          pose = platformReelPose({
+            livePosition,
+            liveTarget,
+            centre: centreArr,
+            basePoint: liveBase(),
+            distance,
+            floorAngleDeg: env.floorAngleDeg ?? 8,
+            anchor: { x: frame.cx, y: frame.cy + (env.reelAnchorRy ?? 0) * frame.ry },
+            fovDeg: REEL_EXPORT.fovDeg,
+            aspect,
+          });
+        }
+      }
+      if (!pose) pose = reelPose(livePosition, liveTarget, centreArr, distance);
+      if (!pose) return null;
+      return {
+        position: pose.position,
+        target: pose.target,
+        far: Math.max(camera.far, distance * 4 + 10),
+      };
+    },
+    [fit, liveCentre, liveBase, scene, camera]
+  );
+
+  // Portrait PNG export (Slice E3): puts the camera on the Reel pose, inside
+  // moveGuarded, and returns the function that puts the camera, the controls
+  // target and camera.far back exactly. null (today's behaviour) when there is no
+  // controls object, an export or preview is running, or no pose can be computed.
+  // The caller renders and calls toBlob, then restores, all in one synchronous
+  // task; publish() is skipped meanwhile so the rail never sees the export pose.
+  const applyReelPngPose = useCallback(
+    (width, height) => {
+      const controls = controlsRef.current;
+      if (!controls || exportRunRef.current || animRunRef.current) return null;
+      const savedPosition = camera.position.clone();
+      const savedTarget = controls.target.clone();
+      const savedFar = camera.far;
+      const view = computeReelView({
+        width,
+        height,
+        livePosition: savedPosition.toArray(),
+        liveTarget: savedTarget.toArray(),
+        pct: cameraStudio.getSnapshot().distancePct,
+      });
+      if (!view) return null;
+      pngPoseRef.current = true;
+      setCameraProjection(camera, { far: view.far });
+      moveGuarded(() => {
+        camera.position.fromArray(view.position);
+        controls.target.fromArray(view.target);
+      });
+      return () => {
+        moveGuarded(() => {
+          camera.position.copy(savedPosition);
+          controls.target.copy(savedTarget);
+        });
+        setCameraProjection(camera, { far: savedFar });
+        pngPoseRef.current = false;
+      };
+    },
+    [camera, computeReelView, moveGuarded]
+  );
+
+  useEffect(() => {
+    if (!reelViewRef) return undefined;
+    const api = { applyPngPose: applyReelPngPose };
+    reelViewRef.current = api;
+    return () => {
+      if (reelViewRef.current === api) reelViewRef.current = null;
+    };
+  }, [reelViewRef, applyReelPngPose]);
+
   // Renders the frame at animation time t and returns { ok, resized }. The
   // Reel pose is recomputed every step from the CURRENT model state, from the
   // camera and target captured at begin, so every frame frames the same way.
@@ -678,43 +790,20 @@ function StudioStage({
           return { ok: false, resized: true };
         }
         const aspect = run.width / run.height;
-        const distance =
-          fitDistance(fit.size, aspect, REEL_EXPORT.fovDeg, 0.7) * (run.pct / 100);
-        const livePosition = run.saved.position.toArray();
-        const liveTarget = run.saved.target.toArray();
-        const centreArr = liveCentre().toArray();
-        // Slice E2: portrait / square frames on an environment with a painted
-        // platform put the model's base on it (the elevation is solved so the
-        // floor is seen at the photo's angle; the Height slider is ignored).
-        // Anything missing or invalid falls back to today's pose, silently.
-        let pose = null;
-        const env = environmentRef.current;
-        if (needsCoverCrop(aspect) && env && env.platform) {
-          const imageAspect = backdropImageAspect(scene);
-          const frame = imageAspect ? photoToFrame(env.platform, imageAspect, aspect) : null;
-          if (frame) {
-            pose = platformReelPose({
-              livePosition,
-              liveTarget,
-              centre: centreArr,
-              basePoint: liveBase(),
-              distance,
-              floorAngleDeg: env.floorAngleDeg ?? 8,
-              anchor: { x: frame.cx, y: frame.cy + (env.reelAnchorRy ?? 0) * frame.ry },
-              fovDeg: REEL_EXPORT.fovDeg,
-              aspect,
-            });
-          }
-        }
-        if (!pose) pose = reelPose(livePosition, liveTarget, centreArr, distance);
-        if (!pose) throw new Error("Reel pose is not valid (distance " + distance + ")");
-        setCameraProjection(camera, {
-          aspect,
-          far: Math.max(camera.far, distance * 4 + 10),
+        // The Reel framing (Slice E2 platform pose, or the plain reelPose),
+        // shared with the portrait PNG export through computeReelView.
+        const view = computeReelView({
+          width: run.width,
+          height: run.height,
+          livePosition: run.saved.position.toArray(),
+          liveTarget: run.saved.target.toArray(),
+          pct: run.pct,
         });
+        if (!view) throw new Error("Reel pose is not valid");
+        setCameraProjection(camera, { aspect, far: view.far });
         moveGuarded(() => {
-          camera.position.fromArray(pose.position);
-          controls.target.fromArray(pose.target);
+          camera.position.fromArray(view.position);
+          controls.target.fromArray(view.target);
         });
         pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
         invalidateShadowMap(gl);
@@ -728,7 +817,7 @@ function StudioStage({
         return { ok: false, resized: false };
       }
     },
-    [gl, scene, camera, fit, liveCentre, liveBase, moveGuarded, finishExport]
+    [gl, scene, camera, computeReelView, moveGuarded, finishExport]
   );
 
   // Any engine change that moves the camera or the model ends a running
@@ -1305,6 +1394,8 @@ export default function StudioCanvas({
   focusLock = true,
   onLockChange = null,
 }) {
+  // The stage's portrait-PNG pose function for CaptureBridge (Slice E3).
+  const reelViewRef = useRef(null);
   const [selection, setSelection] = useState(null);
   const [transform, setTransform] = useState({ ...DEFAULT_TRANSFORM });
   const [selectionProductId, setSelectionProductId] = useState(product.id);
@@ -1403,9 +1494,10 @@ export default function StudioCanvas({
             onViewLive={onViewLive}
             focusLock={focusLock}
             onLockChange={onLockChange}
+            reelViewRef={reelViewRef}
           />
         </Suspense>
-        <CaptureBridge captureRef={captureRef} />
+        <CaptureBridge captureRef={captureRef} reelViewRef={reelViewRef} />
       </Canvas>
       {selection && (
         <SelectionInspector
