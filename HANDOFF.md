@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 15C, Phase 16A Slice A and Slice B, CAM-002 fix; HEAD `3c05965`, the Slice B commit; the CAM-002 fix is uncommitted)
+## Start here (updated through Phase 16B Slice C2; HEAD `1e6077a`, the Slice C2 commit; all work through Phase 16B Slice C2 is committed)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -17,11 +17,12 @@
   1. Architecture (engine / shell / bridges / session / materials store)
   2. Phase 15A
   3. Phase 15B (HDR lighting)
-  4. Current Studio Status table
-  5. Open Issues (Next Phase)
-  6. Known Limitations
-  7. Project rules
-  8. Git Checkpoints changelog
+  4. Phase 16A / 16B (Camera Studio; Animation Studio and Reels)
+  5. Current Studio Status table
+  6. Open Issues (Next Phase)
+  7. Known Limitations
+  8. Project rules
+  9. Git Checkpoints changelog
   - Older React notes: Mission 13C and Watchers Bootstrap (kept as written).
 
 ---
@@ -446,6 +447,176 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 - **Not touched:** CAM-001, CAM-002, FOV changes, keyframes/animation, distance
   limits, preset data.
 
+## Phase 16B - Animation Studio and Reels (Slices A, B, C, D1, C2)
+
+### What exists now
+
+- **Animate section in the Inspector Rail** (`ui/InspectorRail.jsx`, last section):
+  a Turntable preset, duration chips 4 s / 8 s / 12 s (default 8 s), Play / Stop,
+  and "Export Reel (MP4)" (`data-testid="ui-anim-export"`, becomes "Cancel export"
+  while exporting).
+- **The Turntable spins the MODEL** about its own vertical axis (a pivot group
+  turning about the model centre); the camera stays fixed. One turn per
+  duration, linear, loops.
+- **Reel output:** 1080x1920, 30 fps, silent H.264 MP4, constant frame rate,
+  moov before mdat (fast start), 10 Mbps (`BITRATE` in `exporter.js`), a key
+  frame every 1 s (`keyFrameInterval: 1` in `mp4.js`). Frames = duration x 30,
+  frame times t_i = i / 30, no duplicate end frame (frame N would equal frame 0).
+  File name `sidecar-reel-<w>x<h>-<fps>fps.mp4`.
+- **Reel framing** (`reelPose` in `path.js`, applied by `stepExport`): the live
+  camera's azimuth and elevation are kept, the target moves to the model's live
+  centre, and the distance is `fitDistance(fit.size, 9/16, 45, 0.7)` times the
+  Distance slider % read once at begin.
+- **Preview:** Play spins the model on the live canvas; a click on the canvas or
+  Esc stops it. While a preview or export runs, `body[data-anim]` is set ("1" or
+  "export") and a CSS shield in `ui/ui-shell.css` dims the controls that would
+  fight it. During an export the visible canvas is hidden
+  (`body[data-anim="export"] canvas`) because its buffer is resized to the
+  export size.
+
+### Commits
+
+| Slice | Commit | What |
+|---|---|---|
+| A | `c99fd69` | Path engine (`animation/path.js`), `fitDistance`, `scripts/test-path.mjs` |
+| B | `f25d884` | Live Turntable preview, Animate rail section, `animationStore.js`, body shield |
+| C | `c936232` | Deterministic frame stepping (`beginExport` / `stepExport` / `endExport`), Reel framing (`reelPose`, `REEL_EXPORT`) |
+| D1 | `0b7c2ce` | MP4 Reel export (mediabunny), `exporter.js`, `mp4.js`, `scripts/inspect-mp4.mjs`, Export button |
+| C2 | `1e6077a` | Backdrop cover-crop for portrait and square exports, `capture/backdropCrop.js`, `scripts/test-backdrop.mjs` |
+
+### Files and what each does
+
+- `animation/path.js` - pure math, plain numbers and arrays only (no React, no
+  three.js, no DOM): `makeTurntable`, `sampleAt`, `frameCount` / `frameTimes`,
+  `reelPose`, `validateAnimation`, `makeMove` (camera keys between two views; not
+  used by any UI yet).
+- `animation/animationStore.js` - module singleton (same pattern as
+  `camera/cameraStudio.js`). Snapshot `{ mode, ready, durationS, progress, message }`
+  with `mode` "idle" | "previewing" | "exporting"; the stage registers the api
+  (`play`, `stop`, `beginExport`, `stepExport`, `endExport`, `getCanvas`) with
+  `registerApi`. Also `setDurationS`, `setStatus`, `cancelExport`. Its only DOM
+  side effect is `document.body.dataset.anim`.
+- `animation/exporter.js` - `exportReel` (the frame loop: step, capture, encode,
+  finish), `checkExportSupport`, `saveBlob`. Plain JS, no React.
+- `animation/mp4.js` - the ONLY file that imports `mediabunny`, through a dynamic
+  `import()`. `preloadMp4`, `canEncode`, `createMp4Writer` (`addFrame` is not
+  async so the `VideoFrame` is built in the caller's task).
+- `capture/backdropCrop.js` - pure, no imports. `withBackdropCrop(scene, aspect,
+  render)` temporarily sets the background texture's repeat / offset to a
+  centred "cover" fit while an export frame with aspect <= 1 is rendered, then
+  restores them in the same synchronous call.
+- `components/StudioCanvas.jsx` additions - the turntable pivot group;
+  `startPreview` / `stopPreview` and the preview `useFrame`; `beginExport`,
+  `stepExport`, `endExport` (`finishExport`); `endAnimations` backstops (camera
+  request, transform change, slider / Lock commands end a preview or abort an
+  export); `getCanvas` in the registered api; `withBackdropCrop` around the
+  export renders in `renderExportFrame` and `stepExport` only.
+- `camera/presets.js` `fitDistance` - the inline fit formula as a pure function
+  (`spinSafe` currently changes nothing: the footprint diagonal is already the
+  horizontal extent).
+- `capture/exportOptions.js` `REEL_EXPORT` - `{ width: 1080, height: 1920, fps: 30, fovDeg: 45 }`.
+- `scripts/test-path.mjs`, `scripts/test-backdrop.mjs`, `scripts/inspect-mp4.mjs`
+  (MP4 box inspector, no dependencies).
+
+### Rules that must not be broken
+
+- The live three.js camera and the OrbitControls target are the only camera
+  source of truth; animation code keeps no camera state.
+- Every camera write goes through `moveGuarded`. Export never calls `onViewLive`
+  and never changes Lock, the baseline, the Distance / Height % or the
+  "Custom (unsaved)" tag (`publish` is skipped while exporting).
+- No per-frame React state and no store notification per frame; the spin angle
+  lives in a ref. The exporter throttles status updates to about 4 per second.
+- A frame is only valid to read (`VideoFrame`, `drawImage`, `toBlob`) in the same
+  synchronous task as `stepExport`; the drawing buffer is not preserved.
+- The export renders on the visible canvas, not a render target, so tone mapping
+  and colour stay identical to the on-screen and PNG output (three only tone-maps
+  when rendering to the canvas).
+- On a product switch the old camera is never restored onto the new model.
+- `renderExportFrame` and the PNG path keep their behaviour; only the backdrop
+  crop wrapper was added.
+- The loop yields with a MessageChannel, not timers or `requestAnimationFrame`.
+
+### How to verify
+
+From `app`:
+
+- `node scripts/test-path.mjs` - 71 PASS lines and `ALL CHECKS PASSED` (counted
+  when this section was written).
+- `node scripts/test-backdrop.mjs` - 66 PASS lines and `ALL CHECKS PASSED` (counted).
+- `npm run lint` - no output, exit 0 at the last slice.
+- `npm run build` - succeeds; mediabunny is its own chunk (a separate `src-*.js`
+  file, about 687 kB at the last build; observed in build output, not asserted
+  by the repo).
+- `node scripts/inspect-mp4.mjs <file.mp4> --frames N --width W --height H` -
+  `ALL CHECKS PASSED` (for a 4 s Reel: `--frames 120 --width 1080 --height 1920`).
+
+### Dependency
+
+`mediabunny` at the exact version in `app/package.json` (`1.58.1`), licence
+MPL-2.0 (`package-lock.json`). It packs the H.264 frames from WebCodecs into an
+MP4. It loads only when an export starts and builds into its own chunk. Its two
+type-only dependencies (`@types/dom-webcodecs`, `@types/dom-mediacapture-transform`)
+are in the lock file.
+
+### Decisions taken by the owner
+
+- The Turntable spins the model; the camera stays fixed.
+- Reel = 1080x1920 at 30 fps only for now; silent MP4 (no audio).
+- The Cessna is accepted small in 9:16.
+- mediabunny approved as the one new dependency.
+- The backdrop cover-crop applies to BOTH PNG and Reel exports for aspects <= 1
+  (portrait and square: Story/Reel 9:16, 4:5, 1:1). Landscape exports and the
+  on-screen view are unchanged.
+
+### Known limitations and open items
+
+- The model floats above the platform painted into the Pistons Loft photo:
+  it is centred on the frame, the platform is lower in the photo. A
+  per-environment vertical offset is needed and is not built. (Seen in
+  270x480 probe frames; not tuned.)
+- `propeller-pistons-loft.jpg` is 1264x843 (read from the file). A 9:16 crop of
+  it is about 474 px wide, upscaled about 2.28x to 1080, so the backdrop is
+  soft; sharper source photos would be needed.
+- The other 10 environment JPGs were not measured and not checked with the crop
+  (untested).
+- Instagram acceptance of the MP4 is untested. The stream the encoder wrote in
+  the probe runs was H.264 High level 5.0 (`avc1.640032`), while
+  `checkExportSupport` tests `avc1.640028` (`canEncode` in `mp4.js`); the level was
+  observed in probe output and is not asserted anywhere in the repo (unverified).
+- 8 s and 12 s Reels were not tested at full size and would use more memory
+  (untested).
+- The Reel distance ignores any scale applied with the transform tool
+  (`fit.size` is measured at mount) (untested with a scaled model).
+- Session Restore / Reset while a preview plays is untested (the backstops exist
+  in code).
+- Keyboard activation of header or engine-panel buttons during a preview can
+  still fire; the CSS shield only blocks the mouse.
+- No in-app video preview window yet (planned Slice D2, not built); the file is
+  downloaded and played outside the app. The downloaded file path through
+  `saveBlob` was not exercised end to end in a browser (untested).
+- The on-screen 3D view goes blank during an export, by design.
+- Export time slows several-fold when free RAM is low on the 4 GB PC. In the last
+  measurement (headless Edge, real Intel HD 5500, about 190 MB free) a 4 s
+  1080x1920 Reel took about 6 s; a 270x480 export took 18 s when only about
+  76 MB was free. These are probe measurements, not reproducible from the repo
+  (unverified).
+- Headed Edge behaviour (window occlusion, background tabs, download prompts) is
+  untested.
+- CAM-001 is still deferred (see "Known Camera Bugs"). Audio and the Blender
+  track are deferred.
+
+### Next slices (proposed, not started)
+
+- Per-environment model-on-platform offset, starting with Pistons Loft, then
+  Aviation Hangar.
+- Slice D2: an in-app video preview window.
+- Slice E: camera moves (`makeMove`) and saving an animation in the session
+  (optional `engine.animation` field, no version bump).
+
+Tooling reminders (Playwright / SwiftShader versus the real GPU, Project rules)
+are in "Known Limitations" and "Project rules" below.
+
 ## Known Camera Bugs
 
 Still open:
@@ -463,18 +634,18 @@ Resolved: **CAM-002** (Top preset elevation), see "Resolved" below.
 | Asset Library | Complete | Registry-driven product/environment gallery plus GLB/HDR/EXR import manager (`ui/AssetLibrary.jsx`, `ui/ImportPanel.jsx`). |
 | Camera Studio | Partial | Presets and Save Custom View work. Phase 16A Slice A (`a23e3d0`): the rail's Distance and Height sliders are live, with a "Custom (unsaved)" state. Phase 16A Slice B (`3c05965`): Lock focus is a real toggle (ON by default; the orbit target follows the transformed model, right-drag pan is off while ON) and the live camera is saved in the session. See "Phase 16A Slice A/B" and "Known Camera Bugs". |
 | Material Studio | Complete | Live PBR editing, presets, undo/reset, persistence and session capture (`materials/`, `ui/MaterialsManager.jsx`). |
-| Render Studio | Partial | PNG capture/export with format chips works; no video/Reel/MP4 export. |
+| Render Studio | Partial | PNG capture/export with format chips works. Phase 16B (`0b7c2ce`): a 1080x1920, 30 fps, silent MP4 Reel export of the Turntable from the rail's Animate section; portrait and square exports (PNG and Reel) crop the backdrop instead of squashing it (`1e6077a`). See "Phase 16B". |
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
 | HDRI Environment Library | Partial | 2 of 11 environments have a real HDR; the other 9 use the probe plus a flat JPG. |
-| Animation Studio | Not Started | No animation code in `app/src` (no mixer/`useAnimations`, no auto-rotate). |
+| Animation Studio | Partial | Phase 16B (`c99fd69`, `f25d884`, `c936232`): Turntable preview and Reel export work (the model spins; the camera is fixed). No GLB animation mixer, no camera moves UI, no saving in sessions. See "Phase 16B". |
 
 Status is judged from code reading, not from a fresh browser run in this update.
 
 ## Open Issues (Next Phase)
 
-1. Camera Studio: Distance, Height (Slice A, `a23e3d0`) and Lock focus plus session capture of the live camera (Slice B, `3c05965`) are live; CAM-002 is fixed (uncommitted). Next: CAM-001; see "Known Camera Bugs".
-2. Animation Studio not implemented.
-3. Reel/MP4 export not implemented.
+1. Camera Studio: Distance, Height (Slice A, `a23e3d0`) and Lock focus plus session capture of the live camera (Slice B, `3c05965`) are live; CAM-002 is fixed (`1a15c38`). Next: CAM-001; see "Known Camera Bugs".
+2. Animation Studio: Turntable preview and Reel MP4 export are live (Phase 16B). Open: per-environment model-on-platform offset, an in-app video preview (Slice D2), camera moves and session saving (Slice E); see "Phase 16B".
+3. Reel/MP4 export is built (1080x1920, 30 fps, silent); Instagram acceptance is untested.
 4. THE KOP branding renders clipped ("THE KOF") in every export. Believed to be in the model/texture, not in this React app's export code. UNVERIFIED at the source.
 5. Blender: CAM_Shot01_LowHero still requires repair (aimed at nothing). Blender work is frozen.
 
@@ -486,7 +657,7 @@ Status is judged from code reading, not from a fresh browser run in this update.
   with an ellipsis, the brand tag hides at <=1400px and button labels collapse
   to icons at <=1320px.
 
-- **CAM-002 (Top preset elevation), fix uncommitted at time of writing.** The
+- **CAM-002 (Top preset elevation), fixed in `1a15c38`.** The
   preset elevation was measured from the model centre, but the camera orbits the
   biased target (H_BIAS/V_BIAS), so Top sat ~83.8deg above the target. Fix in
   `camera/presets.js` `computeCameraShot` only: for `elev >= 90` the position is
@@ -529,8 +700,10 @@ Status is judged from code reading, not from a fresh browser run in this update.
 - **Right-drag pan is disabled by default.** Lock focus is ON by default, and
   with it ON right-drag pan does nothing. Turn Lock OFF in the rail's Camera
   section to pan.
-- **No auto-rotate and no animation code** (`StudioCanvas.jsx` states this;
-  grep of `app/src` finds no animation mixer).
+- **No auto-rotate on the live view and no GLB animation mixer.** Phase 16B added
+  a Turntable that spins the model only while Play or an export runs; see
+  "Phase 16B". (The older `StudioCanvas.jsx` comment saying there is no animation
+  code predates it.)
 - **Lint:** the `product.frontAz` `exhaustive-deps` warning in `StudioCanvas.jsx`
   no longer appears: Phase 16A Slice A added `product.frontAz` to the
   camera-request effect's dependencies while rewriting it (`npm run lint`: 0
@@ -577,6 +750,12 @@ boundaries UNVERIFIED against any release note).
 - **Phase 16A Slice B** — `3c05965` ("Phase 16A Slice B: Lock focus, follow rule,
   camera saved in session"): Lock focus toggle and follow rule, frame-default
   request, `engine.camera` in the session.
-- **CAM-002 fix (uncommitted at time of writing)** — Top preset elevation now
-  measured from the biased target (89deg); `app/src/camera/presets.js` and this
-  file only.
+- **CAM-002 fix** — `1a15c38` ("Fix CAM-002: Top preset elevation from biased target
+  (89 deg); refresh HANDOFF"): Top preset elevation now measured from the biased
+  target (89deg); `app/src/camera/presets.js` and this file.
+- **Phase 16B Slice A** — `c99fd69`: path engine and `fitDistance` with tests.
+- **Phase 16B Slice B** — `f25d884`: live Turntable preview (Animate section).
+- **Phase 16B Slice C** — `c936232`: deterministic frame stepping and Reel framing.
+- **Phase 16B Slice D1** — `0b7c2ce`: MP4 Reel export (mediabunny).
+- **Phase 16B Slice C2** — `1e6077a`: cover-crop backdrop for portrait and square
+  exports.
