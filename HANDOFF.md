@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 16B Slice C2; HEAD `1e6077a`, the Slice C2 commit; all work through Phase 16B Slice C2 is committed)
+## Start here (updated through Phase 16B Slice E2; HEAD `ea2482c`, the Slice E2 commit; all work through Phase 16B Slice E2 is committed)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -447,7 +447,7 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 - **Not touched:** CAM-001, CAM-002, FOV changes, keyframes/animation, distance
   limits, preset data.
 
-## Phase 16B - Animation Studio and Reels (Slices A, B, C, D1, C2)
+## Phase 16B - Animation Studio and Reels (Slices A, B, C, D1, C2, E1, E2)
 
 ### What exists now
 
@@ -466,7 +466,9 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 - **Reel framing** (`reelPose` in `path.js`, applied by `stepExport`): the live
   camera's azimuth and elevation are kept, the target moves to the model's live
   centre, and the distance is `fitDistance(fit.size, 9/16, 45, 0.7)` times the
-  Distance slider % read once at begin.
+  Distance slider % read once at begin. On the two environments that have
+  platform data (Slice E2) the pose is instead the platform pose described under
+  "Model on the platform (Slices E1 and E2)" below.
 - **Preview:** Play spins the model on the live canvas; a click on the canvas or
   Esc stops it. While a preview or export runs, `body[data-anim]` is set ("1" or
   "export") and a CSS shield in `ui/ui-shell.css` dims the controls that would
@@ -483,13 +485,20 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 | C | `c936232` | Deterministic frame stepping (`beginExport` / `stepExport` / `endExport`), Reel framing (`reelPose`, `REEL_EXPORT`) |
 | D1 | `0b7c2ce` | MP4 Reel export (mediabunny), `exporter.js`, `mp4.js`, `scripts/inspect-mp4.mjs`, Export button |
 | C2 | `1e6077a` | Backdrop cover-crop for portrait and square exports, `capture/backdropCrop.js`, `scripts/test-backdrop.mjs` |
+| E1 | `9425a0b` | Model-on-platform math only (pure functions and tests, nothing wired): `elevationForBaseAngle`, `panToAnchor`, `photoToFrame`, optional `elevationDeg` on `reelPose` |
+| E2 | `ea2482c` | Model placed on the painted platform in the Reel MP4: `platformReelPose`, `backdropImageAspect`, registry `platform` data, `stepExport` pose block |
+
+(`5dd66a6` is a HANDOFF.md-only commit between C2 and E1.)
 
 ### Files and what each does
 
 - `animation/path.js` - pure math, plain numbers and arrays only (no React, no
   three.js, no DOM): `makeTurntable`, `sampleAt`, `frameCount` / `frameTimes`,
-  `reelPose`, `validateAnimation`, `makeMove` (camera keys between two views; not
-  used by any UI yet).
+  `reelPose` (optional fifth argument `elevationDeg`: replaces the live elevation,
+  clamped to +/-89 degrees; omitted or null gives exactly the older output),
+  `validateAnimation`, `makeMove` (camera keys between two views; not used by any
+  UI yet), and the model-on-platform functions `elevationForBaseAngle`,
+  `panToAnchor`, `platformReelPose` (see below).
 - `animation/animationStore.js` - module singleton (same pattern as
   `camera/cameraStudio.js`). Snapshot `{ mode, ready, durationS, progress, message }`
   with `mode` "idle" | "previewing" | "exporting"; the stage registers the api
@@ -504,19 +513,76 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 - `capture/backdropCrop.js` - pure, no imports. `withBackdropCrop(scene, aspect,
   render)` temporarily sets the background texture's repeat / offset to a
   centred "cover" fit while an export frame with aspect <= 1 is rendered, then
-  restores them in the same synchronous call.
+  restores them in the same synchronous call. Also `coverCrop`, `needsCoverCrop`,
+  `photoToFrame` (where a platform painted in the photo lands in the cropped
+  frame) and `backdropImageAspect` (the real image aspect of the background
+  texture).
 - `components/StudioCanvas.jsx` additions - the turntable pivot group;
   `startPreview` / `stopPreview` and the preview `useFrame`; `beginExport`,
   `stepExport`, `endExport` (`finishExport`); `endAnimations` backstops (camera
   request, transform change, slider / Lock commands end a preview or abort an
   export); `getCanvas` in the registered api; `withBackdropCrop` around the
-  export renders in `renderExportFrame` and `stepExport` only.
+  export renders in `renderExportFrame` and `stepExport` only; Slice E2 added an
+  `environmentRef`, `liveBase()` (the model's base centre in world space) and the
+  platform pose block inside `stepExport`.
+- `environments/registry.js` - Slice E2 added `platform`, `floorAngleDeg` and
+  `reelAnchorRy` to two entries (see below).
 - `camera/presets.js` `fitDistance` - the inline fit formula as a pure function
   (`spinSafe` currently changes nothing: the footprint diagonal is already the
   horizontal extent).
 - `capture/exportOptions.js` `REEL_EXPORT` - `{ width: 1080, height: 1920, fps: 30, fovDeg: 45 }`.
 - `scripts/test-path.mjs`, `scripts/test-backdrop.mjs`, `scripts/inspect-mp4.mjs`
   (MP4 box inspector, no dependencies).
+
+### Model on the platform (Slices E1 and E2)
+
+- **What E2 does.** In `stepExport` (so in the Reel MP4 only), when the export
+  aspect is <= 1 (portrait or square), the current environment has `platform`
+  data and the background texture's image size is known, the pose comes from
+  `platformReelPose`: the model's base centre (`liveBase()`: x and z of the live
+  centre, y = the world floor y) is put at the painted platform's centre in the
+  frame (`photoToFrame` from the real image aspect, plus `reelAnchorRy` x the
+  platform's ry), and the camera elevation is solved numerically so the floor is
+  seen at `floorAngleDeg` (8 degrees) AFTER the pan. The Reel distance
+  (`fitDistance` x Distance slider %) and the model size are unchanged, and the
+  portrait Reel ignores the Height slider (the elevation is solved, not taken from
+  the live camera). If anything is missing or a step returns null, it falls back
+  silently to the old `reelPose` call. Only Pistons Loft and Aviation Hangar have
+  platform data. All other environments, landscape exports, PNG exports and the
+  on-screen view are unchanged (byte-identical in the E2 probes; probe results,
+  not reproducible from the repo alone).
+- **Why `platformReelPose` solves numerically.** `elevationForBaseAngle` assumes the
+  camera stays where it is, but `panToAnchor` also moves the camera up, so
+  combining them naively counts the raise twice. `scripts/test-path.mjs` prints an
+  INFO line for the Coffee Bike sample: combining them gives a floor angle of
+  about 14 degrees instead of 8. `platformReelPose` therefore bisects the camera
+  elevation over [-30, 60] degrees so that the angle is right after the pan.
+  `elevationForBaseAngle` and `panToAnchor` stay in the code and are tested.
+- **Registry fields and how to tune them** (`environments/registry.js`):
+  `platform: { cx, cy, rx, ry }` are fractions of the PHOTO (origin top-left, y
+  down; `cx` and `rx` of the width, `cy` and `ry` of the height). They are
+  estimates measured from the JPG, plus or minus 3-4 px. `floorAngleDeg` is the
+  photo's implied camera elevation (about 8, plus or minus 1.5).
+  `reelAnchorRy` moves the model's base down by that many platform ry from the
+  platform centre (0 = centre, about 0.33 = the front third). The values in the
+  file are Pistons Loft `{ cx 0.4996, cy 0.7268, rx 0.2282, ry 0.0478 }` and Aviation
+  Hangar `{ cx 0.4992, cy 0.7264, rx 0.2284, ry 0.0472 }`, both with
+  `floorAngleDeg: 8` and `reelAnchorRy: 0`.
+- **The other nine environments.** The design report found the platform's back and
+  front rims at about the same rows in the other nine photos, by a centre-column
+  brightness check only; the x extent was not measured, and two of them
+  (`matte_white_photography_studio`, `industrial_steel_factory`) looked different.
+  Adding data for them needs a measurement and a look at the picture first
+  (unverified until then).
+- **Photo sizes** (read from the JPG headers): `propeller-pistons-loft.jpg` is
+  1264x843 and the other ten are 1920x1281. The 9:16 crop of Pistons Loft is about
+  474 px wide, upscaled about 2.28x to 1080, so its backdrop is soft.
+- **Tested by the owner** (owner facts, not visible in the repo): Instagram
+  accepted an exported Reel MP4 (1080x1920, 30 fps, silent, H.264 High level 5.0
+  `avc1.640032`): it loaded and was accepted. How it looks inside Instagram:
+  untested. The owner also looked at Reel MP4s exported with E2: the Coffee Bike
+  stands on the platform in Pistons Loft and the Cessna 172 rests on the platform
+  in Aviation Hangar, with the whole plane in frame.
 
 ### Rules that must not be broken
 
@@ -541,9 +607,10 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 
 From `app`:
 
-- `node scripts/test-path.mjs` - 71 PASS lines and `ALL CHECKS PASSED` (counted
-  when this section was written).
-- `node scripts/test-backdrop.mjs` - 66 PASS lines and `ALL CHECKS PASSED` (counted).
+- `node scripts/test-path.mjs` - 167 PASS lines and `ALL CHECKS PASSED` (counted
+  when this section was written; the owner also ran it after E2 and reported 167).
+- `node scripts/test-backdrop.mjs` - 84 PASS lines and `ALL CHECKS PASSED` (counted;
+  the owner also reported 84).
 - `npm run lint` - no output, exit 0 at the last slice.
 - `npm run build` - succeeds; mediabunny is its own chunk (a separate `src-*.js`
   file, about 687 kB at the last build; observed in build output, not asserted
@@ -568,22 +635,40 @@ are in the lock file.
 - The backdrop cover-crop applies to BOTH PNG and Reel exports for aspects <= 1
   (portrait and square: Story/Reel 9:16, 4:5, 1:1). Landscape exports and the
   on-screen view are unchanged.
+- Slice E2: Reel MP4 only (portrait PNGs and everything else stay as they are);
+  the model's base at the platform CENTRE (with an optional tunable offset,
+  default 0); the camera set so the floor is seen at the photo's own angle; model
+  size unchanged (fill 0.7 stays, the Distance slider % still scales the Reel
+  distance); the portrait Reel ignores the Height slider. Environments covered:
+  Pistons Loft and Aviation Hangar; every other environment keeps today's
+  behaviour.
 
 ### Known limitations and open items
 
-- The model floats above the platform painted into the Pistons Loft photo:
-  it is centred on the frame, the platform is lower in the photo. A
-  per-environment vertical offset is needed and is not built. (Seen in
-  270x480 probe frames; not tuned.)
+- **Portrait PNGs still use the live camera** (unchanged by design), so the model
+  can still float above the platform and a wide model such as the Cessna can be
+  clipped: the owner's own 9:16 PNG of the Cessna on Aviation Hangar shows the plane
+  floating with the wing tips cut off. Proposed Slice E3: make portrait PNGs use the
+  same Reel framing as the Reel MP4. It needs the owner's approval because
+  existing portrait PNGs would change (not started).
+- The model no longer floats in the Reel MP4 on Pistons Loft and Aviation Hangar
+  (Slice E2, confirmed by the owner). The other nine environments have no
+  platform data and keep the old framing (the model floats there).
+- The platform numbers in the registry are estimates from the JPG (plus or minus
+  3-4 px; the 8 degree floor angle plus or minus 1.5); tune them by eye.
+- The Cessna 172 is placeholder geometry (`app/scripts/gen-c172-placeholder.mjs`,
+  replace `app/public/models/cessna-172.glb` with the final asset).
 - `propeller-pistons-loft.jpg` is 1264x843 (read from the file). A 9:16 crop of
   it is about 474 px wide, upscaled about 2.28x to 1080, so the backdrop is
   soft; sharper source photos would be needed.
-- The other 10 environment JPGs were not measured and not checked with the crop
-  (untested).
-- Instagram acceptance of the MP4 is untested. The stream the encoder wrote in
-  the probe runs was H.264 High level 5.0 (`avc1.640032`), while
-  `checkExportSupport` tests `avc1.640028` (`canEncode` in `mp4.js`); the level was
-  observed in probe output and is not asserted anywhere in the repo (unverified).
+- The other ten environment JPGs are 1920x1281 (read from the headers); they were
+  not checked with the crop or measured for a platform beyond the centre-column
+  check (untested).
+- Instagram accepted an exported Reel MP4 (owner-tested; see above). How it looks
+  inside Instagram is untested. The encoder writes H.264 High level 5.0
+  (`avc1.640032`) while `checkExportSupport` tests `avc1.640028` (`canEncode` in
+  `mp4.js`); the written level comes from probe output and the owner's upload,
+  and is not asserted anywhere in the repo (unverified).
 - 8 s and 12 s Reels were not tested at full size and would use more memory
   (untested).
 - The Reel distance ignores any scale applied with the transform tool
@@ -608,8 +693,9 @@ are in the lock file.
 
 ### Next slices (proposed, not started)
 
-- Per-environment model-on-platform offset, starting with Pistons Loft, then
-  Aviation Hangar.
+- Slice E3: portrait PNGs use the same Reel framing (owner approval needed).
+- Platform data for more environments (measure and look first), and tuning
+  `reelAnchorRy` if the owner wants the model further forward.
 - Slice D2: an in-app video preview window.
 - Slice E: camera moves (`makeMove`) and saving an animation in the session
   (optional `engine.animation` field, no version bump).
@@ -634,18 +720,18 @@ Resolved: **CAM-002** (Top preset elevation), see "Resolved" below.
 | Asset Library | Complete | Registry-driven product/environment gallery plus GLB/HDR/EXR import manager (`ui/AssetLibrary.jsx`, `ui/ImportPanel.jsx`). |
 | Camera Studio | Partial | Presets and Save Custom View work. Phase 16A Slice A (`a23e3d0`): the rail's Distance and Height sliders are live, with a "Custom (unsaved)" state. Phase 16A Slice B (`3c05965`): Lock focus is a real toggle (ON by default; the orbit target follows the transformed model, right-drag pan is off while ON) and the live camera is saved in the session. See "Phase 16A Slice A/B" and "Known Camera Bugs". |
 | Material Studio | Complete | Live PBR editing, presets, undo/reset, persistence and session capture (`materials/`, `ui/MaterialsManager.jsx`). |
-| Render Studio | Partial | PNG capture/export with format chips works. Phase 16B (`0b7c2ce`): a 1080x1920, 30 fps, silent MP4 Reel export of the Turntable from the rail's Animate section; portrait and square exports (PNG and Reel) crop the backdrop instead of squashing it (`1e6077a`). See "Phase 16B". |
+| Render Studio | Partial | PNG capture/export with format chips works. Phase 16B (`0b7c2ce`): a 1080x1920, 30 fps, silent MP4 Reel export of the Turntable from the rail's Animate section; portrait and square exports (PNG and Reel) crop the backdrop instead of squashing it (`1e6077a`); the Reel MP4 puts the model on the painted platform on Pistons Loft and Aviation Hangar (`ea2482c`); portrait PNGs still use the live camera. See "Phase 16B". |
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
 | HDRI Environment Library | Partial | 2 of 11 environments have a real HDR; the other 9 use the probe plus a flat JPG. |
-| Animation Studio | Partial | Phase 16B (`c99fd69`, `f25d884`, `c936232`): Turntable preview and Reel export work (the model spins; the camera is fixed). No GLB animation mixer, no camera moves UI, no saving in sessions. See "Phase 16B". |
+| Animation Studio | Partial | Phase 16B (`c99fd69`, `f25d884`, `c936232`, `0b7c2ce`, `ea2482c`): Turntable preview and Reel export work (the model spins; the camera is fixed). No GLB animation mixer, no camera moves UI, no saving in sessions. See "Phase 16B". |
 
 Status is judged from code reading, not from a fresh browser run in this update.
 
 ## Open Issues (Next Phase)
 
 1. Camera Studio: Distance, Height (Slice A, `a23e3d0`) and Lock focus plus session capture of the live camera (Slice B, `3c05965`) are live; CAM-002 is fixed (`1a15c38`). Next: CAM-001; see "Known Camera Bugs".
-2. Animation Studio: Turntable preview and Reel MP4 export are live (Phase 16B). Open: per-environment model-on-platform offset, an in-app video preview (Slice D2), camera moves and session saving (Slice E); see "Phase 16B".
-3. Reel/MP4 export is built (1080x1920, 30 fps, silent); Instagram acceptance is untested.
+2. Animation Studio: Turntable preview and Reel MP4 export are live, and the Reel puts the model on the platform on Pistons Loft and Aviation Hangar (Phase 16B, through Slice E2). Open: portrait PNGs on the same framing (proposed Slice E3, needs owner approval), platform data for the other nine environments, an in-app video preview (Slice D2), camera moves and session saving; see "Phase 16B".
+3. Reel/MP4 export is built (1080x1920, 30 fps, silent) and Instagram accepted an exported file (owner-tested); how it looks inside Instagram is untested.
 4. THE KOP branding renders clipped ("THE KOF") in every export. Believed to be in the model/texture, not in this React app's export code. UNVERIFIED at the source.
 5. Blender: CAM_Shot01_LowHero still requires repair (aimed at nothing). Blender work is frozen.
 
@@ -677,8 +763,9 @@ Status is judged from code reading, not from a fresh browser run in this update.
 
 - **Environment JPGs are not panoramas.** The built-in `app/public/environments/*.jpg`
   are flat 3:2 photos (1920 px derivatives), so they cannot be used as lighting;
-  that is why HDR files are separate. (3:2 is from the owner; image dimensions
-  were not re-measured in this update.)
+  that is why HDR files are separate. (Measured from the JPG headers in Phase 16B:
+  `propeller-pistons-loft.jpg` is 1264x843 and the other ten are 1920x1281, all
+  about 3:2.)
 - **Imported HDR/EXR lose the HDR.** `assets/thumbnail.js`
   (`renderHdriPreviews`) renders a tone-mapped equirect JPEG for the backdrop;
   only that JPG is used. Imported HDRs do not light the model. (The import path
@@ -759,3 +846,8 @@ boundaries UNVERIFIED against any release note).
 - **Phase 16B Slice D1** — `0b7c2ce`: MP4 Reel export (mediabunny).
 - **Phase 16B Slice C2** — `1e6077a`: cover-crop backdrop for portrait and square
   exports.
+- **HANDOFF update** — `5dd66a6`: HANDOFF.md through Phase 16B Slice C2.
+- **Phase 16B Slice E1** — `9425a0b`: model-on-platform math (pan, elevation,
+  photo-to-frame); pure functions and tests, not wired.
+- **Phase 16B Slice E2** — `ea2482c`: model on the platform in the Reel MP4
+  (`platformReelPose`, registry platform data for Pistons Loft and Aviation Hangar).
