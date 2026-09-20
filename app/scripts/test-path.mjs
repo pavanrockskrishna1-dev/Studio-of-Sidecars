@@ -9,6 +9,7 @@ import {
   frameCount,
   frameTimes,
   sampleAt,
+  reelPose,
 } from "../src/animation/path.js";
 import { fitDistance } from "../src/camera/presets.js";
 
@@ -220,6 +221,59 @@ for (const [label, size] of SAMPLES) {
     `on=${fmt(on)} off=${fmt(off)}`
   );
 }
+
+/* ---- reelPose (Slice C) ---- */
+const sph = (p, t) => {
+  const x = p[0] - t[0];
+  const y = p[1] - t[1];
+  const z = p[2] - t[2];
+  const r = Math.hypot(x, y, z);
+  return { r, az: Math.atan2(x, z), el: Math.asin(y / r) };
+};
+const reelInputs = [
+  { pos: [3, 1, 4], tgt: [0.2, 0.5, 0.1], centre: [1, 0.6, -2], dist: 7 },
+  { pos: [-5, 2, -1], tgt: [0, 1, 0], centre: [0.5, 1, 0.5], dist: 12.5 },
+  { pos: [0.5, -1, 6], tgt: [0, 0, 0], centre: [-3, 2, 1], dist: 3 },
+  { pos: [8, 4, -8], tgt: [1, 1, 1], centre: [0, 0.4, 0], dist: 42.245 },
+  { pos: [-2, 3, 2], tgt: [-1, 0.2, 0.3], centre: [2, 2, 2], dist: 0.75 },
+];
+reelInputs.forEach((c, i) => {
+  const p = reelPose(c.pos, c.tgt, c.centre, c.dist);
+  const got = sph(p.position, p.target);
+  const want = sph(c.pos, c.tgt);
+  check(`reelPose #${i + 1}: distance from target = requested`, near(got.r, c.dist, 1e-9), `r=${fmt(got.r)} want=${c.dist}`);
+  check(
+    `reelPose #${i + 1}: azimuth and elevation kept`,
+    near(got.az, want.az, 1e-9) && near(got.el, want.el, 1e-9),
+    `dAz=${fmt(got.az - want.az)} dEl=${fmt(got.el - want.el)}`
+  );
+  check(`reelPose #${i + 1}: target equals the centre`, p.target.every((v, j) => v === c.centre[j]));
+});
+{
+  const inp = { pos: [0, Math.sin(89.9 * DEG) * 5, Math.cos(89.9 * DEG) * 5], tgt: [0, 0, 0], centre: [1, 1, 1] };
+  const p = reelPose(inp.pos, inp.tgt, inp.centre, 5);
+  const g = sph(p.position, p.target);
+  check(
+    "reelPose: elevation 89.9 deg comes back at 89 deg, not NaN",
+    p.position.every(Number.isFinite) && near(g.el / DEG, 89, 1e-9),
+    `el=${fmt(g.el / DEG)} deg`
+  );
+}
+const okPos = [3, 1, 4];
+const okTgt = [0, 0, 0];
+const okCen = [1, 1, 1];
+check("reelPose: null for a zero-length offset", reelPose([1, 2, 3], [1, 2, 3], okCen, 5) === null);
+check("reelPose: null for distance 0", reelPose(okPos, okTgt, okCen, 0) === null);
+check("reelPose: null for distance NaN", reelPose(okPos, okTgt, okCen, NaN) === null);
+check("reelPose: null for a NaN in the live position", reelPose([NaN, 1, 4], okTgt, okCen, 5) === null);
+check("reelPose: null for a NaN in the live target", reelPose(okPos, [0, NaN, 0], okCen, 5) === null);
+check("reelPose: null for a NaN in the centre", reelPose(okPos, okTgt, [1, 1, NaN], 5) === null);
+check("reelPose: null for a negative distance", reelPose(okPos, okTgt, okCen, -2) === null);
+check("reelPose returns fresh arrays", (() => {
+  const c = [1, 1, 1];
+  const p = reelPose(okPos, okTgt, c, 5);
+  return p.target !== c && p.position !== okPos;
+})());
 
 /* ---- purity ---- */
 const src = readFileSync(new URL("../src/animation/path.js", import.meta.url), "utf8");

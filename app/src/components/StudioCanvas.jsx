@@ -14,11 +14,11 @@ import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import { PRODUCTS } from "../products/registry";
 import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
-import { computeCameraShot, getBaseline, getCameraPreset } from "../camera/presets";
+import { computeCameraShot, fitDistance, getBaseline, getCameraPreset } from "../camera/presets";
 import * as cameraStudio from "../camera/cameraStudio";
 import { DEFAULT_LIGHTING } from "../lighting/profiles";
-import { computeExportSize } from "../capture/exportOptions";
-import { sampleAt } from "../animation/path";
+import { computeExportSize, REEL_EXPORT } from "../capture/exportOptions";
+import { reelPose, sampleAt } from "../animation/path";
 import * as animation from "../animation/animationStore";
 
 const FOV = 45;
@@ -192,6 +192,16 @@ function invalidateShadowMap(gl) {
   gl.shadowMap.needsUpdate = true;
 }
 
+// Camera projection writes for the export stepping (Slice C) live at module
+// scope like the renderer helpers above: three.js mutates the camera by design.
+function setCameraProjection(camera, { aspect, fov, near, far }) {
+  if (aspect !== undefined) camera.aspect = aspect;
+  if (fov !== undefined) camera.fov = fov;
+  if (near !== undefined) camera.near = near;
+  if (far !== undefined) camera.far = far;
+  camera.updateProjectionMatrix();
+}
+
 function setExposure(gl, exposure) {
   gl.toneMappingExposure = exposure;
 }
@@ -316,7 +326,7 @@ function StudioStage({
   focusLock,
   onLockChange,
 }) {
-  const { scene, camera, gl } = useThree();
+  const { scene, camera, gl, setFrameloop, get } = useThree();
   const controlsRef = useRef(null);
   // Camera Studio (Phase 16A) — frozen slider baseline of the last applied
   // view, the count of programmatic camera moves in flight, and whether the
@@ -339,6 +349,10 @@ function StudioStage({
   const ringRef = useRef(null);
   const selectedRef = useRef(selected);
   const escHandlerRef = useRef(null);
+  // Deterministic frame stepping (Slice C) — the running export (null = none):
+  // target size, the turntable spec, the Distance % read at begin, and what
+  // endExport restores. A ref, never React state.
+  const exportRunRef = useRef(null);
 
   const { scene: modelScene } = useGLTF(product.modelPath);
 
@@ -395,6 +409,9 @@ function StudioStage({
   // Publish the camera's slider values (distance %, height %) to the shared
   // camera store. The store ignores a publish that changes no displayed value.
   const publish = useCallback(() => {
+    // An export moves the camera to the Reel pose every step; the sliders and
+    // the store must not follow it (nothing is published until endExport).
+    if (exportRunRef.current) return;
     const controls = controlsRef.current;
     const baseline = baselineRef.current;
     if (!controls || !baseline) return;
@@ -497,19 +514,197 @@ function StudioStage({
     [camera, setOverlaysHidden, stopPreview]
   );
 
-  // Register the preview commands with the animation store. On cleanup (the
-  // stage unmounting on a product switch) the preview ends WITHOUT restoring
-  // the old camera. Only the registering owner unregisters (StrictMode safe).
+  // ---- Deterministic frame stepping (Phase 16B Slice C) ---------------------
+  // beginExport / stepExport / endExport render the Turntable one exact frame at
+  // a time on the SAME visible canvas and renderer as the PNG export
+  // (renderExportFrame above, which is untouched), so tone mapping and colour
+  // are identical. Nothing here uses state, timers or awaits.
+
+  // Restores the renderer-owned state and ends the export. restoreCamera puts
+  // the camera and target back through the guard; it is false when the stage is
+  // going away (the old camera must never be applied to a new model). render
+  // draws one frame at the restored size so the canvas is not stale.
+  const finishExport = useCallback(
+    ({ restoreCamera, render }) => {
+      const run = exportRunRef.current;
+      if (!run) return false;
+      exportRunRef.current = null;
+      gl.domElement.removeEventListener("webglcontextlost", run.onLost);
+      const controls = controlsRef.current;
+      if (pivotRef.current) pivotRef.current.rotation.y = 0;
+      if (restoreCamera && controls) {
+        moveGuarded(() => {
+          camera.position.copy(run.saved.position);
+          controls.target.copy(run.saved.target);
+        });
+      }
+      // A window resize during the export made r3f resize the renderer to the
+      // NEW layout size; the saved size would be stale, so use r3f's own.
+      const live = get();
+      const dpr = run.resized ? live.viewport.dpr : run.saved.pixelRatio;
+      const cssW = run.resized ? live.size.width : run.saved.cssW;
+      const cssH = run.resized ? live.size.height : run.saved.cssH;
+      gl.setPixelRatio(dpr);
+      gl.setSize(cssW, cssH, false);
+      setCameraProjection(camera, {
+        aspect: run.resized ? cssW / cssH : run.saved.aspect,
+        fov: run.saved.fov,
+        near: run.saved.near,
+        far: run.saved.far,
+      });
+      setOverlaysHidden(false);
+      invalidateShadowMap(gl);
+      if (controls) controls.enabled = true;
+      setFrameloop("always");
+      live.invalidate(); // a stopped loop is not restarted by setFrameloop alone
+      animation.reportStopped();
+      if (render) {
+        publish();
+        gl.render(scene, camera);
+      }
+      return true;
+    },
+    [gl, scene, camera, get, moveGuarded, publish, setFrameloop, setOverlaysHidden]
+  );
+
+  // Only from idle, with the model ready. Sizes are rounded DOWN to even
+  // integers in [2, 4096]. Renders nothing.
+  const beginExport = useCallback(
+    ({ width = REEL_EXPORT.width, height = REEL_EXPORT.height, anim } = {}) => {
+      const controls = controlsRef.current;
+      if (!controls || !pivotRef.current || !anim) return false;
+      if (animRunRef.current || exportRunRef.current) return false;
+      const even = (n) => Math.max(2, Math.min(4096, Math.floor(Number(n) / 2) * 2));
+      const w = even(width);
+      const h = even(height);
+      if (!Number.isFinite(w) || !Number.isFinite(h)) return false;
+      const css = gl.getSize(new THREE.Vector2());
+      const buf = gl.getDrawingBufferSize(new THREE.Vector2());
+      const run = {
+        width: w,
+        height: h,
+        anim,
+        // Distance % is read ONCE: the store is not published to during the
+        // export, but reading it per step would also feed the Reel pose back.
+        pct: cameraStudio.getSnapshot().distancePct,
+        resized: false,
+        saved: {
+          position: camera.position.clone(),
+          target: controls.target.clone(),
+          aspect: camera.aspect,
+          fov: camera.fov,
+          near: camera.near,
+          far: camera.far,
+          pixelRatio: gl.getPixelRatio(),
+          cssW: css.x,
+          cssH: css.y,
+          bufW: buf.x,
+          bufH: buf.y,
+        },
+        onLost: null,
+      };
+      // A lost context restores the renderer state (there is nothing to draw).
+      run.onLost = () => finishExport({ restoreCamera: true, render: false });
+      exportRunRef.current = run;
+      gl.domElement.addEventListener("webglcontextlost", run.onLost);
+      setFrameloop("never");
+      controls.enabled = false;
+      setOverlaysHidden(true);
+      gl.setPixelRatio(1);
+      gl.setSize(w, h, false); // ONCE: assigning the size clears the canvas
+      setCameraProjection(camera, { aspect: w / h });
+      // The video path always renders the studio background: it ignores
+      // exportOpts.background and never writes it.
+      return true;
+    },
+    [gl, camera, finishExport, setFrameloop, setOverlaysHidden]
+  );
+
+  // Renders the frame at animation time t and returns { ok, resized }. The
+  // Reel pose is recomputed every step from the CURRENT model state, from the
+  // camera and target captured at begin, so every frame frames the same way.
+  //
+  // The frame is only valid to read (VideoFrame / drawImage / toBlob) in the
+  // SAME synchronous task as this call: the drawing buffer is not preserved
+  // across tasks, and the next step overwrites it.
+  const stepExport = useCallback(
+    (t) => {
+      const run = exportRunRef.current;
+      const controls = controlsRef.current;
+      if (!run || !Number.isFinite(t)) return { ok: false, resized: false };
+      if (!controls) {
+        finishExport({ restoreCamera: false, render: false });
+        return { ok: false, resized: false };
+      }
+      try {
+        const el = gl.domElement;
+        if (el.width !== run.width || el.height !== run.height) {
+          // A window resize made r3f resize the renderer. Re-assert the export
+          // size (only in this case: setting it clears the canvas) and report
+          // it so the caller can abort; no frame is drawn.
+          gl.setPixelRatio(1);
+          gl.setSize(run.width, run.height, false);
+          setCameraProjection(camera, { aspect: run.width / run.height });
+          run.resized = true;
+          return { ok: false, resized: true };
+        }
+        const aspect = run.width / run.height;
+        const distance =
+          fitDistance(fit.size, aspect, REEL_EXPORT.fovDeg, 0.7) * (run.pct / 100);
+        const pose = reelPose(
+          run.saved.position.toArray(),
+          run.saved.target.toArray(),
+          liveCentre().toArray(),
+          distance
+        );
+        if (!pose) throw new Error("Reel pose is not valid (distance " + distance + ")");
+        setCameraProjection(camera, {
+          aspect,
+          far: Math.max(camera.far, distance * 4 + 10),
+        });
+        moveGuarded(() => {
+          camera.position.fromArray(pose.position);
+          controls.target.fromArray(pose.target);
+        });
+        pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
+        invalidateShadowMap(gl);
+        gl.render(scene, camera);
+        return { ok: true, resized: false };
+      } catch (err) {
+        console.error("Export step failed:", err);
+        finishExport({ restoreCamera: true, render: true });
+        return { ok: false, resized: false };
+      }
+    },
+    [gl, scene, camera, fit, liveCentre, moveGuarded, finishExport]
+  );
+
+  // Any engine change that moves the camera or the model ends a running
+  // preview, and aborts a running export (restoring its camera), first.
+  const endAnimations = useCallback(() => {
+    stopPreview();
+    if (exportRunRef.current) finishExport({ restoreCamera: true, render: true });
+  }, [stopPreview, finishExport]);
+
+  // Register the animation commands with the animation store. On cleanup (the
+  // stage unmounting on a product switch) a preview or export ends WITHOUT
+  // restoring the old camera; an export still restores the renderer-owned
+  // state (pixel ratio, buffer size, camera aspect, frame loop). Only the
+  // registering owner unregisters (StrictMode safe).
   useEffect(() => {
     const unregister = animation.registerApi({
       play: startPreview,
       stop: () => stopPreview(),
+      beginExport,
+      stepExport,
+      endExport: () => finishExport({ restoreCamera: true, render: true }),
     });
     return () => {
       stopPreview({ restore: false });
+      finishExport({ restoreCamera: false, render: false });
       unregister();
     };
-  }, [startPreview, stopPreview]);
+  }, [startPreview, stopPreview, beginExport, stepExport, finishExport]);
 
   // Move the camera to a view and freeze its slider baseline, measured AFTER
   // the move (the controls may adjust it, e.g. the Top preset's pole clamp).
@@ -576,8 +771,8 @@ function StudioStage({
     const { id: requestId, view, frame } = cameraRequest;
     if (!requestId && !view && !frame) return undefined;
     // Backstop: a preset, saved view, session restore or reset ends a running
-    // preview first (restoring its camera), then the request applies.
-    stopPreview();
+    // preview or export first (restoring its camera), then the request applies.
+    endAnimations();
     // A saved live view (session restore): exact position, target, baseline.
     if (view) {
       applyView(
@@ -627,7 +822,7 @@ function StudioStage({
     }
     applyView(position, target, baseId, baseline);
     return undefined;
-  }, [cameraRequest, customView, fit, gl, product.frontAz, applyView, frameDefault, stopPreview]);
+  }, [cameraRequest, customView, fit, gl, product.frontAz, applyView, frameDefault, endAnimations]);
 
   // Keep the stage's copy of App's lock in step and refresh the store. Declared
   // before the follow effect below so the follow sees the new value.
@@ -646,8 +841,8 @@ function StudioStage({
   // stale delta. Guarded: it neither marks the view live nor clears a preset.
   useEffect(() => {
     // Backstop: a transform change (session restore / reset / inspector) ends a
-    // running preview first. A no-op when idle, which is every steady frame.
-    stopPreview();
+    // running preview or export first. A no-op when idle, every steady frame.
+    endAnimations();
     const c = liveCentre();
     const last = lastCentreRef.current;
     lastCentreRef.current = c;
@@ -657,7 +852,7 @@ function StudioStage({
     if (d.length() <= 1e-9) return;
     moveGuarded(() => controls.target.add(d));
     publish();
-  }, [transform, focusLock, fit, moveGuarded, liveCentre, publish, stopPreview]);
+  }, [transform, focusLock, fit, moveGuarded, liveCentre, publish, endAnimations]);
 
   // Mission 7.2 (Save Custom View) — exposes the LIVE camera position and
   // OrbitControls target so the App can snapshot the exact current view.
@@ -667,7 +862,7 @@ function StudioStage({
   const moveAndMarkLive = useCallback(
     (position) => {
       if (!position) return false;
-      stopPreview();
+      endAnimations();
       moveGuarded(() => camera.position.fromArray(position));
       if (!liveRef.current) {
         liveRef.current = true;
@@ -676,7 +871,7 @@ function StudioStage({
       publish();
       return true;
     },
-    [camera, moveGuarded, publish, onViewLive, stopPreview]
+    [camera, moveGuarded, publish, onViewLive, endAnimations]
   );
 
   useEffect(() => {
@@ -698,7 +893,7 @@ function StudioStage({
       setLock: (next) => {
         const controls = controlsRef.current;
         if (!controls) return false;
-        stopPreview();
+        endAnimations();
         if (next && baselineRef.current) {
           const before = controls.target.clone();
           const offset = new THREE.Vector3().fromArray(baselineRef.current.offset);
@@ -758,7 +953,7 @@ function StudioStage({
     publish,
     onViewLive,
     onLockChange,
-    stopPreview,
+    endAnimations,
   ]);
 
   // App owns viewLive (it clears it on every preset / saved view / product
@@ -888,6 +1083,8 @@ function StudioStage({
         downButton === 0 &&
         moved < CLICK_MOVE_TOLERANCE;
       if (!isClick) return;
+      // No selection while an export owns the canvas.
+      if (exportRunRef.current) return;
       // A click on the canvas ends a running preview instead of selecting.
       if (animRunRef.current) {
         stopPreview();

@@ -166,3 +166,24 @@ export function sampleAt(anim, t) {
     modelSpinRad: TAU * anim.model.spinTurns * u,
   };
 }
+
+// Reel framing (Slice C): keep the live camera's azimuth and elevation, aim at
+// the model's centre and sit at `distance`. Plain arrays in and out; null when
+// any input is not 3 finite numbers, the live offset has no length, or the
+// distance is not a positive finite number. Elevation is clamped to +/-89
+// degrees like the rest of the path engine.
+export function reelPose(livePosition, liveTarget, centre, distance) {
+  if (!isVec3(livePosition) || !isVec3(liveTarget) || !isVec3(centre)) return null;
+  if (!isNum(distance) || distance <= 0) return null;
+  const { r, theta, phi } = toSpherical(livePosition, liveTarget);
+  if (!Number.isFinite(r) || r <= 1e-9) return null;
+  const cp = Math.cos(phi);
+  return {
+    position: [
+      centre[0] + distance * cp * Math.sin(theta),
+      centre[1] + distance * Math.sin(phi),
+      centre[2] + distance * cp * Math.cos(theta),
+    ],
+    target: [centre[0], centre[1], centre[2]],
+  };
+}

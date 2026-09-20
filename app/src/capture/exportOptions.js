@@ -15,6 +15,11 @@ export const EXPORT_PRESETS = [
 
 export const EXPORT_SCALES = [1, 2, 4];
 
+// Phase 16B (Slice C) — the Reel video frame: 1080x1920 at 30 fps. fovDeg is
+// the stage's fixed vertical field of view (the FOV constant in
+// components/StudioCanvas.jsx, which is not exported).
+export const REEL_EXPORT = { width: 1080, height: 1920, fps: 30, fovDeg: 45 };
+
 export const DEFAULT_EXPORT_OPTS = {
   background: "studio", // "studio" | "transparent"
   scale: 1, // 1x | 2x | 4x (applies to Current view only)
