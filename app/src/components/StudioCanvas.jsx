@@ -20,6 +20,7 @@ import { DEFAULT_LIGHTING } from "../lighting/profiles";
 import { computeExportSize, REEL_EXPORT } from "../capture/exportOptions";
 import { reelPose, sampleAt } from "../animation/path";
 import * as animation from "../animation/animationStore";
+import { withBackdropCrop } from "../capture/backdropCrop";
 
 const FOV = 45;
 
@@ -128,7 +129,9 @@ function renderExportFrame(gl, scene, camera, width, height, transparent) {
   // Shadows come from the on-demand shadow map: ask for one clean update so
   // the export carries the same contact shadow the live view shows.
   gl.shadowMap.needsUpdate = true;
-  gl.render(scene, camera);
+  // Slice C2: a portrait / square frame shows the backdrop photo cover-cropped
+  // (not squashed); the crop is put back inside this same synchronous call.
+  withBackdropCrop(scene, width / height, () => gl.render(scene, camera));
   return () => {
     gl.setPixelRatio(prevPixelRatio);
     gl.setSize(prevSize.x, prevSize.y, false);
@@ -668,7 +671,9 @@ function StudioStage({
         });
         pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
         invalidateShadowMap(gl);
-        gl.render(scene, camera);
+        // Slice C2: cover-cropped backdrop for portrait / square frames, restored
+        // in the same synchronous call (nothing to undo on abort or unmount).
+        withBackdropCrop(scene, aspect, () => gl.render(scene, camera));
         return { ok: true, resized: false };
       } catch (err) {
         console.error("Export step failed:", err);
