@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 16B Slice E2; HEAD `ea2482c`, the Slice E2 commit; all work through Phase 16B Slice E2 is committed)
+## Start here (updated through Phase 16B Slice E3, the Cessna swap and the Phase 17A audit; HEAD `d6b3cfa`, the Cessna swap commit; all work through the Cessna swap is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -17,7 +17,7 @@
   1. Architecture (engine / shell / bridges / session / materials store)
   2. Phase 15A
   3. Phase 15B (HDR lighting)
-  4. Phase 16A / 16B (Camera Studio; Animation Studio and Reels)
+  4. Phase 16A / 16B (Camera Studio; Animation Studio and Reels), then Phase 17A audit findings (Creator Studio, read-only)
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -447,7 +447,7 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 - **Not touched:** CAM-001, CAM-002, FOV changes, keyframes/animation, distance
   limits, preset data.
 
-## Phase 16B - Animation Studio and Reels (Slices A, B, C, D1, C2, E1, E2)
+## Phase 16B - Animation Studio and Reels (Slices A, B, C, D1, C2, E1, E2, E3, and the Cessna 172 swap)
 
 ### What exists now
 
@@ -487,8 +487,10 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 | C2 | `1e6077a` | Backdrop cover-crop for portrait and square exports, `capture/backdropCrop.js`, `scripts/test-backdrop.mjs` |
 | E1 | `9425a0b` | Model-on-platform math only (pure functions and tests, nothing wired): `elevationForBaseAngle`, `panToAnchor`, `photoToFrame`, optional `elevationDeg` on `reelPose` |
 | E2 | `ea2482c` | Model placed on the painted platform in the Reel MP4: `platformReelPose`, `backdropImageAspect`, registry `platform` data, `stepExport` pose block |
+| E3 | `936f6d5` | Portrait and square PNGs use the Reel framing: `usesReelFraming`, `computeReelView`, `applyReelPngPose` (3 files: `exportOptions.js`, `StudioCanvas.jsx`, `scripts/test-path.mjs`) |
+| Cessna swap | `d6b3cfa` | Registry points the Cessna 172 at the Tripo model `public/models/cessna-172-tripo.glb` (2 files: the GLB and `products/registry.js`) |
 
-(`5dd66a6` is a HANDOFF.md-only commit between C2 and E1.)
+(`5dd66a6` and `4576c13` are HANDOFF.md-only commits: through C2 and through E2.)
 
 ### Files and what each does
 
@@ -549,7 +551,7 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
   the live camera). If anything is missing or a step returns null, it falls back
   silently to the old `reelPose` call. Only Pistons Loft and Aviation Hangar have
   platform data. All other environments, landscape exports, PNG exports and the
-  on-screen view are unchanged (byte-identical in the E2 probes; probe results,
+  on-screen view were unchanged by E2 (byte-identical in the E2 probes; Slice E3 later changed the portrait and square PNG exports, see below; probe results,
   not reproducible from the repo alone).
 - **Why `platformReelPose` solves numerically.** `elevationForBaseAngle` assumes the
   camera stays where it is, but `panToAnchor` also moves the camera up, so
@@ -584,6 +586,56 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
   stands on the platform in Pistons Loft and the Cessna 172 rests on the platform
   in Aviation Hangar, with the whole plane in frame.
 
+### Slice E3 and the Cessna swap
+
+- **What E3 does** (commit `936f6d5`). The three fixed social presets
+  `story-reel` (9:16), `ig-portrait` (4:5) and `ig-square` (1:1) now export their
+  PNG with the same framing as the Reel MP4, in EVERY environment.
+  `usesReelFraming(presetId, width, height)` (`capture/exportOptions.js`; list
+  `REEL_FRAMED_PRESETS`) is true only for those three ids with a finite, positive
+  size whose width / height is <= 1. `computeReelView` (`StudioCanvas.jsx`) is the
+  shared pose function used by both `stepExport` and the PNG path: on an environment
+  with `platform` data (Pistons Loft, Aviation Hangar) and a known backdrop image
+  aspect it returns the platform pose (`platformReelPose`); otherwise it returns the
+  plain centred Reel pose (`reelPose`: live azimuth and elevation, target at the
+  model centre, distance `fitDistance` x Distance slider %). `applyReelPngPose`
+  puts the camera there inside `moveGuarded`, and returns the function that restores
+  camera, controls target and `camera.far`; the export renders, calls `toBlob` and
+  restores in one synchronous task, and `publish()` is skipped meanwhile. It returns
+  null (today's behaviour) with no controls object, while an export or preview runs,
+  or when no pose can be computed.
+- **What E3 does NOT change:** the "Current view" preset, the landscape presets
+  (16:9 and any unknown id) and the on-screen view keep the live camera framing.
+- **Owner-tested after E3** (owner facts, not visible in the repo): portrait PNGs of
+  the Coffee Bike on Pistons Loft (Reel 9:16, Post 1:1, Hero 4:5) and of the Cessna on
+  Aviation Hangar (9:16) show the model standing on the platform with the whole model
+  in frame. On Vintage Garage (no platform data) the model is centred but floats.
+  Wide 16:9 and Current view look as before. The Camera sliders and the "Custom
+  (unsaved)" tag were unchanged and Play / Stop worked afterwards.
+- **The Cessna swap** (commit `d6b3cfa`). `products/registry.js` now points
+  `cessna-172` at `/models/cessna-172-tripo.glb` (1,409,244 bytes) with `frontAz: 0`.
+  Why (registry comment): the nose points +Z in this asset (length along z, wingspan
+  along x), and azimuth 0 is the camera on the +Z side looking toward -Z, so
+  `frontAz 0` shows the +Z face as "Front". The placeholder `cessna-172.glb`
+  (58,204 bytes) and its generator `scripts/gen-c172-placeholder.mjs` are kept as a
+  fallback: revert = restore `modelPath "/models/cessna-172.glb"` and `frontAz 90`.
+  The registry comment says the new model is normalised to 1.0 unit at its widest, so
+  it carries no real-world scale (a real C172 has about an 11 m wingspan). The source
+  is the owner's Tripo account (the registry comment says so; the file's own
+  generator field says "Tripo" per the owner); the registry comment says the terms
+  for commercial publication are the owner's to confirm and were not checked.
+- **Owner-tested with the new Cessna** (owner facts): imported first as a custom asset,
+  the platform placement worked on both Pistons Loft and Aviation Hangar. At Distance
+  252 % the Reel plane was much smaller; at 100 % it fills about half of the frame (the
+  Reel distance is multiplied by the Distance slider). The built-in plane's Front, Side
+  and Rear presets show the correct sides, and Reel 9:16 PNG exports on Pistons Loft show
+  the plane on the platform. The owner intends to replace this Cessna again later with
+  a final model.
+- **Counts observed when this section was written** (run by the author of this
+  update; see "How to verify"): `node scripts/test-path.mjs` 192 PASS lines, exit 0,
+  `ALL CHECKS PASSED`; `node scripts/test-backdrop.mjs` 84 PASS lines, exit 0,
+  `ALL CHECKS PASSED`. Lint and build were not run for this documentation update.
+
 ### Rules that must not be broken
 
 - The live three.js camera and the OrbitControls target are the only camera
@@ -607,10 +659,12 @@ Files: `camera/cameraStudio.js`, `components/StudioCanvas.jsx`, `App.jsx`,
 
 From `app`:
 
-- `node scripts/test-path.mjs` - 167 PASS lines and `ALL CHECKS PASSED` (counted
-  when this section was written; the owner also ran it after E2 and reported 167).
-- `node scripts/test-backdrop.mjs` - 84 PASS lines and `ALL CHECKS PASSED` (counted;
-  the owner also reported 84).
+- `node scripts/test-path.mjs` - 192 PASS lines and `ALL CHECKS PASSED` (counted
+  after the Cessna swap by counting lines that start with PASS; it was 167 after E2,
+  and E3 added 24 lines to the script; note `grep -c PASS` reports 193 because
+  `ALL CHECKS PASSED` also matches).
+- `node scripts/test-backdrop.mjs` - 84 PASS lines and `ALL CHECKS PASSED` (counted
+  again after the Cessna swap: 84; the owner also reported 84 after E2).
 - `npm run lint` - no output, exit 0 at the last slice.
 - `npm run build` - succeeds; mediabunny is its own chunk (a separate `src-*.js`
   file, about 687 kB at the last build; observed in build output, not asserted
@@ -642,22 +696,35 @@ are in the lock file.
   distance); the portrait Reel ignores the Height slider. Environments covered:
   Pistons Loft and Aviation Hangar; every other environment keeps today's
   behaviour.
+- Slice E3: the three social presets (story-reel, ig-portrait, ig-square) take
+  the Reel framing in every environment; Current view, landscape presets and the
+  on-screen view stay as they were (the original proposal said existing portrait PNGs
+  would change and needed owner approval; the slice was then built).
 
 ### Known limitations and open items
 
-- **Portrait PNGs still use the live camera** (unchanged by design), so the model
-  can still float above the platform and a wide model such as the Cessna can be
-  clipped: the owner's own 9:16 PNG of the Cessna on Aviation Hangar shows the plane
-  floating with the wing tips cut off. Proposed Slice E3: make portrait PNGs use the
-  same Reel framing as the Reel MP4. It needs the owner's approval because
-  existing portrait PNGs would change (not started).
-- The model no longer floats in the Reel MP4 on Pistons Loft and Aviation Hangar
-  (Slice E2, confirmed by the owner). The other nine environments have no
-  platform data and keep the old framing (the model floats there).
+- **Fixed in Slice E3 (`936f6d5`):** portrait and square PNGs (story-reel,
+  ig-portrait, ig-square) used the live camera, so the model floated and a wide
+  model such as the Cessna was clipped. They now use the Reel framing (owner-tested,
+  see "Slice E3 and the Cessna swap").
+- The model no longer floats in the Reel MP4 or the three social PNGs on Pistons
+  Loft and Aviation Hangar (Slices E2 and E3, confirmed by the owner). The other nine
+  environments have no platform data: the Reel and those PNGs use the plain centred
+  pose and the model still floats there (owner-confirmed on Vintage Garage).
+- The Reel distance is multiplied by the Distance slider %: at 252 % the Reel plane
+  was much smaller, at 100 % it fills about half of the frame (owner-tested).
 - The platform numbers in the registry are estimates from the JPG (plus or minus
   3-4 px; the 8 degree floor angle plus or minus 1.5); tune them by eye.
-- The Cessna 172 is placeholder geometry (`app/scripts/gen-c172-placeholder.mjs`,
-  replace `app/public/models/cessna-172.glb` with the final asset).
+- The Cessna 172 is now the Tripo model `cessna-172-tripo.glb` (`d6b3cfa`); the old
+  placeholder geometry and `app/scripts/gen-c172-placeholder.mjs` remain as a
+  fallback. The Tripo model is not final: the owner plans to replace it again. Its
+  fuselage carries garbled lettering baked into the texture (owner-observed; a
+  texture problem, regenerating in Tripo is the likely fix, unverified). Its Tripo
+  plan's terms for commercial publication are unchecked. It has no real-world
+  scale (normalised to 1.0 unit at its widest).
+- In one owner 9:16 PNG of the plane on the platform a gold ring appeared around it,
+  and not in a second one. Cause unverified (possibly the selection ring while the
+  model was selected; the Reel MP4 hides it, the PNG path was not checked).
 - `propeller-pistons-loft.jpg` is 1264x843 (read from the file). A 9:16 crop of
   it is about 474 px wide, upscaled about 2.28x to 1080, so the backdrop is
   soft; sharper source photos would be needed.
@@ -693,7 +760,7 @@ are in the lock file.
 
 ### Next slices (proposed, not started)
 
-- Slice E3: portrait PNGs use the same Reel framing (owner approval needed).
+- (Slice E3, portrait PNGs on the Reel framing, is done: `936f6d5`.)
 - Platform data for more environments (measure and look first), and tuning
   `reelAnchorRy` if the owner wants the model further forward.
 - Slice D2: an in-app video preview window.
@@ -702,6 +769,95 @@ are in the lock file.
 
 Tooling reminders (Playwright / SwiftShader versus the real GPU, Project rules)
 are in "Known Limitations" and "Project rules" below.
+
+## Phase 17A audit findings (Creator Studio, read-only)
+
+A read-only audit; nothing in the app changed. It looked at how far the current app
+is from a scene editor where any part of a model can be picked and moved. Items
+marked "owner-tested" are the owner's own observations, not visible in the repo.
+Items marked "unverified" were not re-checked here.
+
+### The Coffee Bike GLB (`app/public/models/the_kop_refined.glb`, 5,454,744 bytes)
+
+- Read with a Node script for this update (the GLB JSON chunk): 8 nodes, 8 meshes, 8
+  materials, one node per material, no node scale, 0 textures and 0 images. Each mesh
+  has one primitive with POSITION and COLOR_0 attributes (colours live in the vertex
+  colours). Node / material names: Paint_Burgundy_Gloss, Steel_Brushed, Chrome,
+  Rubber_Tyre, Metal_Matte_Gunmetal, Leather_Saddle, Brass, Branding_Gold. The asset
+  generator field reads "StudioOfSidecars refine" version 2.0.
+- So the model is 8 material-sized lumps, not a set of separately selectable
+  physical parts (a "part" here is every piece sharing one material).
+- The sign: the file has no textures, so the "THE KOP" lettering (with the T and P
+  clipped in the exports) cannot be a texture; it must be in the geometry. That the
+  lettering is 3D glyph geometry in the Branding_Gold mesh was stated in the audit
+  brief; only the no-texture fact and the material name were re-verified here
+  (glyph shape and clipping: unverified).
+
+### What the app can and cannot do today (read from the code)
+
+- **Selection is whole-model.** A left click that is not a drag raycasts against
+  `modelMeshes` and calls `onSelect({ name: product.name, size })` for any hit, or
+  `onClear()` for a miss (`StudioCanvas.jsx`). No mesh or part identity is passed.
+- **Material edits are per material, not per mesh.** `materialGroups` in
+  `materials/apply.js` builds one entry per material `uuid` and collects the mesh
+  names that use it, so an edit applies to every mesh sharing that material.
+  Owner-tested on the Coffee Bike: setting Brass to red recoloured the box on top of the
+  counter and the other brass parts together (one material, several parts).
+- **The editor owns a fixed parameter set** (colour, metalness, roughness,
+  envMapIntensity, opacity, transparent, clearcoat, clearcoatRoughness, transmission,
+  ior, thickness, texture). Per the comment in `apply.js`, anything outside it, such as
+  vertex colours, is left as the asset shipped it.
+- **Edits auto-save to IndexedDB.** `materials/store.js` writes per-model overrides
+  through `materials/matDb.js` (`indexedDB`, with `scheduleSave`; storage degrades to
+  "off" instead of blocking). Owner-tested: colour edits persist across a normal
+  reload (F5), Undo reverts a live edit, and "Reset entire model" clears everything.
+- **Sessions** (`session/studioSession.js`, saved in `localStorage`) store
+  `engine.snapshot()` (which the file's header comment says holds the whole-model
+  transform, camera, lighting and environment) plus `materials.snapshotOverrides()`
+  (edited material values per model). Nothing per part is stored.
+- **No per-part move, rotate, scale or hide** exists anywhere in the app; the transform
+  tool acts on the whole model. Confirmed by the absence of any such code path in the
+  selection handler and stores (a search, not an exhaustive proof).
+- **Fit values are measured once per model.** `fit` (centre, size, distance, floor)
+  is a `useMemo` over `[modelScene, gl]` and is computed from the model's bounding box
+  when it mounts. It does not follow later transforms (the same reason as CAM-001, and
+  why the Reel distance ignores a tool-applied scale).
+- **Vertex colours and picked colours** (owner-tested): a near-white colour set on
+  Paint_Burgundy_Gloss (metalness 1.0, roughness 0.03) made the paint look bright
+  pink. That is consistent with the picked colour multiplying the vertex colours stored
+  in the mesh (unverified; not investigated).
+- **"Reset this material"** appeared to do nothing on that edit (owner-tested; cause
+  not investigated; the code path is `resetMaterial` -> `restoreEntry`). A hard refresh
+  and then "Reset entire model" restored the original look.
+- **Hex field** (owner-tested): typing then deleting characters snaps back to the old
+  value; select all (Ctrl+A) and paste a full code instead (cause not investigated).
+
+### Real size of the coffee cart
+
+- Owner-provided: the cart's box body is 52 x 22 x 22 inches (132.1 x 55.9 x 55.9 cm),
+  box body only, without the equipment on top, wheels or mudguards. The GLB's own scale
+  is unknown and the box has not been measured in the model yet, so no scale factor has
+  been derived (unverified).
+
+### Assets looked at outside the repo (owner facts; none of these is used by the app)
+
+- The Sketchfab file C172_Parent (33 named parts, CC-BY-4.0 by ollietaylor219): its parts
+  are not assembled into a plane as placed (positions and rotations inconsistent), it
+  has one material, and it needs attribution.
+- Five more Tripo files: a wheel of 350k vertices, a fuselage, a small textured
+  propeller aircraft (this became the new Cessna), a 60 MB 12-part plane with 1.95
+  million triangles, and a 54-part "Meet the machine" mesh. Only the propeller aircraft
+  is in the repo (as `cessna-172-tripo.glb`).
+
+### The "Garage" idea (designed, not built)
+
+- The owner wants a "Garage": a scene editor to pick any part of any model, move /
+  rotate / scale / hide / recolour it, add objects from his library, and save named
+  layouts. A read-only design report for it has been written but not yet run. Nothing
+  of it exists in the code. Reshaping geometry stays Blender work. The owner's preferred
+  route is cutting the existing Coffee Bike into parts rather than rebuilding it; the
+  Blender source `app/public/blender/THE_KOP_Studio_v01.blend` has not been opened
+  (the file's presence and contents were not checked here: unverified).
 
 ## Known Camera Bugs
 
@@ -720,20 +876,27 @@ Resolved: **CAM-002** (Top preset elevation), see "Resolved" below.
 | Asset Library | Complete | Registry-driven product/environment gallery plus GLB/HDR/EXR import manager (`ui/AssetLibrary.jsx`, `ui/ImportPanel.jsx`). |
 | Camera Studio | Partial | Presets and Save Custom View work. Phase 16A Slice A (`a23e3d0`): the rail's Distance and Height sliders are live, with a "Custom (unsaved)" state. Phase 16A Slice B (`3c05965`): Lock focus is a real toggle (ON by default; the orbit target follows the transformed model, right-drag pan is off while ON) and the live camera is saved in the session. See "Phase 16A Slice A/B" and "Known Camera Bugs". |
 | Material Studio | Complete | Live PBR editing, presets, undo/reset, persistence and session capture (`materials/`, `ui/MaterialsManager.jsx`). |
-| Render Studio | Partial | PNG capture/export with format chips works. Phase 16B (`0b7c2ce`): a 1080x1920, 30 fps, silent MP4 Reel export of the Turntable from the rail's Animate section; portrait and square exports (PNG and Reel) crop the backdrop instead of squashing it (`1e6077a`); the Reel MP4 puts the model on the painted platform on Pistons Loft and Aviation Hangar (`ea2482c`); portrait PNGs still use the live camera. See "Phase 16B". |
+| Render Studio | Partial | PNG capture/export with format chips works. Phase 16B (`0b7c2ce`): a 1080x1920, 30 fps, silent MP4 Reel export of the Turntable from the rail's Animate section; portrait and square exports (PNG and Reel) crop the backdrop instead of squashing it (`1e6077a`); the Reel MP4 puts the model on the painted platform on Pistons Loft and Aviation Hangar (`ea2482c`); portrait and square social PNGs use the Reel framing (`936f6d5`); the Cessna 172 is the Tripo model (`d6b3cfa`). See "Phase 16B". |
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
 | HDRI Environment Library | Partial | 2 of 11 environments have a real HDR; the other 9 use the probe plus a flat JPG. |
-| Animation Studio | Partial | Phase 16B (`c99fd69`, `f25d884`, `c936232`, `0b7c2ce`, `ea2482c`): Turntable preview and Reel export work (the model spins; the camera is fixed). No GLB animation mixer, no camera moves UI, no saving in sessions. See "Phase 16B". |
+| Animation Studio | Partial | Phase 16B (`c99fd69`, `f25d884`, `c936232`, `0b7c2ce`, `ea2482c`, `936f6d5`): Turntable preview and Reel export work (the model spins; the camera is fixed). No GLB animation mixer, no camera moves UI, no saving in sessions. See "Phase 16B". |
 
 Status is judged from code reading, not from a fresh browser run in this update.
 
 ## Open Issues (Next Phase)
 
 1. Camera Studio: Distance, Height (Slice A, `a23e3d0`) and Lock focus plus session capture of the live camera (Slice B, `3c05965`) are live; CAM-002 is fixed (`1a15c38`). Next: CAM-001; see "Known Camera Bugs".
-2. Animation Studio: Turntable preview and Reel MP4 export are live, and the Reel puts the model on the platform on Pistons Loft and Aviation Hangar (Phase 16B, through Slice E2). Open: portrait PNGs on the same framing (proposed Slice E3, needs owner approval), platform data for the other nine environments, an in-app video preview (Slice D2), camera moves and session saving; see "Phase 16B".
+2. Animation Studio: Turntable preview and Reel MP4 export are live, and the Reel puts the model on the platform on Pistons Loft and Aviation Hangar (Phase 16B, through Slice E3; the three social PNG presets use the same framing, `936f6d5`). Open: platform data for the other nine environments (they still float), an in-app video preview (Slice D2), camera moves and session saving; see "Phase 16B".
 3. Reel/MP4 export is built (1080x1920, 30 fps, silent) and Instagram accepted an exported file (owner-tested); how it looks inside Instagram is untested.
-4. THE KOP branding renders clipped ("THE KOF") in every export. Believed to be in the model/texture, not in this React app's export code. UNVERIFIED at the source.
+4. THE KOP branding renders clipped ("THE KOF") in every export. The Phase 17A audit found the Coffee Bike GLB has no textures, so it is in the geometry, not a texture (glyph clipping itself unverified; see "Phase 17A audit findings").
 5. Blender: CAM_Shot01_LowHero still requires repair (aimed at nothing). Blender work is frozen.
+6. Materials panel (owner-tested, causes not investigated): "Reset this material" appeared to do nothing on a near-white edit of Paint_Burgundy_Gloss (a hard refresh plus "Reset entire model" restored it); in the hex field, typing then deleting characters snaps back to the old value (use Ctrl+A and paste a full code).
+7. A near-white colour on a vertex-coloured material looks bright pink, consistent with the picked colour multiplying the vertex colours (unverified).
+8. A gold ring appeared around the plane in one 9:16 PNG and not in another; cause unverified (possibly the selection ring; the Reel MP4 hides it, the PNG path was not checked).
+9. The other nine environments have no platform data: the Reel and social PNGs centre the model but it floats there.
+10. The new Cessna has garbled baked lettering on the fuselage, and its Tripo plan's terms for commercial publication are unchecked. The owner plans to replace it with a final model.
+11. The Reel distance is multiplied by the Distance slider % (252 % makes the Reel plane much smaller; 100 % fills about half of the frame).
+12. The "Garage" scene editor (per-part move / rotate / scale / hide / recolour, library objects, named layouts) is only designed, not built; see "Phase 17A audit findings".
 
 ## Resolved
 
@@ -801,6 +964,15 @@ Status is judged from code reading, not from a fresh browser run in this update.
   The owner's manual checks in Edge used the machine's normal browser graphics
   (GPU model not verified). The earlier Watchers Bootstrap Fix 3 video test did
   run on a real GPU. HDR on a real GPU is UNVERIFIED.
+- **Creator Studio limits (Phase 17A audit):** selection is whole-model, material edits
+  apply to every mesh sharing a material, and there is no per-part transform or hide;
+  the Coffee Bike is only 8 material groups. See "Phase 17A audit findings".
+- **Materials panel quirks (owner-tested, causes not investigated):** "Reset this
+  material" appeared to do nothing on one edit; the hex field snaps back to the old value
+  when characters are typed then deleted (select all with Ctrl+A and paste a full code).
+  A picked colour on a vertex-coloured material may multiply the vertex colours
+  (unverified).
+- **Garage feature:** designed only, not built.
 
 ## Project rules
 
@@ -851,3 +1023,9 @@ boundaries UNVERIFIED against any release note).
   photo-to-frame); pure functions and tests, not wired.
 - **Phase 16B Slice E2** — `ea2482c`: model on the platform in the Reel MP4
   (`platformReelPose`, registry platform data for Pistons Loft and Aviation Hangar).
+- **HANDOFF update** — `4576c13`: HANDOFF.md through Phase 16B Slice E2.
+- **Phase 16B Slice E3** — `936f6d5`: portrait and square PNGs (story-reel,
+  ig-portrait, ig-square) use the Reel framing.
+- **Cessna swap** — `d6b3cfa` ("Replace placeholder Cessna 172 with Tripo model"): the
+  registry points at `cessna-172-tripo.glb`, `frontAz` 0; the placeholder GLB and
+  generator are kept as a fallback.
