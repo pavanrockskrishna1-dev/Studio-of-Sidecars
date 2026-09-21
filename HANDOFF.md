@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 16B Slice E3, the Cessna swap and the Phase 17A audit; HEAD `d6b3cfa`, the Cessna swap commit; all work through the Cessna swap is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
+## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slice G1, and the THE KOP MAIN product; HEAD `97dd1ac`, "Add THE KOP MAIN as a new built-in product"; all work through the MAIN product is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -18,6 +18,7 @@
   2. Phase 15A
   3. Phase 15B (HDR lighting)
   4. Phase 16A / 16B (Camera Studio; Animation Studio and Reels), then Phase 17A audit findings (Creator Studio, read-only)
+     and Phase 18 (Garage design and slice G1), then Products and models (three built-in products, THE KOP MAIN)
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -766,6 +767,8 @@ are in the lock file.
 - Slice D2: an in-app video preview window.
 - Slice E: camera moves (`makeMove`) and saving an animation in the session
   (optional `engine.animation` field, no version bump).
+- Garage: next is G2 (the store) and then G3 (part selection by click, needs the owner's
+  approval); see "Phase 18 - Garage (scene editor): design and slice G1".
 
 Tooling reminders (Playwright / SwiftShader versus the real GPU, Project rules)
 are in "Known Limitations" and "Project rules" below.
@@ -849,15 +852,208 @@ Items marked "unverified" were not re-checked here.
   million triangles, and a 54-part "Meet the machine" mesh. Only the propeller aircraft
   is in the repo (as `cessna-172-tripo.glb`).
 
-### The "Garage" idea (designed, not built)
+### The "Garage" idea (designed; only slice G1 built, see Phase 18)
 
 - The owner wants a "Garage": a scene editor to pick any part of any model, move /
   rotate / scale / hide / recolour it, add objects from his library, and save named
-  layouts. A read-only design report for it has been written but not yet run. Nothing
-  of it exists in the code. Reshaping geometry stays Blender work. The owner's preferred
+  layouts. **Updated:** the design report has since been produced (read-only, not in
+  the repo) and slice G1 (pure functions and tests, nothing wired) is committed; see
+  "Phase 18 - Garage (scene editor): design and slice G1". The editor itself does not
+  exist in the app yet. Reshaping geometry stays Blender work. The owner's preferred
   route is cutting the existing Coffee Bike into parts rather than rebuilding it; the
   Blender source `app/public/blender/THE_KOP_Studio_v01.blend` has not been opened
   (the file's presence and contents were not checked here: unverified).
+
+## Phase 18 - Garage (scene editor): design and slice G1
+
+Status: designed; slice G1 (pure modules and tests) is committed as `6226ba2`; nothing
+else is built. The app behaves exactly as before G1: the commit only added files in
+`app/src/garage/` and `app/scripts/test-garage.mjs` (`git show --stat 6226ba2`: 6 files,
+all new), and a search of `app/src` finds no import of `garage/` from any other file
+(checked for this update).
+
+### The wish and the scope (owner)
+
+The owner wants a "Garage": a scene editor where he can change anything, model-agnostic:
+pick any part by click; move / rotate / scale / hide / recolour it; add other objects
+from his library; save and load named layouts; with the Reel and PNG exports and the
+camera presets still working. Out of scope: reshaping geometry, fixing geometry defects,
+audio, the Blender track.
+
+### The design report (from a read-only report, not in the repo)
+
+The design report was produced in another session and is NOT in the repo. It used Node
+measurements only; no browser probe ran, so every statement about speed, frame time or GPU
+cost below is **unverified**. Its findings:
+
+- Today the app shows one model at a time (`key={product.id}`). A click selects the whole
+  model: the raycaster knows the hit mesh but the app discards it. Material edits are per
+  material. (These points are also in the Phase 17A audit above.)
+- The fit (`fit.size`, `fit.center`, `floorY`) is measured once per model, so a moved or
+  scaled model would leave the floor, shadow, ring, camera presets and Reel framing stale
+  (the known CAM-001 gap).
+- No gizmo is used. three's `TransformControls` exists in `node_modules` but is unused.
+- By code reading, a plain PNG includes the gold selection outline and ring when something
+  is selected (unverified by a run).
+- Measured in Node: `the_kop_refined.glb` splits into 681 connected pieces (per node 11, 5,
+  286, 3, 311, 1, 4, 60) in about 20 to 150 ms with no geometry duplication. The repo's own
+  `scripts/test-garage.mjs` checks the same 681 and the same per-node list (its split run
+  printed 149 ms for that file when this update ran it).
+- Splitting into hundreds of Meshes would raise the draw calls from 8 to 681; the cost on the
+  owner's PC is unmeasured. The report's proposed mitigation is "virtual parts": a
+  triangle-to-component map where only edited pieces become real meshes.
+- Proposed part-id scheme: the node path with sibling indices plus a fingerprint (verts,
+  tris, bbox, material name), with an "ambiguous" status for mirrored twins.
+- Proposed store: `app/src/garage/garageStore.js`, in the pattern of `cameraStudio.js` and
+  `animationStore.js`. A layout is stored as versioned JSON (items, part overrides as
+  deltas, splits, frontRef) under a new localStorage key `sos-garage-v1`, plus a `.json`
+  backup. (Not built; neither the file nor the key is in the code yet.)
+
+### Approved decisions (owner said "go with defaults")
+
+1. A part dragged below the model's floor leaves the floor and shadow at the model's
+   ORIGINAL base (recorded in code as `floorYFor` in `bounds.js`).
+2. PNG exports stop including the gold outline and ring (a later slice, G9).
+3. Turntable is not allowed with several objects at first.
+4. With several objects the front object defaults to the first one (layout field `frontRef`;
+   recorded in `layout.js`).
+5. Layouts live in the browser plus a downloadable `.json` backup (`serializeLayout` and
+   `parseLayoutJson` are the two ends).
+6. Per-part colour may ignore a model's baked vertex colours as an option (layout field
+   `material.ignoreVertexColors`).
+
+### What exists in `app/src/garage` (slice G1, commit `6226ba2`)
+
+Five pure modules: plain JS, no imports from the app, no three.js, no DOM, none throws on bad
+input. Nothing imports them.
+
+| File | Exports | What it does |
+|---|---|---|
+| `partId.js` | `sanitizeNodeName`, `buildPartIds`, `partIdOfComponent`, `parsePartId`, `fingerprint`, `fingerprintsMatch`, `resolvePart` | Stable part ids (node path, `name~n` per segment, split components add `#cK`), fingerprints and re-matching a saved part to the current tree |
+| `layout.js` | `LAYOUT_LIMITS`, `validateLayout`, `serializeLayout`, `parseLayoutJson` | The saved-layout shape (version 1), validation that returns a fresh object graph and drops unknown and forbidden keys, stable serialisation. Limits: 20 items, 2000 parts and 200 splits per item, name 60 chars, min scale 0.05, 2,000,000 JSON chars |
+| `split.js` | `splitComponents` | Connected components of a triangle mesh (weld by position, union-find, numbered by first appearance): counts, a component per triangle and a box per component; `{ ok:false, reason }` on bad input or more than 500,000 vertices by default |
+| `bounds.js` | `boxOfMatrixBox`, `unionBounds`, `floorYFor` | World bounds of a plain node tree and the floor height rule (decision 1) |
+| `compose.js` | `identityMatrix`, `matMul`, `matFromTRS`, `matFromEulerXYZDeg`, `pivotMatrix`, `transformPoint`, `quatMul`, `quatNormalize`, `applyPartOverride`, `resetToBase` | Column-major matrix and quaternion maths, the whole-model transform read the way the studio reads it (degrees, one uniform scale), part overrides and exact reset |
+
+`app/scripts/test-garage.mjs` (665 lines, plain node; three is used only to cross-check the
+maths) prints 161 PASS lines and ends with `ALL CHECKS PASSED (161 PASS)`. It reads GLBs in
+`app/public/models/` and prints SKIP when a file is missing. The split counts it printed
+(INFO lines): `the_kop_refined.glb` 681, `cessna-172-tripo.glb` 186, `cartoon-motorcycle.glb`
+149, `cessna-172.glb` 15, `cup-coffee.glb` 2, `mug.glb` 1.
+
+### Slice plan
+
+| Slice | What | Status | Owner approval needed when reached |
+|---|---|---|---|
+| G1 | Pure functions plus node tests | **Done** (`6226ba2`) | no |
+| G2 | The store (`garageStore.js`) | not started | no |
+| G3 | Part selection by click | not started | **yes** (what a click means) |
+| G4 | Per-part move / rotate / scale / hide, exact reset and undo | not started | no |
+| G5 | A refit event (`liveFit`) so floor, shadow, presets and Reel follow moved parts | not started | **yes** (presets follow moved models) |
+| G6 | Per-part colour | not started | **yes** (touches the materials store) |
+| G7 | Add objects from the library | not started | no |
+| G8 | Save and load layouts | not started | no |
+| G9 | Exclude the outline and ring from exports | not started | **yes** (PNGs lose the outline and ring) |
+| G10 | Virtual-part split | not started | no |
+| G11 | TransformControls gizmo | not started | no |
+
+Suggested order (from the report): G1, G2, G3, G4, G5, G6, G8, G7, G9, G10, G11. Each slice
+is independently shippable.
+
+### How to verify
+
+From `app`: `node scripts/test-path.mjs` (192 PASS lines), `node scripts/test-backdrop.mjs`
+(84 PASS lines), `node scripts/test-garage.mjs` (161 PASS lines). Count the lines that start
+with PASS. Observed when this section was written: 192, 84 and 161, no FAIL lines, exit 0 on
+all three. Lint and build were not run for this documentation update.
+
+## Products and models
+
+### The three built-in products (`app/src/products/registry.js`)
+
+| id | Label | Model file | `frontAz` | Why (registry comments) |
+|---|---|---|---|---|
+| `coffee-bike` | Coffee Bike | `/models/the_kop_refined.glb` | -90 | The coffee cart and branding face -X in this asset |
+| `cessna-172` | Cessna 172 | `/models/cessna-172-tripo.glb` | 0 | The nose points +Z; azimuth 0 is the camera on the +Z side, so +Z is "Front" |
+| `the-kop-main` | THE KOP MAIN (name "THE KOP Coffee Bike (MAIN)") | `/models/the-kop-main.glb` | 90 | The THE KOP sign plates sit on the +X face of "Cabinet carcass" (the bike itself runs along z); azimuth 90 is the camera on the +X side, so "Front" shows the sign side |
+
+### THE KOP MAIN (commit `97dd1ac`, 3 files)
+
+- The commit adds `app/public/models/the-kop-main.glb`, one registry entry, and a data-only
+  change in `app/src/ui/content.js` (`PRODUCT_CATEGORY` "Retail mobility · hero" and
+  `PRODUCT_ICON` "bike" for `the-kop-main`). The `coffee-bike` entry is unchanged. No
+  component changed.
+- The file (checked for this update): 23,176,392 bytes, sha256
+  `f3df6f5a5cc2468df760bb89755e610a712b37770f808e3524bf57b42737ac8d`. Read with a Node
+  script from its JSON chunk: 756 nodes, 753 mesh nodes, 629 meshes, 18 materials, 3 texture
+  entries over 2 images, generator "Khronos glTF Blender I/O v5.2.40", no extras and no
+  copyright field. Triangles: 483,311 counted per node, 473,391 counting each mesh once. The
+  largest single mesh is "Temporary descriptor" with 18,900 triangles. Extensions used:
+  `KHR_materials_clearcoat`, `KHR_materials_transmission`, `KHR_materials_ior`. The material
+  named "Material" has a clearcoat factor of 3 in the file (outside the glTF range 0 to 1).
+  How the loader and the app react to it is untested.
+- The registry comment says the 98 bike pieces are named `tripo_part_N`, which suggests a
+  Tripo origin. That is an inference from the names; the owner confirms the origin and the
+  terms of use (unchecked here). The file carries no author or licence.
+- Units are unstated (the glTF standard says metres, unverified). The node "Cabinet carcass"
+  is 1.35 long (registry comment); against the real cart box of 52 x 22 x 22 inches that is
+  within about 2 percent of 52 in if the units are metres (unverified).
+- The sign parts are named "Temporary ..." and were left as they are.
+- Git history: the 23 MB `the-kop-main.glb` is now in git history for good, even if the file
+  is later removed.
+- `app/src/ui/AssetLibrary.jsx` (`matchesFilter`) shows the "Coffee Bike" filter chip by
+  `item.id === "coffee-bike"`, so THE KOP MAIN does not appear under that chip. Its
+  category text ("Retail mobility · hero") matches no other chip either, so by the code it
+  shows only under All and Built-in (read from the code, not run in a browser). The Aircraft chip tests `cessna-172` by id the same way.
+- The app-stored MAIN test import in the owner's browser (a custom asset) is separate from the
+  built-in product; the owner was told to delete it.
+
+### Owner test of MAIN (owner facts, on his own PC, headed Edge)
+
+- The MAIN file imported as a custom asset loaded and rendered in the app; orbiting was
+  smooth; the 4 s Turntable was smooth; a 4 s Reel export took about as long as with the old
+  bike. He accepts the look of the bike.
+- The Reel came out small when the Distance slider had been left above 100 percent (the Reel
+  distance is multiplied by the Distance slider) and about a third of the frame width with
+  Distance at 100 percent, standing on the Pistons Loft platform.
+- After the built-in product was added he reported that the Front and the other camera
+  presets, the Reel PNG on Pistons Loft, and the Coffee Bike and Cessna 172 all looked right.
+- Not reported: whether clicking to select the 753-part model felt smooth.
+
+### Downloads check (from a read-only report, not in the repo; not re-verified by this update)
+
+Files in `C:\Users\User\Downloads`, produced in another session:
+
+- `THE_KOP_coffee_bike_MAIN.glb` (23,176,392 bytes, sha256 begins `f3df6f5a`, the same start as
+  the repo file; seven copies and `THE_KOP_verification_v1` are byte-identical): 756 nodes, 753
+  mesh nodes, 629 meshes, 18 materials (17 named), 2 PNG textures of 2048 x 2048, 483,311
+  triangles per node (473,391 in unique meshes), generator Blender I/O v5.2.40, no extras or
+  licence. (The repo read above agrees on the counts and the generator.)
+- 87 percent of node names are meaningful (for example "Cabinet carcass", "Stainless
+  countertop", 12 "Espresso / ..." nodes, "Grinder / ...", cups, sidecar tyre and spokes); 98
+  bike pieces are named `tripo_part_N` and share one generic textured material.
+- The sign parts are named "Temporary KOP wordmark" and "Temporary descriptor", and the sign
+  text is complete in this file (in `the_kop_refined.glb` it is clipped). The parts look
+  assembled and upright. "Cabinet carcass" is the best match for the real cart box.
+- The BYTEBIRD-c172 files: three distinct files (one uncompressed with 26 white materials, one
+  uncompressed with 12 colour-role materials, vertex colours and variants, and one
+  Draco-compressed that could not be read), 26 named parts, 14,112 triangles, assembled, nose
+  along -X in the file, nose wheel about 0.27 units higher than the main wheels; no licence or
+  author in any of them.
+- Other Downloads files (a 60 MB 12-part plane with 1.95 million triangles, a wheel with
+  350,753 vertices, and others) are too heavy to use in the app.
+
+### Weight of MAIN (from a read-only report, not in the repo; sums computed from the file, nothing rendered)
+
+- The 98 `tripo_part` pieces carry 270,091 triangles (55.9 percent); without them the file is
+  still 213,220 triangles.
+- Only one mesh (the coffee bean, 80 triangles, 125 nodes) is instanced; 43 sets of
+  byte-identical meshes (tyre treads, drip-grate holes, spokes) are stored as separate meshes.
+- The sidecar wheel is 10.9 percent; the espresso machine and grinder together about 1.3
+  percent; the sign descriptor plate alone is 18,900 triangles (also seen in the repo read).
+- Textures are about 42.6 MiB of GPU memory by estimate (unverified).
+- The report judged that no slimming scenario comes near the shipped bike's budget
+  (180,291 triangles, 8 draw calls). MAIN is 753 draw calls by mesh-node count.
 
 ## Known Camera Bugs
 
@@ -880,6 +1076,8 @@ Resolved: **CAM-002** (Top preset elevation), see "Resolved" below.
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
 | HDRI Environment Library | Partial | 2 of 11 environments have a real HDR; the other 9 use the probe plus a flat JPG. |
 | Animation Studio | Partial | Phase 16B (`c99fd69`, `f25d884`, `c936232`, `0b7c2ce`, `ea2482c`, `936f6d5`): Turntable preview and Reel export work (the model spins; the camera is fixed). No GLB animation mixer, no camera moves UI, no saving in sessions. See "Phase 16B". |
+| Garage (scene editor) | Designed; G1 only | Slice G1 (`6226ba2`): five pure modules in `app/src/garage/` and `scripts/test-garage.mjs` (161 checks). Nothing is wired into the app. See "Phase 18". |
+| Products | 3 built-in | Coffee Bike, Cessna 172, THE KOP MAIN (`97dd1ac`, heavy: 483,311 triangles). See "Products and models". |
 
 Status is judged from code reading, not from a fresh browser run in this update.
 
@@ -896,7 +1094,12 @@ Status is judged from code reading, not from a fresh browser run in this update.
 9. The other nine environments have no platform data: the Reel and social PNGs centre the model but it floats there.
 10. The new Cessna has garbled baked lettering on the fuselage, and its Tripo plan's terms for commercial publication are unchecked. The owner plans to replace it with a final model.
 11. The Reel distance is multiplied by the Distance slider % (252 % makes the Reel plane much smaller; 100 % fills about half of the frame).
-12. The "Garage" scene editor (per-part move / rotate / scale / hide / recolour, library objects, named layouts) is only designed, not built; see "Phase 17A audit findings".
+12. The "Garage" scene editor (per-part move / rotate / scale / hide / recolour, library objects, named layouts) is only partly built: slice G1 (pure functions and tests, `6226ba2`) is done and nothing is wired; G2 to G11 are not started. See "Phase 18".
+13. THE KOP MAIN (`97dd1ac`) is heavy: 483,311 triangles and 753 draw calls. Its speed was only tested by the owner in his browser (smooth orbit, Turntable and a 4 s Reel), not measured. Whether clicking to select its 753 parts is smooth was not reported, and the selection outline on 753 parts is unmeasured.
+14. MAIN's material "Material" has a clearcoat factor of 3 (outside 0 to 1); how the loader and the app react is untested. Its sign parts are named "Temporary ..." (placeholders).
+15. Terms of use: the Tripo terms are unchecked for the Cessna, and for MAIN's 98 `tripo_part` pieces (Tripo origin inferred from the names; the owner confirms).
+16. The "Coffee Bike" filter chip in the Asset Library tests `id === "coffee-bike"`, so THE KOP MAIN does not appear under it.
+17. Next Garage steps: G2 (the store, no approval needed) and the first visible slice G3 (part selection by click, needs the owner's approval). See "Phase 18".
 
 ## Resolved
 
@@ -972,7 +1175,11 @@ Status is judged from code reading, not from a fresh browser run in this update.
   when characters are typed then deleted (select all with Ctrl+A and paste a full code).
   A picked colour on a vertex-coloured material may multiply the vertex colours
   (unverified).
-- **Garage feature:** designed only, not built.
+- **Garage feature:** only partly built. G1 (pure functions, `6226ba2`) exists and nothing is wired into the app; G2 to G11 are not started. See "Phase 18".
+- **THE KOP MAIN is heavy** (483,311 triangles, 753 draw calls): speed was only tested by the owner in his browser, not measured; the selection outline on 753 parts is unmeasured; the clearcoat factor 3 on the material "Material" is untested; its sign parts are "Temporary"; the 23 MB file is in git history for good; the Tripo origin of its 98 bike pieces is an inference and the terms are unchecked (also unchecked for the Cessna). See "Products and models".
+- **Gold ring and outline in PNG exports:** by code reading (unverified by a run) a plain PNG includes the gold selection outline and ring when something is selected; slice G9 is planned to remove them from exports.
+- **Coffee Bike filter chip** in the Asset Library tests the id `coffee-bike`, so THE KOP MAIN does not list under it.
+- **Environments:** the other nine environments still have no platform data (see Phase 16B).
 
 ## Project rules
 
@@ -1029,3 +1236,11 @@ boundaries UNVERIFIED against any release note).
 - **Cessna swap** — `d6b3cfa` ("Replace placeholder Cessna 172 with Tripo model"): the
   registry points at `cessna-172-tripo.glb`, `frontAz` 0; the placeholder GLB and
   generator are kept as a fallback.
+- **HANDOFF update** — `9b12544` ("Update HANDOFF.md through the Cessna swap and Phase 17A
+  audit"): HANDOFF.md only.
+- **Garage G1** — `6226ba2` ("Garage G1: pure part-id, layout, split, bounds and compose
+  modules with tests"): 6 new files (`app/src/garage/{bounds,compose,layout,partId,split}.js`
+  and `app/scripts/test-garage.mjs`); nothing wired into the app.
+- **THE KOP MAIN product** — `97dd1ac` ("Add THE KOP MAIN as a new built-in product"): the
+  23 MB `the-kop-main.glb`, a registry entry (`frontAz` 90) and two data-only lines in
+  `ui/content.js`.
