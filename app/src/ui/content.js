@@ -36,8 +36,9 @@ export const VERSION_TABS = [
 const PRODUCT_CATEGORY = {
   "coffee-bike": "Retail mobility · hero",
   "cessna-172": "Aviation · heritage",
+  "the-kop-main": "Retail mobility · hero",
 };
-const PRODUCT_ICON = { "coffee-bike": "bike", "cessna-172": "plane" };
+const PRODUCT_ICON = { "coffee-bike": "bike", "cessna-172": "plane", "the-kop-main": "bike" };
 
 // Announced but not shipped. Deliberately NOT a registry entry: no id in
 // PRODUCTS, no modelPath, nothing the engine could load — so the card can

@@ -33,6 +33,27 @@ export const PRODUCTS = [
     // frontAz 0 shows the +Z face as "Front".
     frontAz: 0,
   },
+  {
+    // THE KOP coffee bike with its cart (MAIN). The file is Blender-authored
+    // (generator "Blender I/O"); its 98 bike pieces are named tripo_part_N,
+    // which suggests they were generated in Tripo. That is an inference: the
+    // owner confirms the origin and the terms of use, not checked here. The
+    // file carries no author or licence.
+    // Units are unstated (the glTF standard says metres, unverified). The real
+    // cart box body is 52 x 22 x 22 inches; the node "Cabinet carcass" is 1.35
+    // long, within about 2 percent of 52 in if the units are metres.
+    // The sign parts are named "Temporary ..." and stay as they are.
+    // Heavy model: 483,311 triangles, 753 draw calls. Tested OK on the owner's
+    // PC. The old "coffee-bike" entry above is kept unchanged.
+    id: "the-kop-main",
+    name: "THE KOP Coffee Bike (MAIN)",
+    label: "THE KOP MAIN",
+    modelPath: "/models/the-kop-main.glb",
+    // The THE KOP sign plates sit on the +X face of "Cabinet carcass" (the bike
+    // itself runs along z). Azimuth 90 = the camera on the +X side, so "Front"
+    // shows the sign side.
+    frontAz: 90,
+  },
 ];
 
 export function getProduct(id) {
