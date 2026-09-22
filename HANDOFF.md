@@ -756,8 +756,8 @@ are in the lock file.
   (unverified).
 - Headed Edge behaviour (window occlusion, background tabs, download prompts) is
   untested.
-- CAM-001 is still deferred (see "Known Camera Bugs"). Audio and the Blender
-  track are deferred.
+- CAM-001 is fixed as of Garage G5 (see "Phase 18 - Garage", G5, and "Known Camera
+  Bugs"). Audio and the Blender track are deferred.
 
 ### Next slices (proposed, not started)
 
@@ -1245,12 +1245,13 @@ Files in `C:\Users\User\Downloads`, produced in another session:
 
 ## Known Camera Bugs
 
-Still open:
+Resolved: **CAM-001** (camera presets ignored a transformed model) and **CAM-002**
+(Top preset elevation, see "Resolved" below).
 
-- **CAM-001:** camera presets ignore a transformed model (they frame the model's
-  original bounds, not its current transform).
-
-Resolved: **CAM-002** (Top preset elevation), see "Resolved" below.
+- **CAM-001** was fixed by the Garage G5 refit event as a side effect (see "Phase 18
+  - Garage", G5, for detail): exact for translation and uniform scale of the whole
+  model; rotation about the x or z axis is only approximately handled, not fully
+  solved.
 
 ## Current Studio Status
 
@@ -1271,7 +1272,7 @@ Status is judged from code reading, not from a fresh browser run in this update.
 
 ## Open Issues (Next Phase)
 
-1. Camera Studio: Distance, Height (Slice A, `a23e3d0`) and Lock focus plus session capture of the live camera (Slice B, `3c05965`) are live; CAM-002 is fixed (`1a15c38`). Next: CAM-001; see "Known Camera Bugs".
+1. Camera Studio: Distance, Height (Slice A, `a23e3d0`) and Lock focus plus session capture of the live camera (Slice B, `3c05965`) are live; CAM-002 is fixed (`1a15c38`); CAM-001 is fixed as of Garage G5 (exact for translation and uniform scale of the whole model, rotation about the x or z axis only approximately handled), see "Phase 18 - Garage", G5.
 2. Animation Studio: Turntable preview and Reel MP4 export are live, and the Reel puts the model on the platform on Pistons Loft and Aviation Hangar (Phase 16B, through Slice E3; the three social PNG presets use the same framing, `936f6d5`). Open: platform data for the other nine environments (they still float), an in-app video preview (Slice D2), camera moves and session saving; see "Phase 16B".
 3. Reel/MP4 export is built (1080x1920, 30 fps, silent) and Instagram accepted an exported file (owner-tested); how it looks inside Instagram is untested.
 4. THE KOP branding renders clipped ("THE KOF") in every export. The Phase 17A audit found the Coffee Bike GLB has no textures, so it is in the geometry, not a texture (glyph clipping itself unverified; see "Phase 17A audit findings").
