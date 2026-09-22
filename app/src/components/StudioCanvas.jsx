@@ -24,6 +24,7 @@ import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
 import { buildPartIndex } from "../garage/partTree";
 import { applyPartOverride, resetToBase } from "../garage/compose";
+import { unionBounds, floorYFor } from "../garage/bounds";
 import {
   backdropImageAspect,
   needsCoverCrop,
@@ -71,6 +72,38 @@ function collectModelMeshes(root) {
     if (obj.isMesh && obj.visible && obj.geometry) meshes.push(obj);
   });
   return meshes;
+}
+
+// Garage G5 — names of runtime-only overlay groups that live inside the
+// transform group but are never part of the model: they must never skew a
+// measured bounds union (camera presets, Reel/PNG framing, the floor, the
+// Turntable pivot). See the whole-model outline (buildOutlineShells) and the
+// Garage part overlay (buildPartShells) below, which create these groups.
+const REFIT_SKIP_NAMES = new Set(["selection-outline", OVERLAY_NAME]);
+
+// Garage G5 — builds bounds.js's plain node tree from a LIVE three.js
+// Object3D graph. Every node's pos/quat/scale is LOCAL (bounds.js composes
+// the hierarchy itself, exactly like three.js's own matrixWorld chain); a
+// mesh leaf also carries its LOCAL geometry bounding box (computed once and
+// cached on the geometry, same as three.js's own Box3.setFromObject would
+// read). This never touches bounds.js's own union/floor math.
+function adaptObject3D(obj) {
+  const node = {
+    visible: obj.visible,
+    pos: obj.position.toArray(),
+    quat: obj.quaternion.toArray(),
+    scale: obj.scale.toArray(),
+  };
+  if (obj.isMesh && obj.geometry) {
+    if (!obj.geometry.boundingBox) obj.geometry.computeBoundingBox();
+    const bb = obj.geometry.boundingBox;
+    if (bb) node.box = { min: bb.min.toArray(), max: bb.max.toArray() };
+  }
+  if (obj.children && obj.children.length) {
+    const kids = obj.children.filter((c) => !REFIT_SKIP_NAMES.has(c.name));
+    if (kids.length) node.children = kids.map(adaptObject3D);
+  }
+  return node;
 }
 
 const isObj = (o) => typeof o === "object" && o !== null && !Array.isArray(o);
@@ -471,6 +504,11 @@ function StudioStage({
   // here is React state, so a playing frame never renders React.
   const animRunRef = useRef(null);
   const pivotRef = useRef(null);
+  // Garage G5 — the group that cancels the pivot's translation, so the model
+  // renders exactly where it did before the pivot existed. Both this and
+  // pivotRef are positioned IMPERATIVELY by refit() (never a declarative JSX
+  // prop — see the transform group's JSX below for why).
+  const pivotOffsetRef = useRef(null);
   const ringRef = useRef(null);
   const selectedRef = useRef(selected);
   const escHandlerRef = useRef(null);
@@ -535,6 +573,69 @@ function StudioStage({
     return { center, size, distance, footprintRadius, floorY: box.min.y };
   }, [modelScene, gl]);
 
+  // Garage G5 — the live, continuously-refreshed twin of `fit`. liveFitRef is
+  // read IMPERATIVELY (always current) by camera presets and Reel/PNG framing
+  // (Decision 2 — the CAM-001 fix): they must reflect a moved/hidden part or a
+  // moved/scaled whole model the instant they run, never through a React
+  // effect dependency. liveFit (the SAME shape, as state) exists ONLY to drive
+  // the floor disc / shadow catcher / ring / shadow-frustum JSX further below,
+  // and is set exactly once per refit() call, never per frame. Both start out
+  // exactly equal to `fit` (same values) until the first refit() confirms them
+  // from the live scene graph.
+  const liveFitRef = useRef(fit);
+  const [liveFit, setLiveFit] = useState(fit);
+
+  // Garage G5 — re-measures the model from the LIVE three.js scene graph, in
+  // two passes over the same adapter (adaptObject3D + bounds.js's own
+  // unionBounds/floorYFor — never a hand-rolled union). `world` is rooted at
+  // transformRef, so it includes the pre-existing whole-model transform panel
+  // (position/rotation/scale) on top of every part's current pose; it drives
+  // liveFitRef/liveFit. `local` is rooted at modelScene directly — excluding
+  // BOTH transformRef's own transform AND the pivot group this same call is
+  // about to move (walking through the pivot here would be self-referential)
+  // — and drives ONLY the Turntable pivot's translation (Decision 3): the
+  // pivot lives INSIDE transformRef, so it must spin about the model's own
+  // centre regardless of any whole-model move/scale, but only follow a PART
+  // edit, never the whole-model transform (that is transformRef's own job).
+  // Floor height is pinned: floorYFor returns fit.floorY (Decision 4) whenever
+  // it is finite, i.e. always, so liveFit.floorY never actually moves.
+  // Called synchronously from a Garage store commit, a whole-model transform
+  // change, or once on mount — never inside useFrame, never per frame.
+  const refit = useCallback(() => {
+    const root = transformRef.current;
+    if (root) {
+      const worldUnion = unionBounds(adaptObject3D(root));
+      if (worldUnion) {
+        const center = new THREE.Vector3().fromArray(worldUnion.center);
+        const size = new THREE.Vector3().fromArray(worldUnion.size);
+        const floorY = floorYFor({ homeFloorY: fit.floorY, unionMinY: worldUnion.min[1] });
+        const footprintRadius = Math.hypot(size.x, size.z) / 2;
+        const aspect = gl.domElement.clientWidth / gl.domElement.clientHeight;
+        const distance = fitDistance(size, aspect, FOV, 0.7);
+        const next = { center, size, distance, footprintRadius, floorY };
+        liveFitRef.current = next;
+        setLiveFit(next);
+      }
+    }
+    if (pivotRef.current && pivotOffsetRef.current) {
+      const localUnion = unionBounds(adaptObject3D(modelScene));
+      const c = localUnion ? localUnion.center : fit.center.toArray();
+      pivotRef.current.position.set(c[0], c[1], c[2]);
+      pivotOffsetRef.current.position.set(-c[0], -c[1], -c[2]);
+    }
+    invalidateShadowMap(gl);
+  }, [fit, gl, modelScene]);
+
+  // Garage G5 (wiring b/c) — the pre-existing whole-model transform panel is
+  // applied to transformRef via plain JSX props (see the transform group's
+  // JSX below), not an effect, so this effect stands in for "the existing
+  // whole-model transform's own effect": it fires once on mount (liveFitRef
+  // starts out equal to `fit`, then this confirms it from the live scene) and
+  // again on every transform-panel change (the CAM-001 fix for that path).
+  useEffect(() => {
+    refit();
+  }, [transform, refit]);
+
   // react-three-fiber's useThree() intentionally returns the live, mutable
   // three.js camera; positioning it imperatively (as here) is the standard
   // r3f pattern, not a violation the immutability rule is meant to catch.
@@ -569,20 +670,6 @@ function StudioStage({
     group.updateMatrixWorld(true);
     return fit.center.clone().applyMatrix4(group.matrixWorld);
   }, [fit]);
-
-  // World position of the model's base centre (Slice E2): x and z of the live
-  // centre, y = the world y of the floor point under it (the transform applied
-  // to (centre.x, floorY, centre.z)).
-  const liveBase = useCallback(() => {
-    const c = liveCentre();
-    const group = transformRef.current;
-    const p = new THREE.Vector3(fit.center.x, fit.floorY, fit.center.z);
-    if (group) {
-      group.updateMatrixWorld(true);
-      p.applyMatrix4(group.matrixWorld);
-    }
-    return [c.x, p.y, c.z];
-  }, [fit, liveCentre]);
 
   // Every programmatic camera move runs inside this guard so the controls'
   // change event it causes is not mistaken for a user move.
@@ -778,11 +865,17 @@ function StudioStage({
   // or invalid input, gives the plain reelPose (centre target, live azimuth and
   // elevation). distance = fitDistance x Distance % / 100. Returns
   // { position, target, far } (fresh arrays) or null.
+  // Garage G5 (Decision 2) — every framing input here (fitDistance's size,
+  // the centre and the platform base point) reads liveFitRef, never the
+  // frozen `fit` or liveCentre() (which only ever followed the whole-model
+  // transform, never a part edit): a Reel/PNG export must frame the model
+  // exactly as it currently stands.
   const computeReelView = useCallback(
     ({ width, height, livePosition, liveTarget, pct }) => {
       const aspect = width / height;
-      const distance = fitDistance(fit.size, aspect, REEL_EXPORT.fovDeg, 0.7) * (pct / 100);
-      const centreArr = liveCentre().toArray();
+      const lf = liveFitRef.current ?? fit;
+      const distance = fitDistance(lf.size, aspect, REEL_EXPORT.fovDeg, 0.7) * (pct / 100);
+      const centreArr = lf.center.toArray();
       let pose = null;
       const env = environmentRef.current;
       if (needsCoverCrop(aspect) && env && env.platform) {
@@ -793,7 +886,7 @@ function StudioStage({
             livePosition,
             liveTarget,
             centre: centreArr,
-            basePoint: liveBase(),
+            basePoint: [lf.center.x, lf.floorY, lf.center.z],
             distance,
             floorAngleDeg: env.floorAngleDeg ?? 8,
             anchor: { x: frame.cx, y: frame.cy + (env.reelAnchorRy ?? 0) * frame.ry },
@@ -810,7 +903,7 @@ function StudioStage({
         far: Math.max(camera.far, distance * 4 + 10),
       };
     },
-    [fit, liveCentre, liveBase, scene, camera]
+    [fit, scene, camera]
   );
 
   // Portrait PNG export (Slice E3): puts the camera on the Reel pose, inside
@@ -952,11 +1045,14 @@ function StudioStage({
   // the move (the controls may adjust it, e.g. the Top preset's pole clamp).
   // `baseline` is passed only when re-applying a saved view that carries one;
   // `live` is true only when restoring a saved live (unsaved custom) view.
+  // `shotFit` defaults to the FROZEN `fit` — Decision 1 (frameDefault and the
+  // saved/custom-view baseline path must never read anything else); a preset
+  // click (Decision 2) is the only caller that passes liveFitRef.current.
   const applyView = useCallback(
-    (position, target, baseId, baseline, live = false) => {
+    (position, target, baseId, baseline, live = false, shotFit = fit) => {
       moveGuarded(() => {
         camera.position.copy(position);
-        camera.far = fit.distance * 10 + 10;
+        camera.far = shotFit.distance * 10 + 10;
         camera.updateProjectionMatrix();
         camera.lookAt(target);
         controlsRef.current?.target.copy(target);
@@ -967,7 +1063,7 @@ function StudioStage({
           camera.position.toArray(),
           (controlsRef.current?.target ?? target).toArray(),
           baseId,
-          fit.center
+          shotFit.center
         );
       liveRef.current = live;
       lastCentreRef.current = liveCentre();
@@ -1035,6 +1131,10 @@ function StudioStage({
     let target;
     let baseId = cameraRequest.id;
     let baseline;
+    // Garage G5 (Decision 1) — the saved/custom-view path stays on the FROZEN
+    // `fit`, exactly as before; only an actual preset click below swaps in the
+    // live measurement.
+    let shotFit = fit;
     if (cameraRequest.id === "custom") {
       if (!customView) return undefined;
       position = new THREE.Vector3().fromArray(customView.position);
@@ -1054,15 +1154,20 @@ function StudioStage({
       const preset = getCameraPreset(cameraRequest.id);
       if (!preset) return undefined;
       const aspect = gl.domElement.clientWidth / gl.domElement.clientHeight;
+      // Garage G5 (Decision 2, the CAM-001 fix) — a preset click reads the
+      // LIVE measurement, imperatively, never the frozen `fit` and never as an
+      // effect dependency (liveFitRef changes without ever re-running this
+      // effect).
+      shotFit = liveFitRef.current ?? fit;
       ({ position, target } = computeCameraShot(
-        fit,
+        shotFit,
         preset,
         product.frontAz ?? 0,
         aspect,
         FOV
       ));
     }
-    applyView(position, target, baseId, baseline);
+    applyView(position, target, baseId, baseline, false, shotFit);
     return undefined;
   }, [cameraRequest, customView, fit, gl, product.frontAz, applyView, frameDefault, endAnimations]);
 
@@ -1221,8 +1326,11 @@ function StudioStage({
   // model bounds and the FIXED key-light direction, never from the view
   // camera: the ground shadow stays put while orbiting and survives every
   // camera preset.
-  const shadowExtent = fit.footprintRadius * 2.4 + fit.size.y;
-  const shadowFar = 20 + fit.distance * 2;
+  // Garage G5 — the shadow frustum is one of the four things allowed to read
+  // liveFit (React state, set once per refit()), so the shadow keeps its
+  // proper size after a part edit or a whole-model transform.
+  const shadowExtent = liveFit.footprintRadius * 2.4 + liveFit.size.y;
+  const shadowFar = 20 + liveFit.distance * 2;
 
   // The shadow map renders ON DEMAND (autoUpdate off): only model, transform
   // or fit changes invalidate it, so orbit/zoom/preset frames never re-render
@@ -1320,9 +1428,10 @@ function StudioStage({
   // on a plain selection change, so a click never re-walks this) each part
   // mesh is set to its base pose composed with its current override (or reset
   // to base when the override is gone), via compose.js's own functions —
-  // never a hand-rolled equivalent. This never touches fit, floorY, the floor
-  // disc, shadow catcher, ring geometry, camera presets or Reel/PNG framing
-  // (Decision 4): a moved or hidden part is not refit until Garage G5.
+  // never a hand-rolled equivalent. Garage G5 — refit() runs at the end of the
+  // SAME commit-triggered call (reusing this subscription rather than adding
+  // a second one), after every mesh already has its new pose, so the world
+  // and local unions it measures are never one commit stale.
   // See the modelScene.visible write-back above: mutating a mesh reached
   // through a memoized part index is the same deliberate imperative-three.js
   // pattern, not an accidental mutation of the memo itself.
@@ -1352,10 +1461,11 @@ function StudioStage({
         }
         mesh.visible = ov && typeof ov.visible === "boolean" ? ov.visible : base.visible;
       }
+      refit();
     };
     applyOverrides();
     return garageStore.subscribe(applyOverrides);
-  }, [partIndex]);
+  }, [partIndex, refit]);
 
   // Part overlay — imperative, rebuilt from a Garage store subscription (never
   // React state), parented to the same group as the whole-model outline. Hidden
@@ -1634,25 +1744,34 @@ function StudioStage({
 
       {/* Floor anchored to the model's actual base (was hardcoded at y=-1.2).
           Hidden while a photographic environment is active — its backdrop
-          already contains the circular display platform. */}
+          already contains the circular display platform. Garage G5: the
+          horizontal centre and footprint follow liveFit (so the floor tracks
+          a moved/hidden part or a moved/scaled whole model), but the Y stays
+          the FROZEN fit.floorY always (Decision 4 — the floor never moves
+          vertically, even if a part is dragged below it or the model is
+          scaled; floorYFor already guarantees liveFit.floorY === fit.floorY
+          whenever fit.floorY is finite, i.e. always — fit.floorY is used here
+          directly so that invariant can never drift). */}
       <mesh
         visible={!environment.file}
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[fit.center.x, fit.floorY, fit.center.z]}
+        position={[liveFit.center.x, fit.floorY, liveFit.center.z]}
       >
-        <circleGeometry args={[fit.footprintRadius * 1.4, 64]} />
+        <circleGeometry args={[liveFit.footprintRadius * 1.4, 64]} />
         <meshStandardMaterial color="#1a1a1a" />
       </mesh>
 
       {/* Ground shadow catcher — fully transparent except where the key light
           is occluded, so the product gains a soft contact shadow over the
-          photographic backdrops (ShadowMaterial renders shadow only). */}
+          photographic backdrops (ShadowMaterial renders shadow only). Garage
+          G5: same liveFit centre/footprint, same pinned fit.floorY, as the
+          floor disc above. */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[fit.center.x, fit.floorY + 0.003, fit.center.z]}
+        position={[liveFit.center.x, fit.floorY + 0.003, liveFit.center.z]}
         receiveShadow
       >
-        <circleGeometry args={[fit.footprintRadius * 2.6, 64]} />
+        <circleGeometry args={[liveFit.footprintRadius * 2.6, 64]} />
         <shadowMaterial
           transparent
           opacity={lighting.shadow}
@@ -1660,17 +1779,18 @@ function StudioStage({
         />
       </mesh>
 
-      {/* Selection ring — thin light/gold ring around the model footprint */}
+      {/* Selection ring — thin light/gold ring around the model footprint.
+          Garage G5: same liveFit centre/footprint, same pinned fit.floorY. */}
       <mesh
         ref={ringRef}
         visible={selected}
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[fit.center.x, fit.floorY + 0.006, fit.center.z]}
+        position={[liveFit.center.x, fit.floorY + 0.006, liveFit.center.z]}
       >
         <ringGeometry
           args={[
-            fit.footprintRadius * 0.97,
-            fit.footprintRadius * 1.03,
+            liveFit.footprintRadius * 0.97,
+            liveFit.footprintRadius * 1.03,
             128,
           ]}
         />
@@ -1695,9 +1815,13 @@ function StudioStage({
         {/* Turntable pivot (Phase 16B Slice B): turns about the model's own
             centre; the inner group cancels the offset, so at rotation 0 the
             model sits exactly where it did without the pivot. Only the
-            preview's useFrame writes its rotation.y. */}
-        <group ref={pivotRef} position={fit.center}>
-          <group position={[-fit.center.x, -fit.center.y, -fit.center.z]}>
+            preview's useFrame writes its rotation.y — Garage G5 additionally
+            writes BOTH groups' .position imperatively from refit() (Decision
+            3), never as a declarative prop: an array-literal position prop is
+            a fresh reference every render, so React would silently re-apply
+            it (and stomp the live pivot centre) on any unrelated re-render. */}
+        <group ref={pivotRef}>
+          <group ref={pivotOffsetRef}>
             <primitive object={modelScene} />
           </group>
         </group>
