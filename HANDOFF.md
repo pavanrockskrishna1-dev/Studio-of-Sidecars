@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G4, and the THE KOP MAIN product; HEAD `d278ef3`, "Garage G4: move/rotate/scale/hide a selected part, with exact reset and undo"; all work through Garage G4 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
+## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G5, and the THE KOP MAIN product; HEAD `e829e1b`, "Garage G5: refit event — floor/shadow/camera/Reel framing follow moved parts; fixes CAM-001"; all work through Garage G5 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -18,7 +18,7 @@
   2. Phase 15A
   3. Phase 15B (HDR lighting)
   4. Phase 16A / 16B (Camera Studio; Animation Studio and Reels), then Phase 17A audit findings (Creator Studio, read-only)
-     and Phase 18 (Garage design and slice G1), then Products and models (three built-in products, THE KOP MAIN)
+     and Phase 18 (Garage design and slices G1-G5), then Products and models (three built-in products, THE KOP MAIN)
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -767,14 +767,16 @@ are in the lock file.
 - Slice D2: an in-app video preview window.
 - Slice E: camera moves (`makeMove`) and saving an animation in the session
   (optional `engine.animation` field, no version bump).
-- Garage: G1-G4 are done (the store, the Parts switch and click-to-select, and per-part
-  move/rotate/scale/hide with exact reset and undo). **Next is G5, the refit event**
-  (`liveFit`), needs the owner's approval: it would make the fit, floor, shadow, camera
-  presets and Reel/PNG framing follow a part moved/hidden/resized by G4, and as a side effect
-  it would also fix the older CAM-001 issue (camera presets ignoring a transformed model) for
-  the whole-model transform, since both gaps share the same root cause - `fit` is measured
-  once per model and never recomputed after a transform. See "Phase 18 - Garage (scene
-  editor): design and slice G1" and "Known Camera Bugs".
+- Garage: G1-G5 are done (the store, the Parts switch and click-to-select, per-part
+  move/rotate/scale/hide with exact reset and undo, and the G5 refit event that makes the
+  fit, floor, shadow, camera presets and Reel/PNG framing follow a part moved/hidden/resized
+  - which as a side effect also fixed the older CAM-001 issue for the whole-model transform,
+  since both gaps shared the same root cause). **Next is G6, per-part colour**, needs the
+  owner's approval: the design report flagged it as needing care because it would be the
+  first Garage slice to touch the existing materials store/persistence (`materials/`,
+  `ui/MaterialsManager.jsx`) - G1-G5 never touched that code (checked with `git show --stat`
+  on each Garage commit for `app/src/materials`, for this update). See "Phase 18 - Garage
+  (scene editor): design and slices G1-G5" and "Known Camera Bugs".
 
 Tooling reminders (Playwright / SwiftShader versus the real GPU, Project rules)
 are in "Known Limitations" and "Project rules" below.
@@ -870,16 +872,19 @@ Items marked "unverified" were not re-checked here.
   Blender source `app/public/blender/THE_KOP_Studio_v01.blend` has not been opened
   (the file's presence and contents were not checked here: unverified).
 
-## Phase 18 - Garage (scene editor): design and slice G1
+## Phase 18 - Garage (scene editor): design and slices G1-G5
 
-Status: designed; slices G1-G4 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
-G4 `d278ef3`); G5-G11 are not started. G1 and G2 were pure modules and tests only, with
-nothing wired into the app (`git show --stat` on each commit: G1 touched only 6 new files
-under `app/src/garage/` and `app/scripts/test-garage.mjs`; G2 touched only 2 new files,
-`app/src/garage/garageStore.js` and `app/scripts/test-garage-store.mjs`). G3 was the first
-slice to wire anything into the app the owner can see: a Parts switch and click-to-select,
-behind a default-off flag. G4 added numeric move/rotate/scale/hide of the one selected
-part, exact reset and Undo/Redo. See the G2/G3/G4 summaries below.
+Status: designed; slices G1-G5 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
+G4 `d278ef3`, G5 `e829e1b`); G6-G11 are not started. G1 and G2 were pure modules and tests
+only, with nothing wired into the app (`git show --stat` on each commit: G1 touched only 6
+new files under `app/src/garage/` and `app/scripts/test-garage.mjs`; G2 touched only 2 new
+files, `app/src/garage/garageStore.js` and `app/scripts/test-garage-store.mjs`). G3 was the
+first slice to wire anything into the app the owner can see: a Parts switch and
+click-to-select, behind a default-off flag. G4 added numeric move/rotate/scale/hide of the
+one selected part, exact reset and Undo/Redo. G5 added the refit event: the floor, shadow,
+camera presets and Reel/PNG framing now follow a part G4 moved, hid or resized, and (as a
+side effect, sharing the same root cause) the older CAM-001 bug is fixed for the
+pre-existing whole-model transform panel too. See the G2/G3/G4/G5 summaries below.
 
 ### The wish and the scope (owner)
 
@@ -1065,6 +1070,60 @@ Touches 4 files (`git show --stat d278ef3`): further additions to `garageMode.js
 `app/scripts/test-garage-part-edit.mjs` (263 lines) prints 65 PASS lines (counted for this
 update; owner-reported count matches).
 
+### G5 - the refit event (`liveFit`), fixes CAM-001 (commit `e829e1b`)
+
+Touches 2 files (`git show --stat e829e1b`): `app/src/components/StudioCanvas.jsx` (208
+lines changed) and a new test script, `app/scripts/test-garage-refit.mjs`.
+
+- **`refit()`** (`StudioCanvas.jsx`) re-measures the model from the live three.js scene
+  graph through a small adapter, `adaptObject3D`, which walks the live `Object3D` tree
+  (skipping the runtime-only selection-outline and Garage overlay groups by name) and
+  builds the plain node tree that `bounds.js` already expected; the actual union math is
+  unchanged, reused as-is - `unionBounds` for the world-space box and `floorYFor` for the
+  floor rule. `unionBounds` already skips any node with `visible === false`, so a hidden
+  part no longer counts toward the measured bounds, closing the "hidden part still counts
+  toward fit" gap noted under G4. The result is written to two places: `liveFitRef` (a
+  ref, read imperatively so camera presets and Reel/PNG framing always see the current
+  measurement, never through a React effect dependency) and `liveFit` (the same shape as
+  React state, set once per `refit()` call, read only by the floor disc / shadow catcher /
+  ring / shadow-frustum JSX). `refit()` runs at the end of the existing Garage-store
+  commit subscription (after every part mesh already has its new pose), on every
+  whole-model transform-panel change, and once on mount.
+- **Fixes CAM-001** (camera presets ignoring a transformed model) for the pre-existing,
+  non-Garage whole-model transform panel, because both gaps shared one root cause: `fit`
+  was measured once per model and never recomputed. The fix is exact for translation and
+  for uniform scale of the whole model; rotation about the x or z axis is only
+  approximately handled - not fully solved in this slice.
+- **The frozen `fit` object is a deliberate, unchanged design guard.** `frameDefault` and
+  the saved/custom-view camera baseline still read the original, frozen `fit` measurement
+  (never `liveFit`/`liveFitRef`), so editing a part never snaps the user's current camera
+  view on its own. Only an actual camera-preset click (Front/Side/Rear/etc.) and Reel/PNG
+  export framing read the live, updating measurement.
+- **`floorY` is pinned**, per the G4 Decision-1 rule already recorded in `bounds.js`'s
+  `floorYFor`: the floor and shadow catcher's vertical position never changes, even if a
+  part is dragged below the floor or the whole model is resized; only their horizontal
+  centre and footprint may follow `liveFit` when the model's centre moves.
+- **The Turntable pivot** now spins around the model's current (live) centre - measured
+  from the model root directly, excluding both the whole-model transform and the pivot
+  group itself - instead of the frozen original centre; both the pivot and its
+  offset-cancelling child group are now positioned imperatively from `refit()` rather
+  than through a declarative JSX prop.
+- **Owner-tested** (owner facts, not visible in the repo). The CAM-001 fix: the owner
+  moved the whole Coffee Bike 0.3 units on X using the pre-existing (pre-Garage) transform
+  panel, clicked the Front camera preset, and confirmed the framing was now centred on the
+  bike's new position (before this fix it would have stayed framed on the model's original
+  position); he then reset the transform and confirmed the framing returned to exactly the
+  original. On THE KOP MAIN: he moved a part far from its original spot, clicked a camera
+  preset, and confirmed the framing visibly widened to include it; hid a part and
+  confirmed the framing shrank; exported a Reel MP4 with a part moved and confirmed the
+  model still stood correctly on the platform (floor position unaffected). These are the
+  owner's own manual checks, separate from what the repo's node tests below prove.
+
+`app/scripts/test-garage-refit.mjs` (280 lines, plain node, no three/DOM/browser; every
+expectation is cross-checked a second, independent way built from `compose.js`'s public
+matrix functions) prints 55 PASS lines, 0 FAIL, exit code 0 (run and counted for this
+update).
+
 ### Slice plan
 
 | Slice | What | Status | Owner approval needed when reached |
@@ -1073,7 +1132,7 @@ update; owner-reported count matches).
 | G2 | The store (`garageStore.js`) | **Done** (`3b7d9fb`) | no |
 | G3 | Part selection by click | **Done** (`3527c6c`) | **yes** (what a click means) - given |
 | G4 | Per-part move / rotate / scale / hide, exact reset and undo | **Done** (`d278ef3`) | no |
-| G5 | A refit event (`liveFit`) so floor, shadow, presets and Reel follow moved parts | not started | **yes** (presets follow moved models) |
+| G5 | A refit event (`liveFit`) so floor, shadow, presets and Reel follow moved parts | **Done** (`e829e1b`) | **yes** (presets follow moved models) - given |
 | G6 | Per-part colour | not started | **yes** (touches the materials store) |
 | G7 | Add objects from the library | not started | no |
 | G8 | Save and load layouts | not started | no |
@@ -1089,11 +1148,12 @@ is independently shippable.
 From `app`: `node scripts/test-path.mjs` (192 PASS lines), `node scripts/test-backdrop.mjs`
 (84 PASS lines), `node scripts/test-garage.mjs` (161 PASS lines), `node scripts/
 test-garage-store.mjs` (219 PASS lines), `node scripts/test-garage-select.mjs` (67 PASS
-lines), `node scripts/test-garage-part-edit.mjs` (65 PASS lines). Count the lines that start
-with PASS. Observed when this section was written: 192, 84, 161, 219, 67 and 65, no FAIL
-lines, exit 0 on all six (the three Garage store/select/part-edit counts were also counted by
-the author of this update and match what the owner reported after running all six scripts
-himself). Lint and build were not run for this documentation update.
+lines), `node scripts/test-garage-part-edit.mjs` (65 PASS lines), `node scripts/
+test-garage-refit.mjs` (55 PASS lines). Count the lines that start with PASS. Observed when
+this section was written: 192, 84, 161, 219, 67, 65 and 55, no FAIL lines, exit 0 on all
+seven (the test-garage-refit count was also counted by the author of this update and matches
+what the owner reported after running all seven scripts himself). Lint and build were not run
+for this documentation update.
 
 ## Products and models
 
@@ -1303,24 +1363,37 @@ Status is judged from code reading, not from a fresh browser run in this update.
   when characters are typed then deleted (select all with Ctrl+A and paste a full code).
   A picked colour on a vertex-coloured material may multiply the vertex colours
   (unverified).
-- **Garage feature:** only partly built. G1-G4 (`6226ba2`, `3b7d9fb`, `3527c6c`, `d278ef3`) are
-  done; G5-G11 are not started. See "Phase 18".
-- **Garage: moved/hidden/resized parts do not refit the scene (Decision 4, deferred to G5).**
-  The fit (`fit.size`, `fit.center`, `floorY`), the floor disc, shadow catcher, ring, camera
-  presets, and Reel/PNG framing (`computeReelView`, `reelPose`, `platformReelPose`) are all
-  measured once per model and do not follow a part that G4's editor has moved, hidden, or
-  resized. This is intentional, owner-approved scope for G4; G5 (the refit event) is the
-  planned fix.
-- **Garage: a hidden part still counts toward fit measurements.** `Box3.setFromObject` /
-  `expandByObject` has no visibility check, so until G5 a part hidden with the Garage editor
-  still contributes to the model's measured bounds.
+- **Garage feature:** only partly built. G1-G5 (`6226ba2`, `3b7d9fb`, `3527c6c`, `d278ef3`,
+  `e829e1b`) are done; G6-G11 are not started. See "Phase 18".
+- **Garage: moved/hidden/resized parts now refit the scene (fixed by G5, `e829e1b`).** The
+  fit (`fit.size`, `fit.center`, `floorY`), the floor disc, shadow catcher, ring, camera
+  presets, and Reel/PNG framing (`computeReelView`, `reelPose`, `platformReelPose`) are
+  re-measured by `refit()` after a part is moved, hidden, or resized, or the whole model is
+  transformed. `fit.floorY` itself is still pinned (Decision 1/4, unchanged). Real-GPU
+  automated verification of this behaviour did not run for G5 (see below); the owner spot-
+  checked the widen/shrink framing and floor position himself on THE KOP MAIN (owner-tested,
+  see "Phase 18", G5).
+- **Garage: rotation about x/z is only approximately handled by the G5 refit/CAM-001 fix.**
+  The fix is exact for translation and uniform scale of the whole model; rotating the whole
+  model about the x or z axis is not fully solved in this slice (owner fact).
+- **Garage: real-GPU (Edge) automated verification of G5 did not run.** Free RAM stayed below
+  the required threshold for the whole automated session. The owner independently verified
+  the CAM-001 fix and the widen/shrink framing behaviour on his own machine afterward
+  (owner-tested, see "Phase 18", G5).
+- **Garage: a hidden part no longer counts toward fit measurements (fixed by G5).**
+  `unionBounds` (`bounds.js`) already skipped invisible nodes; G5's `refit()` reads live
+  visibility through `adaptObject3D`, so a part hidden with the Garage editor no longer
+  contributes to the model's measured bounds.
 - **Garage: editing is one part at a time, numeric fields only, no gizmo yet.** G4's edit
   fields (Position/Rotation/Scale/Hidden) are hidden behind a hint whenever 2+ parts are
   selected; a 3D `TransformControls` gizmo is deferred to G11.
 - **Garage: multi-primitive glTF meshes are only tested with synthetic data.** A part in G3/G4
   is one `THREE.Mesh` (a glTF mesh node/primitive); several parts sharing one mesh node is
   only exercised by the node test scripts' synthetic trees, not by a real GLB file (carried
-  over from G3, unchanged by G4).
+  over from G3, unchanged by G4/G5).
+- **Garage: per-part colour, adding objects, and saving/loading layouts are not yet built.**
+  G6 (per-part colour), G7 (add objects from the library) and G8 (save/load layouts) are not
+  started. See "Phase 18".
 - **THE KOP MAIN is heavy** (483,311 triangles, 753 draw calls): speed was only tested by the owner in his browser, not measured; the selection outline on 753 parts is unmeasured; the clearcoat factor 3 on the material "Material" is untested; its sign parts are "Temporary"; the 23 MB file is in git history for good; the Tripo origin of its 98 bike pieces is an inference and the terms are unchecked (also unchecked for the Cessna). See "Products and models".
 - **Gold ring and outline in PNG exports:** by code reading (unverified by a run) a plain PNG includes the gold selection outline and ring when something is selected; slice G9 is planned to remove them from exports.
 - **Coffee Bike filter chip** in the Asset Library tests the id `coffee-bike`, so THE KOP MAIN does not list under it.
@@ -1402,3 +1475,8 @@ boundaries UNVERIFIED against any release note).
   additions to `app/src/garage/garageMode.js`, `app/src/components/StudioCanvas.jsx` and
   `app/src/ui/InspectorRail.jsx`; includes the raycaster-visibility bugfix (see "Phase 18 -
   Garage", G4).
+- **Garage G5** — `e829e1b` ("Garage G5: refit event — floor/shadow/camera/Reel framing
+  follow moved parts; fixes CAM-001"): 2 files, 1 new (`app/scripts/test-garage-refit.mjs`)
+  plus further additions to `app/src/components/StudioCanvas.jsx` (208 lines changed); adds
+  `refit()`, `liveFitRef`/`liveFit` and the `adaptObject3D` adapter, and fixes CAM-001 for
+  the pre-existing whole-model transform panel as a side effect (see "Phase 18 - Garage", G5).
