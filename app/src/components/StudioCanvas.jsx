@@ -23,6 +23,7 @@ import * as animation from "../animation/animationStore";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
 import { buildPartIndex } from "../garage/partTree";
+import { applyPartOverride, resetToBase } from "../garage/compose";
 import {
   backdropImageAspect,
   needsCoverCrop,
@@ -70,6 +71,26 @@ function collectModelMeshes(root) {
     if (obj.isMesh && obj.visible && obj.geometry) meshes.push(obj);
   });
   return meshes;
+}
+
+const isObj = (o) => typeof o === "object" && o !== null && !Array.isArray(o);
+
+// Garage G4 — a part mesh's base pose (position, quaternion, scale, visible)
+// is recorded once, the first time it is touched, in a WeakMap the caller
+// owns. Every later override composes against this same recorded base via
+// compose.js, never against whatever the mesh currently holds.
+function ensurePartBase(mesh, bases) {
+  let base = bases.get(mesh);
+  if (!base) {
+    base = {
+      pos: mesh.position.toArray(),
+      quat: mesh.quaternion.toArray(),
+      scale: mesh.scale.toArray(),
+      visible: mesh.visible,
+    };
+    bases.set(mesh, base);
+  }
+  return base;
 }
 
 // Build one inverted-hull shell per collected mesh, expressed in the transform
@@ -1290,6 +1311,52 @@ function StudioStage({
     garageStore.startLayout({ assetId: product.id, name: product.name });
   }, [product.id, product.name]);
 
+  // Garage G4 — one base pose per part mesh, keyed on the mesh itself so a
+  // fresh WeakMap per stage mount means a product switch never carries a
+  // stale base into the next model.
+  const partBasesRef = useRef(new WeakMap());
+
+  // Garage G4 — imperative live transform. On every real layout change (never
+  // on a plain selection change, so a click never re-walks this) each part
+  // mesh is set to its base pose composed with its current override (or reset
+  // to base when the override is gone), via compose.js's own functions —
+  // never a hand-rolled equivalent. This never touches fit, floorY, the floor
+  // disc, shadow catcher, ring geometry, camera presets or Reel/PNG framing
+  // (Decision 4): a moved or hidden part is not refit until Garage G5.
+  // See the modelScene.visible write-back above: mutating a mesh reached
+  // through a memoized part index is the same deliberate imperative-three.js
+  // pattern, not an accidental mutation of the memo itself.
+  // eslint-disable-next-line react-hooks/immutability
+  useEffect(() => {
+    if (!partIndex.ok) return undefined;
+    const bases = partBasesRef.current;
+    const parts = partIndex.parts;
+    let lastRevision = -1;
+    const applyOverrides = () => {
+      const snap = garageStore.getSnapshot();
+      if (snap.revision === lastRevision) return;
+      lastRevision = snap.revision;
+      const layout = garageStore.getLayout();
+      const item = layout ? layout.items.find((i) => i.itemId === "i0") : null;
+      const overrides = item ? item.parts : {};
+      // eslint-disable-next-line react-hooks/immutability
+      for (const part of parts) {
+        const mesh = part.ref;
+        const base = ensurePartBase(mesh, bases);
+        const ov = Object.prototype.hasOwnProperty.call(overrides, part.id) ? overrides[part.id] : undefined;
+        const pose = ov ? applyPartOverride(base, ov) : resetToBase(base);
+        if (pose) {
+          mesh.position.fromArray(pose.pos);
+          mesh.quaternion.fromArray(pose.quat);
+          mesh.scale.fromArray(pose.scale);
+        }
+        mesh.visible = ov && typeof ov.visible === "boolean" ? ov.visible : base.visible;
+      }
+    };
+    applyOverrides();
+    return garageStore.subscribe(applyOverrides);
+  }, [partIndex]);
+
   // Part overlay — imperative, rebuilt from a Garage store subscription (never
   // React state), parented to the same group as the whole-model outline. Hidden
   // by setOverlaysHidden (preview, MP4) and around the PNG render (CaptureBridge).
@@ -1298,23 +1365,30 @@ function StudioStage({
     if (!parent) return undefined;
     let group = null;
     let shells = [];
-    let lastSelection = null;
+    let lastKey = null;
     const teardown = () => {
       if (group) parent.remove(group);
       for (const shell of shells) shell.material.dispose();
       group = null;
       shells = [];
     };
+    // Garage G4 — a hidden part never shows an outline shell even while still
+    // selected, and the shell reappears the moment it is un-hidden; the key
+    // below includes the revision (not just the selection array reference) so
+    // a hide/un-hide on an already-selected part is caught, not only a
+    // selection change.
     const rebuild = () => {
-      const selection = garageStore.getSnapshot().selection;
-      if (selection === lastSelection) return;
-      lastSelection = selection;
+      const snap = garageStore.getSnapshot();
+      const selection = snap.selection;
+      const key = `${snap.revision}|${selection.map((e) => e.partId).join(",")}`;
+      if (key === lastKey) return;
+      lastKey = key;
       teardown();
       const meshes = [];
       if (partIndex.ok) {
         for (const entry of selection) {
           const mesh = partIndex.byId.get(entry.partId);
-          if (mesh && mesh.geometry) meshes.push(mesh);
+          if (mesh && mesh.geometry && mesh.visible) meshes.push(mesh);
         }
       }
       if (meshes.length === 0) return;
@@ -1333,13 +1407,77 @@ function StudioStage({
     };
   }, [partIndex, fit.center]);
 
-  // The rail's part read-out.
+  // The rail's part read-out, plus (Garage G4) the numeric-field read/commit
+  // path. One registration, extended — never a second registerApi call.
   useEffect(
     () =>
       garageMode.registerApi({
         describePart: (partId) => {
           const mesh = partIndex.ok ? partIndex.byId.get(partId) : undefined;
           return mesh ? describeMesh(mesh, partId) : null;
+        },
+        // Garage G4 — the part's current effective transform (its recorded
+        // base pose composed with any existing override), in the numeric
+        // fields' units: metres, degrees (Euler XYZ), a plain scale factor.
+        getPartTransform: (itemId, partId) => {
+          if (!partIndex.ok) return null;
+          const mesh = partIndex.byId.get(partId);
+          if (!mesh) return null;
+          const base = ensurePartBase(mesh, partBasesRef.current);
+          const layout = garageStore.getLayout();
+          const item = layout ? layout.items.find((i) => i.itemId === itemId) : null;
+          const ov = item && Object.prototype.hasOwnProperty.call(item.parts, partId) ? item.parts[partId] : undefined;
+          const pose = ov ? applyPartOverride(base, ov) : resetToBase(base);
+          if (!pose) return null;
+          const q = new THREE.Quaternion(pose.quat[0], pose.quat[1], pose.quat[2], pose.quat[3]);
+          const euler = new THREE.Euler().setFromQuaternion(q, "XYZ");
+          return {
+            pos: pose.pos.slice(),
+            rot: [
+              THREE.MathUtils.radToDeg(euler.x),
+              THREE.MathUtils.radToDeg(euler.y),
+              THREE.MathUtils.radToDeg(euler.z),
+            ],
+            scale: pose.scale.slice(),
+            hidden: !(ov && typeof ov.visible === "boolean" ? ov.visible : base.visible),
+            overridden: !!ov,
+          };
+        },
+        // Garage G4 — converts an absolute { pos?, rot?(deg), scale? } target
+        // (the rail always sends full 3-vectors, merging any unchanged axes
+        // itself) into an override delta from the part's recorded base and
+        // commits it via garageStore.setPartOverride. Refuses (returns null,
+        // no store write) unless (itemId, partId) is exactly the current
+        // single selection, so a stale caller can never edit the wrong part.
+        commitPartEdit: (itemId, partId, patch) => {
+          if (!partIndex.ok || !isObj(patch)) return null;
+          const single = garageMode.singleSelectedPart(garageStore.getSnapshot());
+          if (!single || single.itemId !== itemId || single.partId !== partId) return null;
+          const mesh = partIndex.byId.get(partId);
+          if (!mesh) return null;
+          const base = ensurePartBase(mesh, partBasesRef.current);
+          const ovPatch = {};
+          if (Array.isArray(patch.pos) && patch.pos.length === 3 && patch.pos.every(Number.isFinite)) {
+            ovPatch.pos = [patch.pos[0] - base.pos[0], patch.pos[1] - base.pos[1], patch.pos[2] - base.pos[2]];
+          }
+          if (Array.isArray(patch.rot) && patch.rot.length === 3 && patch.rot.every(Number.isFinite)) {
+            const desired = new THREE.Quaternion().setFromEuler(
+              new THREE.Euler(degToRad(patch.rot[0]), degToRad(patch.rot[1]), degToRad(patch.rot[2]), "XYZ")
+            );
+            const baseQ = new THREE.Quaternion(base.quat[0], base.quat[1], base.quat[2], base.quat[3]);
+            const ovQ = desired.multiply(baseQ.invert());
+            ovPatch.quat = [ovQ.x, ovQ.y, ovQ.z, ovQ.w];
+          }
+          if (Array.isArray(patch.scale) && patch.scale.length === 3 && patch.scale.every(Number.isFinite)) {
+            // Same 0.05 floor as the whole-model panel's uniform-scale field,
+            // applied to the absolute value the rail shows before dividing
+            // out the base scale to get the override's own multiplier.
+            ovPatch.scale = [0, 1, 2].map((i) =>
+              base.scale[i] !== 0 ? Math.max(0.05, patch.scale[i]) / base.scale[i] : 1
+            );
+          }
+          if (Object.keys(ovPatch).length === 0) return null;
+          return garageStore.setPartOverride(itemId, partId, ovPatch);
         },
       }),
     [partIndex]
@@ -1421,7 +1559,15 @@ function StudioStage({
         -((e.clientY - rect.top) / rect.height) * 2 + 1
       );
       raycaster.setFromCamera(ndc, camera);
-      const hits = raycaster.intersectObjects(modelMeshes, false);
+      // Garage G4: three.js's own Raycaster never checks `.visible` (confirmed
+      // in this build's node_modules/three/src/core/Raycaster.js — neither
+      // intersect() nor Mesh.raycast() looks at it), so a part hidden via a
+      // Garage override would otherwise still be clickable. Filter it out here
+      // so a hidden part is never hit, in either pick mode.
+      const hits = raycaster.intersectObjects(
+        modelMeshes.filter((m) => m.visible),
+        false
+      );
       // Garage G3: only with Parts ON does a click pick a part (shift toggles;
       // otherwise the pick replaces the selection); empty space clears. The
       // whole-model branch below is untouched and runs whenever Parts is OFF.

@@ -279,10 +279,163 @@ function RailCard({ section, open, onToggle, collapsed, onOpenFromStrip, childre
 
 const fmtUnits = (n) => (Number.isFinite(n) ? n.toFixed(3) : "?");
 
-// Garage G3 — the Parts switch and the selected part's read-out. All state comes
-// from the Garage stores; nothing here touches the engine.
-function GarageSection({ pickMode, selection, busy }) {
+// Garage G4 — a compact numeric field in the rail's own field style
+// (.sos-field / native input, already styled in ui-shell.css), mirroring the
+// whole-model transform panel's convention: commits on blur or Enter, keeps a
+// draft string while focused so typing is never fought, and always displays
+// the committed value once unfocused (so Reset instantly re-shows it).
+const fmtNum = (n) => (Number.isFinite(n) ? String(Math.round(n * 1000) / 1000) : "0");
+
+function GarageNumField({ label, value, step, unit, testId, disabled, onCommit }) {
+  const [draft, setDraft] = useState(null);
+  const display = draft !== null ? draft : fmtNum(value);
+  const commit = () => {
+    const n = parseFloat(display);
+    if (Number.isFinite(n)) onCommit(n);
+    setDraft(null);
+  };
+  return (
+    <label className="sos-field">
+      <em>
+        {label}
+        {unit ? ` (${unit})` : ""}
+      </em>
+      <input
+        type="number"
+        step={step}
+        data-testid={testId}
+        disabled={disabled}
+        value={display}
+        onFocus={() => setDraft(fmtNum(value))}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+    </label>
+  );
+}
+
+// Garage G4 — the single selected part's numeric edit fields: position,
+// rotation, scale (uniform + an advanced per-axis disclosure) and hidden, plus
+// Reset part. Reads garageMode.getPartTransform (base composed with any
+// override) and writes through garageMode.commitPartEdit (pos/rot/scale) or
+// directly through garageStore (hidden, reset) — both are already the exact
+// commands the store's undo history tracks, so Undo/Redo below covers them.
+function GarageEditFields({ itemId, partId, busy }) {
+  const [scaleAdvanced, setScaleAdvanced] = useState(false);
+  const t = garageMode.getPartTransform(itemId, partId);
+  if (!t) {
+    return (
+      <p className="sos-hint">
+        <span>Part transform not available yet.</span>
+      </p>
+    );
+  }
+  const commitPos = (axis, v) => {
+    const pos = t.pos.slice();
+    pos[axis] = v;
+    garageMode.commitPartEdit(itemId, partId, { pos });
+  };
+  const commitRot = (axis, v) => {
+    const rot = t.rot.slice();
+    rot[axis] = v;
+    garageMode.commitPartEdit(itemId, partId, { rot });
+  };
+  const commitScaleAxis = (axis, v) => {
+    const scale = t.scale.slice();
+    scale[axis] = Math.max(0.05, v);
+    garageMode.commitPartEdit(itemId, partId, { scale });
+  };
+  const commitScaleUniform = (v) => {
+    const s = Math.max(0.05, v);
+    garageMode.commitPartEdit(itemId, partId, { scale: [s, s, s] });
+  };
+  const toggleHidden = () => {
+    garageStore.setPartOverride(itemId, partId, { visible: t.hidden });
+  };
+  return (
+    <>
+      <span className="sos-label">Position</span>
+      <div className="sos-fields">
+        <GarageNumField label="X" unit="m" step={0.05} testId="ui-garage-pos-x" disabled={busy} value={t.pos[0]} onCommit={(v) => commitPos(0, v)} />
+        <GarageNumField label="Y" unit="m" step={0.05} testId="ui-garage-pos-y" disabled={busy} value={t.pos[1]} onCommit={(v) => commitPos(1, v)} />
+        <GarageNumField label="Z" unit="m" step={0.05} testId="ui-garage-pos-z" disabled={busy} value={t.pos[2]} onCommit={(v) => commitPos(2, v)} />
+      </div>
+      <span className="sos-label">Rotation</span>
+      <div className="sos-fields">
+        <GarageNumField label="X" unit="deg" step={1} testId="ui-garage-rot-x" disabled={busy} value={t.rot[0]} onCommit={(v) => commitRot(0, v)} />
+        <GarageNumField label="Y" unit="deg" step={1} testId="ui-garage-rot-y" disabled={busy} value={t.rot[1]} onCommit={(v) => commitRot(1, v)} />
+        <GarageNumField label="Z" unit="deg" step={1} testId="ui-garage-rot-z" disabled={busy} value={t.rot[2]} onCommit={(v) => commitRot(2, v)} />
+      </div>
+      <span className="sos-label">Scale</span>
+      <div className="sos-fields">
+        <GarageNumField
+          label="Uniform"
+          unit="x"
+          step={0.05}
+          testId="ui-garage-scale-uniform"
+          disabled={busy}
+          value={t.scale[0]}
+          onCommit={commitScaleUniform}
+        />
+      </div>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-pchip"
+          data-testid="ui-garage-scale-advanced"
+          data-on={scaleAdvanced || undefined}
+          aria-pressed={scaleAdvanced}
+          disabled={busy}
+          title="Show per-axis scale fields"
+          onClick={() => setScaleAdvanced((v) => !v)}
+        >
+          Advanced: per-axis
+        </button>
+      </div>
+      {scaleAdvanced ? (
+        <div className="sos-fields">
+          <GarageNumField label="X" unit="x" step={0.05} testId="ui-garage-scale-x" disabled={busy} value={t.scale[0]} onCommit={(v) => commitScaleAxis(0, v)} />
+          <GarageNumField label="Y" unit="x" step={0.05} testId="ui-garage-scale-y" disabled={busy} value={t.scale[1]} onCommit={(v) => commitScaleAxis(1, v)} />
+          <GarageNumField label="Z" unit="x" step={0.05} testId="ui-garage-scale-z" disabled={busy} value={t.scale[2]} onCommit={(v) => commitScaleAxis(2, v)} />
+        </div>
+      ) : null}
+      <div className="sos-frow">
+        <label className="sos-pchip" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <input
+            type="checkbox"
+            data-testid="ui-garage-hidden"
+            checked={t.hidden}
+            disabled={busy}
+            onChange={toggleHidden}
+          />
+          Hidden
+        </label>
+      </div>
+      <button
+        type="button"
+        className="sos-btn sos-btn-ghost sos-rail-export"
+        data-testid="ui-garage-reset-part"
+        disabled={busy || !t.overridden}
+        title="Reset this part to its original transform and visibility"
+        onClick={() => garageStore.resetPart(itemId, partId)}
+      >
+        Reset part
+      </button>
+      <Hint>Part edits don&rsquo;t yet update the camera, floor, or shadow — coming soon.</Hint>
+    </>
+  );
+}
+
+// Garage G3/G4 — the Parts switch and the selected part's read-out (and, from
+// G4, its numeric edit fields when exactly one part is selected). All state
+// comes from the Garage stores; nothing here touches the engine directly.
+function GarageSection({ pickMode, garageState, busy }) {
+  const selection = garageState.selection;
   const count = selection.length;
+  const single = garageMode.singleSelectedPart(garageState);
   const first = count > 0 ? garageMode.describePart(selection[0].partId) : null;
   const names = selection
     .slice(0, 5)
@@ -364,6 +517,36 @@ function GarageSection({ pickMode, selection, busy }) {
         Parts on: click selects a part, shift-click adds, Esc clears. Parts off: click selects the
         whole model as before.
       </Hint>
+      {/* Garage G4 — editing is numeric fields only, and only for exactly one
+          selected part (Owner decisions 1 and 2). */}
+      {single ? (
+        <GarageEditFields itemId={single.itemId} partId={single.partId} busy={busy} />
+      ) : (
+        <Hint>Select exactly one part to edit it.</Hint>
+      )}
+      <span className="sos-label">History</span>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-garage-undo"
+          disabled={busy || !garageState.canUndo}
+          title="Undo the last Garage edit"
+          onClick={garageStore.undo}
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-garage-redo"
+          disabled={busy || !garageState.canRedo}
+          title="Redo the last undone Garage edit"
+          onClick={garageStore.redo}
+        >
+          Redo
+        </button>
+      </div>
     </>
   );
 }
@@ -726,7 +909,7 @@ export default function InspectorRail({
             ) : section.id === "garage" ? (
               <GarageSection
                 pickMode={garageModeState.pickMode}
-                selection={garageState.selection}
+                garageState={garageState}
                 busy={animState.mode !== "idle"}
               />
             ) : (
