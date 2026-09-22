@@ -14,6 +14,8 @@ import {
 import * as materialStore from "../materials/store";
 import * as cameraStudio from "../camera/cameraStudio";
 import * as animationStore from "../animation/animationStore";
+import * as garageStore from "../garage/garageStore";
+import * as garageMode from "../garage/garageMode";
 import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
 
@@ -41,6 +43,7 @@ const SECTIONS = [
   { id: "materials", name: "Materials", sub: "tap a part to style", icon: "cube" },
   { id: "render", name: "Render", sub: "output presets", icon: "render" },
   { id: "animate", name: "Animate", sub: "turntable preview", icon: "film" },
+  { id: "garage", name: "Garage", sub: "pick parts by click", icon: "frame" },
 ];
 
 /* --------------------------------------------------------------------------
@@ -274,6 +277,97 @@ function RailCard({ section, open, onToggle, collapsed, onOpenFromStrip, childre
   );
 }
 
+const fmtUnits = (n) => (Number.isFinite(n) ? n.toFixed(3) : "?");
+
+// Garage G3 — the Parts switch and the selected part's read-out. All state comes
+// from the Garage stores; nothing here touches the engine.
+function GarageSection({ pickMode, selection, busy }) {
+  const count = selection.length;
+  const first = count > 0 ? garageMode.describePart(selection[0].partId) : null;
+  const names = selection
+    .slice(0, 5)
+    .map((e) => garageMode.describePart(e.partId)?.name ?? e.partId);
+  return (
+    <>
+      <span className="sos-label">Parts</span>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-pchip"
+          data-testid="ui-garage-parts"
+          data-on={pickMode || undefined}
+          aria-pressed={pickMode}
+          disabled={busy}
+          title={
+            pickMode
+              ? "Parts is ON: a click selects one part. Click to turn OFF."
+              : "Parts is OFF: a click selects the whole model. Click to turn ON."
+          }
+          onClick={garageMode.togglePickMode}
+        >
+          {pickMode ? "Parts: on" : "Parts: off"}
+        </button>
+      </div>
+      <div data-testid="ui-garage-readout">
+        {count === 0 ? (
+          <p className="sos-hint">
+            <span>No part selected</span>
+          </p>
+        ) : count === 1 && first ? (
+          <>
+            <p className="sos-hint">
+              <span>{first.name}</span>
+            </p>
+            <p className="sos-hint">
+              <span>Path: {first.path}</span>
+            </p>
+            <p className="sos-hint">
+              <span>
+                {first.triangles.toLocaleString()} triangles, {first.vertices.toLocaleString()} vertices
+              </span>
+            </p>
+            <p className="sos-hint">
+              <span>
+                Size {fmtUnits(first.size.x)} x {fmtUnits(first.size.y)} x {fmtUnits(first.size.z)}{" "}
+                (model units, real size unknown)
+              </span>
+            </p>
+            <p className="sos-hint">
+              <span>Material: {first.materialName || "(unnamed)"}</span>
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="sos-hint">
+              <span>{count} parts selected</span>
+            </p>
+            <p className="sos-hint">
+              <span>
+                {names.join(", ")}
+                {count > names.length ? `, and ${count - names.length} more` : ""}
+              </span>
+            </p>
+          </>
+        )}
+      </div>
+      <button
+        type="button"
+        className="sos-btn sos-btn-ghost sos-rail-export"
+        data-testid="ui-garage-clear"
+        disabled={count === 0}
+        title="Clear the part selection"
+        onClick={garageStore.clearSelection}
+      >
+        Clear
+      </button>
+      <Hint>
+        Parts on: click selects a part, shift-click adds, Esc clears. Parts off: click selects the
+        whole model as before.
+      </Hint>
+    </>
+  );
+}
+
 export default function InspectorRail({
   dodgeBelow = 0,
   collapsed = false,
@@ -314,6 +408,17 @@ export default function InspectorRail({
     animationStore.subscribe,
     animationStore.getSnapshot,
     animationStore.getSnapshot
+  );
+  // Garage G3: the Parts switch and the part selection (both external stores).
+  const garageModeState = useSyncExternalStore(
+    garageMode.subscribe,
+    garageMode.getSnapshot,
+    garageMode.getSnapshot
+  );
+  const garageState = useSyncExternalStore(
+    garageStore.subscribe,
+    garageStore.getSnapshot,
+    garageStore.getSnapshot
   );
   const animPreviewing = animState.mode === "previewing";
   const animExporting = animState.mode === "exporting";
@@ -618,6 +723,12 @@ export default function InspectorRail({
                           : "1080x1920 - 30 fps - silent. On this PC an export can take a while: keep this tab visible."}
                 </Hint>
               </>
+            ) : section.id === "garage" ? (
+              <GarageSection
+                pickMode={garageModeState.pickMode}
+                selection={garageState.selection}
+                busy={animState.mode !== "idle"}
+              />
             ) : (
               <>
                 <span className="sos-label">Format</span>

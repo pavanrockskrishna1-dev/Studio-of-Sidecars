@@ -20,6 +20,9 @@ import { DEFAULT_LIGHTING } from "../lighting/profiles";
 import { computeExportSize, REEL_EXPORT, usesReelFraming } from "../capture/exportOptions";
 import { platformReelPose, reelPose, sampleAt } from "../animation/path";
 import * as animation from "../animation/animationStore";
+import * as garageStore from "../garage/garageStore";
+import * as garageMode from "../garage/garageMode";
+import { buildPartIndex } from "../garage/partTree";
 import {
   backdropImageAspect,
   needsCoverCrop,
@@ -35,6 +38,12 @@ const OUTLINE_OPACITY = 0.7; // premium rim, subtle but legible
 const OUTLINE_EXPAND = 1.015; // thin inverted-hull silhouette
 const RING_OPACITY = 0.95;
 const CLICK_MOVE_TOLERANCE = 5; // px — below this a pointerup reads as a click
+
+// Garage G3 — the selected-part overlay. Cyan (distinct from the gold whole-model
+// outline), an editor-only group that every export hides.
+const PART_COLOR = 0x38bdf8;
+const PART_EXPAND = 1.03; // inverted hull grown about each part's own centre
+const OVERLAY_NAME = "garage-overlay";
 
 // Mission 6 (Transform Foundation) — the original transform reference. The
 // transform layer is a wrapper group starting at identity, so identity is the
@@ -99,6 +108,66 @@ function buildOutlineShells(meshes, center, parent) {
     shells.push(shell);
   }
   return shells;
+}
+
+// Garage G3 — one inverted-hull shell per selected part, in the transform
+// group's LOCAL space like buildOutlineShells, but grown about the part's own
+// geometry centre so a part whose geometry sits away from its node origin is
+// still hugged. Shells share the part's geometry; each owns a fresh material.
+function buildPartShells(meshes, parent) {
+  parent.updateWorldMatrix(true, false);
+  const invParent = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+  const toCentre = new THREE.Matrix4();
+  const grow = new THREE.Matrix4().makeScale(PART_EXPAND, PART_EXPAND, PART_EXPAND);
+  const fromCentre = new THREE.Matrix4();
+  const shells = [];
+  for (const mesh of meshes) {
+    if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+    const c = mesh.geometry.boundingSphere ? mesh.geometry.boundingSphere.center : new THREE.Vector3();
+    mesh.updateWorldMatrix(true, false);
+    toCentre.makeTranslation(c.x, c.y, c.z);
+    fromCentre.makeTranslation(-c.x, -c.y, -c.z);
+    const shell = new THREE.Mesh(
+      mesh.geometry,
+      new THREE.MeshBasicMaterial({
+        color: PART_COLOR,
+        side: THREE.BackSide,
+        transparent: true,
+        opacity: OUTLINE_OPACITY,
+        depthWrite: true,
+        toneMapped: false,
+      })
+    );
+    shell.matrixAutoUpdate = false;
+    shell.matrix
+      .copy(mesh.matrixWorld)
+      .premultiply(invParent)
+      .multiply(toCentre)
+      .multiply(grow)
+      .multiply(fromCentre);
+    shell.matrixWorldNeedsUpdate = true;
+    shells.push(shell);
+  }
+  return shells;
+}
+
+// Garage G3 — what the rail shows for one part (model units: the world box of
+// the part, so it includes the Scale slider).
+function describeMesh(mesh, partId) {
+  const g = mesh.geometry;
+  const vertices = g && g.attributes && g.attributes.position ? g.attributes.position.count : 0;
+  const triangles = g ? Math.floor((g.index ? g.index.count : vertices) / 3) : 0;
+  mesh.updateWorldMatrix(true, false);
+  const size = new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3());
+  const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+  return {
+    name: mesh.name || "(unnamed)",
+    path: partId,
+    triangles,
+    vertices,
+    size: { x: size.x, y: size.y, z: size.z },
+    materialName: mat && mat.name ? mat.name : "",
+  };
 }
 
 // Mission 8 (Capture Shot Foundation) — capture reuses THIS renderer, exactly
@@ -168,6 +237,12 @@ function CaptureBridge({ captureRef, reelViewRef }) {
           ? reelViewRef.current.applyPngPose(width, height)
           : null;
       let restore;
+      // Garage G3: the editor overlay never appears in an export frame. It is
+      // hidden for the synchronous render only and put back in this same task,
+      // also when the render fails.
+      const overlay = scene.getObjectByName(OVERLAY_NAME);
+      const overlayWasVisible = overlay ? overlay.visible : false;
+      if (overlay) overlay.visible = false;
       try {
         restore = renderExportFrame(
           gl,
@@ -180,6 +255,8 @@ function CaptureBridge({ captureRef, reelViewRef }) {
       } catch (err) {
         if (restorePose) restorePose();
         throw err;
+      } finally {
+        if (overlay) overlay.visible = overlayWasVisible;
       }
       return new Promise((resolve, reject) => {
         gl.domElement.toBlob(
@@ -507,6 +584,8 @@ function StudioStage({
   const setOverlaysHidden = useCallback((hidden) => {
     const outline = transformRef.current?.getObjectByName("selection-outline");
     if (outline) outline.visible = !hidden;
+    const partOverlay = transformRef.current?.getObjectByName(OVERLAY_NAME);
+    if (partOverlay) partOverlay.visible = !hidden;
     if (ringRef.current) ringRef.current.visible = hidden ? false : selectedRef.current;
   }, []);
 
@@ -1202,6 +1281,105 @@ function StudioStage({
     };
   }, [selected, modelMeshes, fit.center]);
 
+  // Garage G3 — one part index per model (a part is one mesh the file separates).
+  const partIndex = useMemo(() => buildPartIndex(modelScene), [modelScene]);
+
+  // A fresh Garage layout per stage (a product switch remounts the stage), which
+  // also clears any part selection.
+  useEffect(() => {
+    garageStore.startLayout({ assetId: product.id, name: product.name });
+  }, [product.id, product.name]);
+
+  // Part overlay — imperative, rebuilt from a Garage store subscription (never
+  // React state), parented to the same group as the whole-model outline. Hidden
+  // by setOverlaysHidden (preview, MP4) and around the PNG render (CaptureBridge).
+  useEffect(() => {
+    const parent = transformRef.current;
+    if (!parent) return undefined;
+    let group = null;
+    let shells = [];
+    let lastSelection = null;
+    const teardown = () => {
+      if (group) parent.remove(group);
+      for (const shell of shells) shell.material.dispose();
+      group = null;
+      shells = [];
+    };
+    const rebuild = () => {
+      const selection = garageStore.getSnapshot().selection;
+      if (selection === lastSelection) return;
+      lastSelection = selection;
+      teardown();
+      const meshes = [];
+      if (partIndex.ok) {
+        for (const entry of selection) {
+          const mesh = partIndex.byId.get(entry.partId);
+          if (mesh && mesh.geometry) meshes.push(mesh);
+        }
+      }
+      if (meshes.length === 0) return;
+      shells = buildPartShells(meshes, parent);
+      group = new THREE.Group();
+      group.name = OVERLAY_NAME;
+      group.visible = !animRunRef.current && !exportRunRef.current;
+      group.add(...shells);
+      parent.add(group);
+    };
+    rebuild();
+    const unsubscribe = garageStore.subscribe(rebuild);
+    return () => {
+      unsubscribe();
+      teardown();
+    };
+  }, [partIndex, fit.center]);
+
+  // The rail's part read-out.
+  useEffect(
+    () =>
+      garageMode.registerApi({
+        describePart: (partId) => {
+          const mesh = partIndex.ok ? partIndex.byId.get(partId) : undefined;
+          return mesh ? describeMesh(mesh, partId) : null;
+        },
+      }),
+    [partIndex]
+  );
+
+  // Parts mode: turning it ON drops a whole-model selection (the two never
+  // coexist); Escape clears the part selection, and that listener exists only
+  // while Parts is ON. It yields to a running preview or export (the preview's
+  // own Escape handler keeps priority) and to text-entry fields.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (animRunRef.current || exportRunRef.current) return;
+      const t = e.target;
+      const tag = t && t.nodeName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) {
+        return;
+      }
+      garageStore.clearSelection();
+    };
+    let on = false;
+    const sync = () => {
+      const next = garageMode.getSnapshot().pickMode;
+      if (next === on) return;
+      on = next;
+      if (on) {
+        onClear();
+        window.addEventListener("keydown", onKey);
+      } else {
+        window.removeEventListener("keydown", onKey);
+      }
+    };
+    sync();
+    const unsubscribe = garageMode.subscribe(sync);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClear]);
+
   // Click-to-select / click-empty-to-clear with drag guards.
   useEffect(() => {
     const el = gl.domElement;
@@ -1244,6 +1422,20 @@ function StudioStage({
       );
       raycaster.setFromCamera(ndc, camera);
       const hits = raycaster.intersectObjects(modelMeshes, false);
+      // Garage G3: only with Parts ON does a click pick a part (shift toggles;
+      // otherwise the pick replaces the selection); empty space clears. The
+      // whole-model branch below is untouched and runs whenever Parts is OFF.
+      if (garageMode.getSnapshot().pickMode) {
+        const partId = hits.length > 0 && partIndex.ok ? partIndex.byRef.get(hits[0].object) : undefined;
+        if (partId) {
+          const entry = { itemId: "i0", partId };
+          if (e.shiftKey) garageStore.toggle(entry);
+          else garageStore.select([entry]);
+        } else if (hits.length === 0 && !e.shiftKey) {
+          garageStore.clearSelection();
+        }
+        return;
+      }
       if (hits.length > 0) {
         onSelect({
           name: product.name,
@@ -1260,7 +1452,7 @@ function StudioStage({
       el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("pointerup", onPointerUp);
     };
-  }, [gl, camera, modelMeshes, modelScene, product.name, fit.size, onSelect, onClear, stopPreview]);
+  }, [gl, camera, modelMeshes, modelScene, partIndex, product.name, fit.size, onSelect, onClear, stopPreview]);
 
   return (
     <>
