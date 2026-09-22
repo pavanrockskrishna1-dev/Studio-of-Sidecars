@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slice G1, and the THE KOP MAIN product; HEAD `97dd1ac`, "Add THE KOP MAIN as a new built-in product"; all work through the MAIN product is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
+## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G4, and the THE KOP MAIN product; HEAD `d278ef3`, "Garage G4: move/rotate/scale/hide a selected part, with exact reset and undo"; all work through Garage G4 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -767,8 +767,14 @@ are in the lock file.
 - Slice D2: an in-app video preview window.
 - Slice E: camera moves (`makeMove`) and saving an animation in the session
   (optional `engine.animation` field, no version bump).
-- Garage: next is G2 (the store) and then G3 (part selection by click, needs the owner's
-  approval); see "Phase 18 - Garage (scene editor): design and slice G1".
+- Garage: G1-G4 are done (the store, the Parts switch and click-to-select, and per-part
+  move/rotate/scale/hide with exact reset and undo). **Next is G5, the refit event**
+  (`liveFit`), needs the owner's approval: it would make the fit, floor, shadow, camera
+  presets and Reel/PNG framing follow a part moved/hidden/resized by G4, and as a side effect
+  it would also fix the older CAM-001 issue (camera presets ignoring a transformed model) for
+  the whole-model transform, since both gaps share the same root cause - `fit` is measured
+  once per model and never recomputed after a transform. See "Phase 18 - Garage (scene
+  editor): design and slice G1" and "Known Camera Bugs".
 
 Tooling reminders (Playwright / SwiftShader versus the real GPU, Project rules)
 are in "Known Limitations" and "Project rules" below.
@@ -866,11 +872,14 @@ Items marked "unverified" were not re-checked here.
 
 ## Phase 18 - Garage (scene editor): design and slice G1
 
-Status: designed; slice G1 (pure modules and tests) is committed as `6226ba2`; nothing
-else is built. The app behaves exactly as before G1: the commit only added files in
-`app/src/garage/` and `app/scripts/test-garage.mjs` (`git show --stat 6226ba2`: 6 files,
-all new), and a search of `app/src` finds no import of `garage/` from any other file
-(checked for this update).
+Status: designed; slices G1-G4 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
+G4 `d278ef3`); G5-G11 are not started. G1 and G2 were pure modules and tests only, with
+nothing wired into the app (`git show --stat` on each commit: G1 touched only 6 new files
+under `app/src/garage/` and `app/scripts/test-garage.mjs`; G2 touched only 2 new files,
+`app/src/garage/garageStore.js` and `app/scripts/test-garage-store.mjs`). G3 was the first
+slice to wire anything into the app the owner can see: a Parts switch and click-to-select,
+behind a default-off flag. G4 added numeric move/rotate/scale/hide of the one selected
+part, exact reset and Undo/Redo. See the G2/G3/G4 summaries below.
 
 ### The wish and the scope (owner)
 
@@ -941,14 +950,129 @@ maths) prints 161 PASS lines and ends with `ALL CHECKS PASSED (161 PASS)`. It re
 (INFO lines): `the_kop_refined.glb` 681, `cessna-172-tripo.glb` 186, `cartoon-motorcycle.glb`
 149, `cessna-172.glb` 15, `cup-coffee.glb` 2, `mug.glb` 1.
 
+### G2 - the store (`app/src/garage/garageStore.js`, commit `3b7d9fb`)
+
+Pure JS, no engine hookup, nothing visible (`git show --stat 3b7d9fb`: only
+`app/src/garage/garageStore.js` and `app/scripts/test-garage-store.mjs`, both new; a search
+of `app/src` outside `garage/` finds no import of it yet from this commit alone). It follows
+the pattern of `camera/cameraStudio.js` and `animation/animationStore.js`: a frozen snapshot
+replaced only when a field changes, `subscribe` + `getSnapshot` for `useSyncExternalStore`,
+and `registerApi` with an identity-checked unregister (safe under React StrictMode). The
+layout itself is immutable (each command builds new objects along the changed path only, so
+undo entries share memory). What it adds, per the module's own top-of-file comment and
+exports:
+
+- **History.** `undo` / `redo`, capped at `HISTORY_LIMIT = 50` entries (`{ before, after }`
+  layout-reference pairs).
+- **Gesture coalescing.** `beginGesture` / `endGesture` / `cancelGesture`: while a gesture is
+  open the snapshot keeps describing the layout at `beginGesture`, so a drag's intermediate
+  states never land in history; only the gesture's start and end become one undo step.
+- **Selection.** `select` / `toggle` / `clearSelection`, capped at `SELECTION_LIMIT = 200`
+  entries; selection is explicitly not itself an undo step and is not saved with the layout.
+- **A lock.** `setLocked(true)` makes `startLayout`, `loadLayout`, part/item edits and gesture
+  commands refuse with `{ ok:false, reason:"locked" }` (selection is not blocked). The module
+  comment frames this as an export lock, but as of this update nothing in `app/src` calls
+  `garageStore.setLocked` outside the module's own file (checked with a repo-wide grep for
+  this update) - it is a primitive a later slice (or G3/G4's own export path) can use, not yet
+  wired to the app's PNG/Reel export.
+- Nothing here implements Decisions 1-3 (floor-stays-at-original-base, PNG exports dropping
+  the outline/ring, no-turntable-with-several-objects); those remain for later slices per the
+  module's own comment.
+
+`app/scripts/test-garage-store.mjs` (815 lines) prints 219 PASS lines (counted for this
+update; owner-reported count matches).
+
+### G3 - part selection by click, behind a Parts switch (commit `3527c6c`)
+
+The first Garage slice wired into the running app, and the one that needed the owner's
+approval per the slice plan. Touches 5 files (`git show --stat 3527c6c`): two new pure
+modules (`app/src/garage/garageMode.js`, the Parts-mode switch store; `app/src/garage/
+partTree.js`, `buildPartIndex` - a duck-typed tree walk, no three.js import, that names every
+mesh node as one "part" using the same ids `partId.js` gives), plus wiring in
+`app/src/components/StudioCanvas.jsx` and `app/src/ui/InspectorRail.jsx`, and a new test
+script `app/scripts/test-garage-select.mjs`.
+
+- **The switch** (`garageMode.js`) is OFF by default; turning it OFF also clears the Garage
+  selection (the selection itself still lives in `garageStore.js`). With it OFF the app
+  behaves exactly as before G3.
+- **A part is one `THREE.Mesh`** - a glTF mesh node / primitive, not a connected component
+  (component splitting is the later G10 slice). `buildPartIndex(modelScene)` runs once per
+  model (`useMemo` on `modelScene` in `StudioCanvas.jsx`) and maps every mesh to a part id and
+  back.
+- **The click handler's Parts branch** (`StudioCanvas.jsx`, inside the existing
+  `onPointerUp` click-vs-drag handler): with Parts mode on, a hit resolves to a part id via
+  `partIndex.byRef`; a plain click replaces the selection (`garageStore.select`), shift-click
+  adds/removes it (`garageStore.toggle`), and a miss with no shift key clears it
+  (`garageStore.clearSelection`). The pre-existing whole-model click branch below it is
+  untouched and runs whenever Parts is off.
+- **The rail** (`InspectorRail.jsx`, Garage section) reads the Garage stores only (never
+  touches the engine directly) and shows, for a single selected part, its name / path / size /
+  material via `garageMode.describePart`.
+- **Exports never show the outline.** The selected-part overlay (`garage-overlay`, a cyan
+  inverted-hull shell distinct from the gold whole-model outline) is hidden for the
+  synchronous export render and restored in the same task, including when the render fails
+  (`StudioCanvas.jsx`, the existing PNG capture path).
+- **Owner-tested** (owner facts, not visible in the repo, on THE KOP MAIN in his own browser):
+  clicking a part with Parts mode on shows the cyan outline and the part's name/path/size/
+  material in the rail; shift-click adds; Esc/empty-click clears; exporting a Reel PNG with a
+  part selected shows no outline; turning Parts off restores the old whole-model click
+  behaviour.
+
+`app/scripts/test-garage-select.mjs` (284 lines) prints 67 PASS lines (counted for this
+update; owner-reported count matches).
+
+### G4 - move / rotate / scale / hide a selected part, exact reset and undo (commit `d278ef3`)
+
+Touches 4 files (`git show --stat d278ef3`): further additions to `garageMode.js`
+(`singleSelectedPart`, `getPartTransform`, `commitPartEdit`) and to `StudioCanvas.jsx` and
+`InspectorRail.jsx`, plus a new test script `app/scripts/test-garage-part-edit.mjs`.
+
+- **Editing is numeric fields only** (Position x/y/z in metres, Rotation x/y/z in degrees,
+  Scale uniform with an advanced per-axis disclosure, minimum scale 0.05), styled and wired
+  the same way as the existing whole-model transform panel; no 3D gizmo (deferred to G11).
+  Only one selected part is editable at a time - with 2+ parts selected the rail hides the
+  edit fields behind a hint (`InspectorRail.jsx`'s `GarageEditFields` / `GarageSection`).
+- **Base pose recording.** `StudioCanvas.jsx` keeps one base pose (position, quaternion,
+  scale, visible) per part mesh in a `WeakMap` (`partBasesRef`), recorded once the first time
+  a part is touched; a fresh `WeakMap` per stage mount means a product switch never carries a
+  stale base into the next model.
+- **Exact reset.** Every real layout change re-poses every part mesh from its recorded base
+  composed with its current override via `compose.js`'s `applyPartOverride` (or `resetToBase`
+  when the override is gone) - never a hand-rolled equivalent. "Reset part" in the rail calls
+  `garageStore.resetPart(itemId, partId)` directly.
+- **Undo / Redo** in the rail (`data-testid="ui-garage-undo"` / `"ui-garage-redo"`) call
+  `garageStore.undo` / `garageStore.redo` directly - the same store commands G2's history
+  already tracks, so no separate history was built for part edits.
+- **A real bug found and fixed during this slice:** the assumption that three.js's
+  `Raycaster` skips invisible objects is wrong for the three.js version in this repo
+  (0.186.0) - verified against `node_modules/three/src/core/Raycaster.js`: neither
+  `intersect()` nor `Mesh.raycast()` checks `.visible`. This meant a hidden part could still be
+  clicked and selected. Fixed by filtering `modelMeshes` to currently-visible meshes
+  (`modelMeshes.filter((m) => m.visible)`) before raycasting in the click handler, in both
+  pick modes.
+- **Decision 4 (approved for G4):** `fit` (`fit.size`, `fit.center`, `floorY`), the floor disc,
+  shadow catcher, ring, camera presets, and Reel/PNG framing (`computeReelView`, `reelPose`,
+  `platformReelPose`) do NOT update when a part is moved, hidden, or the whole model is
+  resized - deferred to Garage G5. `Box3.setFromObject` / `expandByObject` has no visibility
+  check, so a hidden part still counts toward fit-based measurements until G5.
+- **Owner-tested** (owner facts, not visible in the repo): selected a small part (a paper cup)
+  on THE KOP MAIN, saw Position/Rotation/Scale/Hidden fields populate with real values in the
+  rail, moved it with the Position X field, exported a Reel 9:16 PNG while the part was still
+  displaced (not yet reset), and confirmed the part appeared visibly moved in the exported
+  image (not snapped back to its original spot). He also exercised Reset part and the
+  Undo/Redo buttons.
+
+`app/scripts/test-garage-part-edit.mjs` (263 lines) prints 65 PASS lines (counted for this
+update; owner-reported count matches).
+
 ### Slice plan
 
 | Slice | What | Status | Owner approval needed when reached |
 |---|---|---|---|
 | G1 | Pure functions plus node tests | **Done** (`6226ba2`) | no |
-| G2 | The store (`garageStore.js`) | not started | no |
-| G3 | Part selection by click | not started | **yes** (what a click means) |
-| G4 | Per-part move / rotate / scale / hide, exact reset and undo | not started | no |
+| G2 | The store (`garageStore.js`) | **Done** (`3b7d9fb`) | no |
+| G3 | Part selection by click | **Done** (`3527c6c`) | **yes** (what a click means) - given |
+| G4 | Per-part move / rotate / scale / hide, exact reset and undo | **Done** (`d278ef3`) | no |
 | G5 | A refit event (`liveFit`) so floor, shadow, presets and Reel follow moved parts | not started | **yes** (presets follow moved models) |
 | G6 | Per-part colour | not started | **yes** (touches the materials store) |
 | G7 | Add objects from the library | not started | no |
@@ -963,9 +1087,13 @@ is independently shippable.
 ### How to verify
 
 From `app`: `node scripts/test-path.mjs` (192 PASS lines), `node scripts/test-backdrop.mjs`
-(84 PASS lines), `node scripts/test-garage.mjs` (161 PASS lines). Count the lines that start
-with PASS. Observed when this section was written: 192, 84 and 161, no FAIL lines, exit 0 on
-all three. Lint and build were not run for this documentation update.
+(84 PASS lines), `node scripts/test-garage.mjs` (161 PASS lines), `node scripts/
+test-garage-store.mjs` (219 PASS lines), `node scripts/test-garage-select.mjs` (67 PASS
+lines), `node scripts/test-garage-part-edit.mjs` (65 PASS lines). Count the lines that start
+with PASS. Observed when this section was written: 192, 84, 161, 219, 67 and 65, no FAIL
+lines, exit 0 on all six (the three Garage store/select/part-edit counts were also counted by
+the author of this update and match what the owner reported after running all six scripts
+himself). Lint and build were not run for this documentation update.
 
 ## Products and models
 
@@ -1175,7 +1303,24 @@ Status is judged from code reading, not from a fresh browser run in this update.
   when characters are typed then deleted (select all with Ctrl+A and paste a full code).
   A picked colour on a vertex-coloured material may multiply the vertex colours
   (unverified).
-- **Garage feature:** only partly built. G1 (pure functions, `6226ba2`) exists and nothing is wired into the app; G2 to G11 are not started. See "Phase 18".
+- **Garage feature:** only partly built. G1-G4 (`6226ba2`, `3b7d9fb`, `3527c6c`, `d278ef3`) are
+  done; G5-G11 are not started. See "Phase 18".
+- **Garage: moved/hidden/resized parts do not refit the scene (Decision 4, deferred to G5).**
+  The fit (`fit.size`, `fit.center`, `floorY`), the floor disc, shadow catcher, ring, camera
+  presets, and Reel/PNG framing (`computeReelView`, `reelPose`, `platformReelPose`) are all
+  measured once per model and do not follow a part that G4's editor has moved, hidden, or
+  resized. This is intentional, owner-approved scope for G4; G5 (the refit event) is the
+  planned fix.
+- **Garage: a hidden part still counts toward fit measurements.** `Box3.setFromObject` /
+  `expandByObject` has no visibility check, so until G5 a part hidden with the Garage editor
+  still contributes to the model's measured bounds.
+- **Garage: editing is one part at a time, numeric fields only, no gizmo yet.** G4's edit
+  fields (Position/Rotation/Scale/Hidden) are hidden behind a hint whenever 2+ parts are
+  selected; a 3D `TransformControls` gizmo is deferred to G11.
+- **Garage: multi-primitive glTF meshes are only tested with synthetic data.** A part in G3/G4
+  is one `THREE.Mesh` (a glTF mesh node/primitive); several parts sharing one mesh node is
+  only exercised by the node test scripts' synthetic trees, not by a real GLB file (carried
+  over from G3, unchanged by G4).
 - **THE KOP MAIN is heavy** (483,311 triangles, 753 draw calls): speed was only tested by the owner in his browser, not measured; the selection outline on 753 parts is unmeasured; the clearcoat factor 3 on the material "Material" is untested; its sign parts are "Temporary"; the 23 MB file is in git history for good; the Tripo origin of its 98 bike pieces is an inference and the terms are unchecked (also unchecked for the Cessna). See "Products and models".
 - **Gold ring and outline in PNG exports:** by code reading (unverified by a run) a plain PNG includes the gold selection outline and ring when something is selected; slice G9 is planned to remove them from exports.
 - **Coffee Bike filter chip** in the Asset Library tests the id `coffee-bike`, so THE KOP MAIN does not list under it.
@@ -1244,3 +1389,16 @@ boundaries UNVERIFIED against any release note).
 - **THE KOP MAIN product** — `97dd1ac` ("Add THE KOP MAIN as a new built-in product"): the
   23 MB `the-kop-main.glb`, a registry entry (`frontAz` 90) and two data-only lines in
   `ui/content.js`.
+- **Garage G2** — `3b7d9fb` ("Garage G2: store with history, gestures, selection and lock,
+  with tests"): 2 new files, `app/src/garage/garageStore.js` and
+  `app/scripts/test-garage-store.mjs`; nothing wired into the app.
+- **Garage G3** — `3527c6c` ("Garage G3: part selection by click, behind a Parts switch
+  (default off)"): 5 files, 2 new (`app/src/garage/garageMode.js`,
+  `app/src/garage/partTree.js`, `app/scripts/test-garage-select.mjs`) plus wiring in
+  `app/src/components/StudioCanvas.jsx` and `app/src/ui/InspectorRail.jsx`; the Parts switch
+  is off by default.
+- **Garage G4** — `d278ef3` ("Garage G4: move/rotate/scale/hide a selected part, with exact
+  reset and undo"): 4 files, 1 new (`app/scripts/test-garage-part-edit.mjs`) plus further
+  additions to `app/src/garage/garageMode.js`, `app/src/components/StudioCanvas.jsx` and
+  `app/src/ui/InspectorRail.jsx`; includes the raycaster-visibility bugfix (see "Phase 18 -
+  Garage", G4).
