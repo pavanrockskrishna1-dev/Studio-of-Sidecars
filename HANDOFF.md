@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G5, and the THE KOP MAIN product; HEAD `e829e1b`, "Garage G5: refit event — floor/shadow/camera/Reel framing follow moved parts; fixes CAM-001"; all work through Garage G5 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
+## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G6, and the THE KOP MAIN product; HEAD `86f445e`, "Garage G6: per-part colour override (base colour, metalness, roughness, opacity, vertex-colour bypass)"; all work through Garage G6 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -18,7 +18,7 @@
   2. Phase 15A
   3. Phase 15B (HDR lighting)
   4. Phase 16A / 16B (Camera Studio; Animation Studio and Reels), then Phase 17A audit findings (Creator Studio, read-only)
-     and Phase 18 (Garage design and slices G1-G5), then Products and models (three built-in products, THE KOP MAIN)
+     and Phase 18 (Garage design and slices G1-G6), then Products and models (three built-in products, THE KOP MAIN)
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -767,16 +767,19 @@ are in the lock file.
 - Slice D2: an in-app video preview window.
 - Slice E: camera moves (`makeMove`) and saving an animation in the session
   (optional `engine.animation` field, no version bump).
-- Garage: G1-G5 are done (the store, the Parts switch and click-to-select, per-part
-  move/rotate/scale/hide with exact reset and undo, and the G5 refit event that makes the
+- Garage: G1-G6 are done (the store, the Parts switch and click-to-select, per-part
+  move/rotate/scale/hide with exact reset and undo, the G5 refit event that makes the
   fit, floor, shadow, camera presets and Reel/PNG framing follow a part moved/hidden/resized
   - which as a side effect also fixed the older CAM-001 issue for the whole-model transform,
-  since both gaps shared the same root cause). **Next is G6, per-part colour**, needs the
-  owner's approval: the design report flagged it as needing care because it would be the
-  first Garage slice to touch the existing materials store/persistence (`materials/`,
-  `ui/MaterialsManager.jsx`) - G1-G5 never touched that code (checked with `git show --stat`
-  on each Garage commit for `app/src/materials`, for this update). See "Phase 18 - Garage
-  (scene editor): design and slices G1-G5" and "Known Camera Bugs".
+  since both gaps shared the same root cause - and the G6 per-part colour override, kept
+  invisible to the pre-existing materials store/persistence it was the first Garage slice to
+  touch). **Next is G8, save/load named layouts**, ahead of G7 (add objects from the library)
+  even though the original slice order lists G6 before both: the design report's own
+  suggested order already puts G8 ahead of G7 (see "Suggested order" in "Phase 18"), and the
+  reasoning holds now more than ever - a named layout format should exist before there is
+  more than one object's worth of state (a part's transform AND, as of G6, its colour
+  override) worth saving. Neither G7 nor G8 needs the owner's approval per the slice plan.
+  See "Phase 18 - Garage (scene editor): design and slices G1-G6" and "Known Camera Bugs".
 
 Tooling reminders (Playwright / SwiftShader versus the real GPU, Project rules)
 are in "Known Limitations" and "Project rules" below.
@@ -872,19 +875,23 @@ Items marked "unverified" were not re-checked here.
   Blender source `app/public/blender/THE_KOP_Studio_v01.blend` has not been opened
   (the file's presence and contents were not checked here: unverified).
 
-## Phase 18 - Garage (scene editor): design and slices G1-G5
+## Phase 18 - Garage (scene editor): design and slices G1-G6
 
-Status: designed; slices G1-G5 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
-G4 `d278ef3`, G5 `e829e1b`); G6-G11 are not started. G1 and G2 were pure modules and tests
-only, with nothing wired into the app (`git show --stat` on each commit: G1 touched only 6
-new files under `app/src/garage/` and `app/scripts/test-garage.mjs`; G2 touched only 2 new
-files, `app/src/garage/garageStore.js` and `app/scripts/test-garage-store.mjs`). G3 was the
-first slice to wire anything into the app the owner can see: a Parts switch and
+Status: designed; slices G1-G6 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
+G4 `d278ef3`, G5 `e829e1b`, G6 `86f445e`); G7-G11 are not started. G1 and G2 were pure modules
+and tests only, with nothing wired into the app (`git show --stat` on each commit: G1 touched
+only 6 new files under `app/src/garage/` and `app/scripts/test-garage.mjs`; G2 touched only 2
+new files, `app/src/garage/garageStore.js` and `app/scripts/test-garage-store.mjs`). G3 was
+the first slice to wire anything into the app the owner can see: a Parts switch and
 click-to-select, behind a default-off flag. G4 added numeric move/rotate/scale/hide of the
 one selected part, exact reset and Undo/Redo. G5 added the refit event: the floor, shadow,
 camera presets and Reel/PNG framing now follow a part G4 moved, hid or resized, and (as a
 side effect, sharing the same root cause) the older CAM-001 bug is fixed for the
-pre-existing whole-model transform panel too. See the G2/G3/G4/G5 summaries below.
+pre-existing whole-model transform panel too. G6 added a per-part colour override (base
+colour, metalness, roughness, opacity, and an option to bypass a model's baked vertex
+colours) — the first Garage slice to touch the pre-existing materials store/persistence
+area of the code, kept fully invisible to it by construction. See the G2/G3/G4/G5/G6
+summaries below.
 
 ### The wish and the scope (owner)
 
@@ -1124,6 +1131,70 @@ expectation is cross-checked a second, independent way built from `compose.js`'s
 matrix functions) prints 55 PASS lines, 0 FAIL, exit code 0 (run and counted for this
 update).
 
+### G6 - per-part colour override (commit `86f445e`)
+
+Touches 4 files (`git show --stat 86f445e`): `app/src/materials/apply.js` (12 lines),
+`app/src/components/StudioCanvas.jsx` (114 lines), `app/src/ui/InspectorRail.jsx`
+(115 lines), and a new test script, `app/scripts/test-garage-color.mjs` (226 lines).
+
+- **Scope (owner decision 6 and the slice plan):** base colour, metalness, roughness,
+  opacity, and an `ignoreVertexColors` toggle. No textures, no emissive, and no
+  clearcoat/transmission per part - deferred to a later slice.
+- **Zero overhead for an untouched part.** A part with no colour override keeps pointing
+  at its mesh's original, shared material; nothing is cloned and nothing is allocated for
+  it. Only a part that gets an override gets a clone, made once (`applyPartMaterial` in
+  `StudioCanvas.jsx`) and disposed again the moment the override is fully removed.
+- **Invisible to the pre-existing Materials panel and its persistence.** A colour override
+  lives only in the Garage layout's per-part override data (the same `garageStore` map G4's
+  move/rotate/scale/hide fields already write to); it never appears as a row in the
+  Materials panel and is never written to the Materials panel's own persistence
+  (IndexedDB `sos-materials`). It is unaffected by that panel's existing Undo/Reset/presets,
+  and that panel's edits are unaffected by it - by design, the two are separate,
+  non-interacting systems over the same three.js materials.
+- **Two real bugs found and fixed**, both caught by running the code in a browser rather
+  than by reading it:
+  1. **Materials-panel row disappearing.** A first attempt at excluding a Garage colour
+     clone from the Materials panel's grouping (`materialGroups` in `materials/apply.js`)
+     simply skipped the clone. On these split models a recoloured part is often the ONLY
+     mesh left pointing at its original material, so skipping the clone made that
+     material's row vanish from the panel entirely. Fixed by redirecting the grouping key
+     to the clone's own recorded original material (`rawMat.userData.sosGarageOriginal`)
+     instead of skipping it, so the row persists with the same id and values as if Garage
+     had never touched the mesh.
+  2. **Stale override surviving a product-switch round trip.** Recolouring a part, switching
+     products, then switching back could leave the OLD override colour visibly applied to
+     the mesh even though the store correctly reported no override any more. Cause: the
+     per-part base-pose cache (`ensurePartBase`) trusted whatever material a mesh currently
+     held as "the pristine original" - but on a revisit that material could already be a
+     stale Garage clone left over from before. Fixed by unwrapping through the clone's own
+     back-reference (`sosGarageOriginal`) before recording a mesh's base material, so the
+     TRUE original is always what gets recorded, never a clone.
+- **`ignoreVertexColors` (default off).** Lets a picked colour REPLACE a model's baked-in
+  `COLOR_0` vertex-colour data instead of tinting it (`clone.vertexColors = false` when set).
+  This is the fix for an effect the owner had already hit manually in the Phase 17A audit: a
+  near-white colour picked on the Coffee Bike's burgundy paint came out pink, because the
+  paint's baked vertex colours were being multiplied against the picked colour rather than
+  replaced by it.
+- **Rail UI** (`InspectorRail.jsx`, `GarageColorFields`): a colour swatch plus hex field,
+  three sliders (Metalness/Roughness/Opacity, styled with the Materials panel's own
+  `.sos-mat-field` classes), an "Ignore baked colours" checkbox, and a "Reset colour" button,
+  shown only when exactly one part is selected (the same single-selection rule G4's edit
+  fields already use). Reads through `garageMode.apiRef.current.getPartMaterial` (the part's
+  composed effective values) and writes through `.commitPartMaterial` or directly through
+  `garageStore.setPartOverride(itemId, partId, { material: null })` for a full reset.
+- **Owner-tested** (owner facts, not visible in the repo, separate from what the repo's node
+  tests below prove): the owner exported a Reel MP4 with a recoloured part and confirmed the
+  new colour correctly shows in the video (not the original colour), then ran
+  `node scripts/inspect-mp4.mjs` on the resulting file and confirmed it is still structurally
+  valid.
+
+`app/scripts/test-garage-color.mjs` prints 60 PASS lines, 0 FAIL, exit code 0 (run and
+counted for this update; the owner separately ran all eight Garage/animation node test
+scripts himself - `test-path` 192, `test-backdrop` 84, `test-garage` 161, `test-garage-store`
+219, `test-garage-select` 67, `test-garage-part-edit` 65, `test-garage-refit` 55,
+`test-garage-color` 60, all 0 FAIL - matching what this update independently counted for
+`test-garage-color`).
+
 ### Slice plan
 
 | Slice | What | Status | Owner approval needed when reached |
@@ -1133,7 +1204,7 @@ update).
 | G3 | Part selection by click | **Done** (`3527c6c`) | **yes** (what a click means) - given |
 | G4 | Per-part move / rotate / scale / hide, exact reset and undo | **Done** (`d278ef3`) | no |
 | G5 | A refit event (`liveFit`) so floor, shadow, presets and Reel follow moved parts | **Done** (`e829e1b`) | **yes** (presets follow moved models) - given |
-| G6 | Per-part colour | not started | **yes** (touches the materials store) |
+| G6 | Per-part colour | **Done** (`86f445e`) | **yes** (touches the materials store) - given |
 | G7 | Add objects from the library | not started | no |
 | G8 | Save and load layouts | not started | no |
 | G9 | Exclude the outline and ring from exports | not started | **yes** (PNGs lose the outline and ring) |
@@ -1149,11 +1220,12 @@ From `app`: `node scripts/test-path.mjs` (192 PASS lines), `node scripts/test-ba
 (84 PASS lines), `node scripts/test-garage.mjs` (161 PASS lines), `node scripts/
 test-garage-store.mjs` (219 PASS lines), `node scripts/test-garage-select.mjs` (67 PASS
 lines), `node scripts/test-garage-part-edit.mjs` (65 PASS lines), `node scripts/
-test-garage-refit.mjs` (55 PASS lines). Count the lines that start with PASS. Observed when
-this section was written: 192, 84, 161, 219, 67, 65 and 55, no FAIL lines, exit 0 on all
-seven (the test-garage-refit count was also counted by the author of this update and matches
-what the owner reported after running all seven scripts himself). Lint and build were not run
-for this documentation update.
+test-garage-refit.mjs` (55 PASS lines), `node scripts/test-garage-color.mjs` (60 PASS
+lines). Count the lines that start with PASS. Observed when this section was written: 192,
+84, 161, 219, 67, 65, 55 and 60, no FAIL lines, exit 0 on all eight (the test-garage-color
+count was counted by the author of this update and matches what the owner reported after
+running all eight scripts himself). Lint and build were not run for this documentation
+update.
 
 ## Products and models
 
@@ -1364,8 +1436,8 @@ Status is judged from code reading, not from a fresh browser run in this update.
   when characters are typed then deleted (select all with Ctrl+A and paste a full code).
   A picked colour on a vertex-coloured material may multiply the vertex colours
   (unverified).
-- **Garage feature:** only partly built. G1-G5 (`6226ba2`, `3b7d9fb`, `3527c6c`, `d278ef3`,
-  `e829e1b`) are done; G6-G11 are not started. See "Phase 18".
+- **Garage feature:** only partly built. G1-G6 (`6226ba2`, `3b7d9fb`, `3527c6c`, `d278ef3`,
+  `e829e1b`, `86f445e`) are done; G7-G11 are not started. See "Phase 18".
 - **Garage: moved/hidden/resized parts now refit the scene (fixed by G5, `e829e1b`).** The
   fit (`fit.size`, `fit.center`, `floorY`), the floor disc, shadow catcher, ring, camera
   presets, and Reel/PNG framing (`computeReelView`, `reelPose`, `platformReelPose`) are
@@ -1392,9 +1464,21 @@ Status is judged from code reading, not from a fresh browser run in this update.
   is one `THREE.Mesh` (a glTF mesh node/primitive); several parts sharing one mesh node is
   only exercised by the node test scripts' synthetic trees, not by a real GLB file (carried
   over from G3, unchanged by G4/G5).
-- **Garage: per-part colour, adding objects, and saving/loading layouts are not yet built.**
-  G6 (per-part colour), G7 (add objects from the library) and G8 (save/load layouts) are not
-  started. See "Phase 18".
+- **Garage: adding objects and saving/loading layouts are not yet built.** G7 (add objects
+  from the library) and G8 (save/load layouts) are not started. See "Phase 18".
+- **Garage: G6 per-part colour covers colour/metalness/roughness/opacity only.** No
+  textures, emissive, or clearcoat/transmission per part yet - deferred to a later slice.
+  See "Phase 18", G6.
+- **Garage: per-part colour overrides are not yet part of a save/load layout format.** G6's
+  overrides live in the live `garageStore` layout only; a named, persisted layout format is
+  G8, not yet built. See "Phase 18".
+- **Garage: adding objects from the library (G7) and the 3D gizmo (G11) are not yet built.**
+  Editing today is numeric fields only, one existing part at a time. See "Phase 18".
+- **Garage per-part colours and the pre-existing whole-model Materials panel are two
+  separate, non-interacting systems by design.** A Garage colour override never appears as a
+  row in the Materials panel and is never written to its persistence (IndexedDB
+  `sos-materials`); the Materials panel's Undo/Reset/presets do not see or affect a Garage
+  override, and vice versa. See "Phase 18", G6.
 - **THE KOP MAIN is heavy** (483,311 triangles, 753 draw calls): speed was only tested by the owner in his browser, not measured; the selection outline on 753 parts is unmeasured; the clearcoat factor 3 on the material "Material" is untested; its sign parts are "Temporary"; the 23 MB file is in git history for good; the Tripo origin of its 98 bike pieces is an inference and the terms are unchecked (also unchecked for the Cessna). See "Products and models".
 - **Gold ring and outline in PNG exports:** by code reading (unverified by a run) a plain PNG includes the gold selection outline and ring when something is selected; slice G9 is planned to remove them from exports.
 - **Coffee Bike filter chip** in the Asset Library tests the id `coffee-bike`, so THE KOP MAIN does not list under it.
@@ -1481,3 +1565,11 @@ boundaries UNVERIFIED against any release note).
   plus further additions to `app/src/components/StudioCanvas.jsx` (208 lines changed); adds
   `refit()`, `liveFitRef`/`liveFit` and the `adaptObject3D` adapter, and fixes CAM-001 for
   the pre-existing whole-model transform panel as a side effect (see "Phase 18 - Garage", G5).
+- **Garage G6** — `86f445e` ("Garage G6: per-part colour override (base colour, metalness,
+  roughness, opacity, vertex-colour bypass)"): 4 files, 1 new (`app/scripts/
+  test-garage-color.mjs`) plus additions to `app/src/materials/apply.js`,
+  `app/src/components/StudioCanvas.jsx` and `app/src/ui/InspectorRail.jsx`; adds a per-part
+  colour override kept invisible to the pre-existing Materials panel and its persistence,
+  fixes a Materials-panel row-disappearing bug and a stale-override-on-product-switch bug
+  found while running it in a browser, and adds `ignoreVertexColors` to replace (rather than
+  tint) a model's baked vertex colours (see "Phase 18 - Garage", G6).
