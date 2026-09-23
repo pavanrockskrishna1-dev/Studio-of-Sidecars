@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G6, and the THE KOP MAIN product; HEAD `86f445e`, "Garage G6: per-part colour override (base colour, metalness, roughness, opacity, vertex-colour bypass)"; all work through Garage G6 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
+## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G6 and G8, and the THE KOP MAIN product; HEAD `15c1995`, "Garage G8: save/load named layouts (localStorage + .json, one undo step)"; all work through Garage G8 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -18,7 +18,7 @@
   2. Phase 15A
   3. Phase 15B (HDR lighting)
   4. Phase 16A / 16B (Camera Studio; Animation Studio and Reels), then Phase 17A audit findings (Creator Studio, read-only)
-     and Phase 18 (Garage design and slices G1-G6), then Products and models (three built-in products, THE KOP MAIN)
+     and Phase 18 (Garage design and slices G1-G6 and G8), then Products and models (three built-in products, THE KOP MAIN)
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -875,10 +875,10 @@ Items marked "unverified" were not re-checked here.
   Blender source `app/public/blender/THE_KOP_Studio_v01.blend` has not been opened
   (the file's presence and contents were not checked here: unverified).
 
-## Phase 18 - Garage (scene editor): design and slices G1-G6
+## Phase 18 - Garage (scene editor): design and slices G1-G6 and G8
 
-Status: designed; slices G1-G6 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
-G4 `d278ef3`, G5 `e829e1b`, G6 `86f445e`); G7-G11 are not started. G1 and G2 were pure modules
+Status: designed; slices G1-G6 and G8 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
+G4 `d278ef3`, G5 `e829e1b`, G6 `86f445e`, G8 `15c1995`); G7 and G9-G11 are not started. G1 and G2 were pure modules
 and tests only, with nothing wired into the app (`git show --stat` on each commit: G1 touched
 only 6 new files under `app/src/garage/` and `app/scripts/test-garage.mjs`; G2 touched only 2
 new files, `app/src/garage/garageStore.js` and `app/scripts/test-garage-store.mjs`). G3 was
@@ -890,8 +890,9 @@ side effect, sharing the same root cause) the older CAM-001 bug is fixed for the
 pre-existing whole-model transform panel too. G6 added a per-part colour override (base
 colour, metalness, roughness, opacity, and an option to bypass a model's baked vertex
 colours) — the first Garage slice to touch the pre-existing materials store/persistence
-area of the code, kept fully invisible to it by construction. See the G2/G3/G4/G5/G6
-summaries below.
+area of the code, kept fully invisible to it by construction. G8 added save/load of named
+layouts (per-part overrides only) in the browser and as a `.json` file, with loading as one
+undo step. See the G2/G3/G4/G5/G6/G8 summaries below.
 
 ### The wish and the scope (owner)
 
@@ -1195,6 +1196,72 @@ scripts himself - `test-path` 192, `test-backdrop` 84, `test-garage` 161, `test-
 `test-garage-color` 60, all 0 FAIL - matching what this update independently counted for
 `test-garage-color`).
 
+### G8 - save and load named layouts (commit `15c1995`)
+
+Touches 4 files (`git show --stat 15c1995`, 759 insertions, 2 deletions): a new pure module
+`app/src/garage/layoutLibrary.js` (239 lines), an additive command in
+`app/src/garage/garageStore.js` (22 lines), a new `GarageLayoutSection` in
+`app/src/ui/InspectorRail.jsx` (256 lines) and a new test script
+`app/scripts/test-garage-layouts.mjs` (244 lines). `StudioCanvas.jsx` is not touched: a
+loaded layout reaches the stage through the same `garageStore` commit subscription G4/G6
+already use.
+
+- **Owner-approved decisions.**
+  1. A layout saves only the Garage per-part overrides (move / rotate / scale / hide /
+     colour). It does NOT save the camera, the selection, the pre-existing whole-model
+     transform panel, or the Materials panel. In code, `partsOnlyLayout` resets each item's
+     whole-model `transform` to identity and its `hidden` flag to false before validation.
+  2. Storage is `localStorage` under the key `"sos-garage-layouts:<productId>"` (one JSON
+     array of envelopes per product, `keyForProduct`), plus a `.json` Download per saved
+     layout and an "Upload .json" button.
+  3. A layout saved for a different product is refused with nothing applied
+     (`resolveLoad` returns `reason: "wrong-product"` before it looks at any part).
+  4. Parts that no longer exist on the current model are skipped and counted; the rail
+     shows "Loaded "<name>" - X parts skipped." (existence is checked with
+     `garageMode.describePart(id) !== null`).
+  5. Loading is one undo step.
+  6. Saving over an existing name asks "Overwrite?" (Overwrite / Cancel buttons).
+  7. Nothing auto-loads on refresh.
+- **Envelope format** (`layoutLibrary.js`): `{ kind, formatVersion, productId, name, savedAt,
+  layout }`, with `kind = "sos-garage-layout"`, `formatVersion = 1`, `name` trimmed and
+  capped at 60 characters, `savedAt` an ISO string, and `layout` a `layout.js`-validated
+  layout. `serializeEnvelope` writes sorted-key JSON through `layout.js`'s own
+  `serializeLayout`, so download and upload round-trip exactly. Uploads over 1 MB
+  (`MAX_UPLOAD_BYTES`) are not read. Saved layouts list newest first; each row has Load,
+  Download and Delete. The module is pure: storage is injected (`{ getItem, setItem,
+  removeItem }`), so node tests pass a mock.
+- **`garageStore.loadPartsOverrides(itemId, parts)`** is additive (no existing command
+  changed). It replaces an item's whole parts map in ONE `commit`, so a load is exactly one
+  undo step. It goes through the same `wrap()` + `validateLayout` sanitising as
+  `setPartOverride` and leaves the item's transform and hidden flag alone. The existing
+  `loadLayout` / `loadLayoutJson` were not used because they go through `install()`, which
+  empties the undo and redo stacks and clears the selection, so a load could not be undone.
+- **Byte-identity proof, and a process lesson (stated honestly).** The implementing agent
+  skipped the required step "take a baseline with the ORIGINAL code before editing"; this
+  was caught at review. The fix: `git archive HEAD` of the pre-G8 code into a scratchpad
+  copy (`node_modules` through a directory junction; no stash, checkout or worktree), then one
+  measurement script run on both the ORIGINAL and the G8 trees, 3 repeats per product. The
+  exported PNG sha256 was identical between ORIGINAL and G8 in all 12 runs: coffee-bike
+  `d0b8e753...` (1,196,239 bytes), the-kop-main `5d5eea9d...` (1,395,381 bytes). (Owner
+  facts; the measurement script and its output are not in the repo.) The on-screen canvas
+  hash of coffee-bike's default view varied across repeats on the ORIGINAL code too, so it
+  is pre-existing and not caused by G8; see "Verification harness notes" below.
+- **Owner-tested** (owner facts, in Edge, separate from what the repo's node tests prove):
+  a normal PNG export is unchanged; on THE KOP MAIN with Parts on, he recoloured and moved a
+  part, saved a named layout, undid, and Load restored the edits; one Undo removed them;
+  Download .json produced a file; uploading that file on Coffee Bike was refused; an F5
+  refresh loaded nothing automatically. All as expected.
+- **Other owner facts:** the "X parts skipped" message is verified by the node tests only,
+  not clicked through in a browser. Loaded part overrides render whether the Parts switch is
+  on or off.
+
+`app/scripts/test-garage-layouts.mjs` (244 lines) prints 64 PASS lines, 0 FAIL, exit code 0,
+ending with `ALL CHECKS PASSED (64 PASS)` (run and counted for this update). The owner
+separately ran all nine node test scripts himself: `test-path` 192, `test-backdrop` 84,
+`test-garage` 161, `test-garage-store` 219, `test-garage-select` 67,
+`test-garage-part-edit` 65, `test-garage-refit` 55, `test-garage-color` 60,
+`test-garage-layouts` 64, all 0 FAIL.
+
 ### Slice plan
 
 | Slice | What | Status | Owner approval needed when reached |
@@ -1206,13 +1273,13 @@ scripts himself - `test-path` 192, `test-backdrop` 84, `test-garage` 161, `test-
 | G5 | A refit event (`liveFit`) so floor, shadow, presets and Reel follow moved parts | **Done** (`e829e1b`) | **yes** (presets follow moved models) - given |
 | G6 | Per-part colour | **Done** (`86f445e`) | **yes** (touches the materials store) - given |
 | G7 | Add objects from the library | not started | no |
-| G8 | Save and load layouts | not started | no |
+| G8 | Save and load layouts | **Done** (`15c1995`) | no |
 | G9 | Exclude the outline and ring from exports | not started | **yes** (PNGs lose the outline and ring) |
 | G10 | Virtual-part split | not started | no |
 | G11 | TransformControls gizmo | not started | no |
 
 Suggested order (from the report): G1, G2, G3, G4, G5, G6, G8, G7, G9, G10, G11. Each slice
-is independently shippable.
+is independently shippable. Done so far, in that order: G1-G6, G8.
 
 ### How to verify
 
@@ -1221,11 +1288,48 @@ From `app`: `node scripts/test-path.mjs` (192 PASS lines), `node scripts/test-ba
 test-garage-store.mjs` (219 PASS lines), `node scripts/test-garage-select.mjs` (67 PASS
 lines), `node scripts/test-garage-part-edit.mjs` (65 PASS lines), `node scripts/
 test-garage-refit.mjs` (55 PASS lines), `node scripts/test-garage-color.mjs` (60 PASS
-lines). Count the lines that start with PASS. Observed when this section was written: 192,
-84, 161, 219, 67, 65, 55 and 60, no FAIL lines, exit 0 on all eight (the test-garage-color
-count was counted by the author of this update and matches what the owner reported after
-running all eight scripts himself). Lint and build were not run for this documentation
-update.
+lines), `node scripts/test-garage-layouts.mjs` (64 PASS lines). Count the lines that start
+with PASS. Observed when this section was written: 192, 84, 161, 219, 67, 65, 55, 60 and 64,
+no FAIL lines, exit 0 on all nine (owner-reported for all nine; the test-garage-layouts count
+was also run and counted by the author of the G8 update and matches). Lint and build were
+not run for this documentation update.
+
+| Script | PASS lines |
+|---|---|
+| `test-path.mjs` | 192 |
+| `test-backdrop.mjs` | 84 |
+| `test-garage.mjs` | 161 |
+| `test-garage-store.mjs` | 219 |
+| `test-garage-select.mjs` | 67 |
+| `test-garage-part-edit.mjs` | 65 |
+| `test-garage-refit.mjs` | 55 |
+| `test-garage-color.mjs` | 60 |
+| `test-garage-layouts.mjs` | 64 |
+
+### Verification harness notes
+
+Learned while verifying G8 (owner facts; the harness itself is not in the repo):
+
+- **Switching products in an automated browser.** The model chips' `data-testid` sits on a
+  non-interactive wrapper `div`. Click the nested `.sos-asset` button instead, then confirm
+  it has `data-active="true"` before measuring anything.
+- **Downloads in headless Chromium.** In `headless=new` Chromium, OS downloads reach full
+  size and then cancel. The working method is to capture the blob in the page by wrapping
+  `URL.createObjectURL`.
+- **Identity check.** Use the exported PNG's sha256 as the "nothing changed" check between
+  the ORIGINAL code and a slice. The on-screen canvas hash is supporting evidence only: it
+  varies across repeats of coffee-bike's default view even on unchanged code. Take the
+  ORIGINAL baseline before editing (for example `git archive HEAD` into a scratchpad copy).
+
+### Next slices
+
+- **G7 - add objects from the library** is next. Before it starts it needs (a) an owner
+  decision on a triangle budget (THE KOP MAIN alone is 483,311 triangles, see "Products and
+  models") and (b) a layout `formatVersion` 2, because G8's format 1 envelopes hold only
+  per-part overrides and cannot describe added objects.
+- Then G9 (exclude the outline and ring from exports; needs owner approval), G10
+  (virtual-part split), G11 (TransformControls gizmo). Also still open: wiring the
+  `garageStore.setLocked` export lock.
 
 ## Products and models
 
@@ -1337,7 +1441,7 @@ Resolved: **CAM-001** (camera presets ignored a transformed model) and **CAM-002
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
 | HDRI Environment Library | Partial | 2 of 11 environments have a real HDR; the other 9 use the probe plus a flat JPG. |
 | Animation Studio | Partial | Phase 16B (`c99fd69`, `f25d884`, `c936232`, `0b7c2ce`, `ea2482c`, `936f6d5`): Turntable preview and Reel export work (the model spins; the camera is fixed). No GLB animation mixer, no camera moves UI, no saving in sessions. See "Phase 16B". |
-| Garage (scene editor) | Designed; G1 only | Slice G1 (`6226ba2`): five pure modules in `app/src/garage/` and `scripts/test-garage.mjs` (161 checks). Nothing is wired into the app. See "Phase 18". |
+| Garage (scene editor) | Partial | Slices G1-G6 and G8 are done (latest G8 `15c1995`): part selection by click behind a Parts switch, per-part move/rotate/scale/hide with exact reset and undo, the refit event, per-part colour, and save/load of named layouts. G7 (add objects) is next; G9-G11 are not started. See "Phase 18". |
 | Products | 3 built-in | Coffee Bike, Cessna 172, THE KOP MAIN (`97dd1ac`, heavy: 483,311 triangles). See "Products and models". |
 
 Status is judged from code reading, not from a fresh browser run in this update.
@@ -1355,12 +1459,12 @@ Status is judged from code reading, not from a fresh browser run in this update.
 9. The other nine environments have no platform data: the Reel and social PNGs centre the model but it floats there.
 10. The new Cessna has garbled baked lettering on the fuselage, and its Tripo plan's terms for commercial publication are unchecked. The owner plans to replace it with a final model.
 11. The Reel distance is multiplied by the Distance slider % (252 % makes the Reel plane much smaller; 100 % fills about half of the frame).
-12. The "Garage" scene editor (per-part move / rotate / scale / hide / recolour, library objects, named layouts) is only partly built: slice G1 (pure functions and tests, `6226ba2`) is done and nothing is wired; G2 to G11 are not started. See "Phase 18".
+12. The "Garage" scene editor (per-part move / rotate / scale / hide / recolour, library objects, named layouts) is only partly built: slices G1-G6 and G8 are done (latest G8 `15c1995`); G7 (add objects from the library) is next; G9-G11 are not started. See "Phase 18".
 13. THE KOP MAIN (`97dd1ac`) is heavy: 483,311 triangles and 753 draw calls. Its speed was only tested by the owner in his browser (smooth orbit, Turntable and a 4 s Reel), not measured. Whether clicking to select its 753 parts is smooth was not reported, and the selection outline on 753 parts is unmeasured.
 14. MAIN's material "Material" has a clearcoat factor of 3 (outside 0 to 1); how the loader and the app react is untested. Its sign parts are named "Temporary ..." (placeholders).
 15. Terms of use: the Tripo terms are unchecked for the Cessna, and for MAIN's 98 `tripo_part` pieces (Tripo origin inferred from the names; the owner confirms).
 16. The "Coffee Bike" filter chip in the Asset Library tests `id === "coffee-bike"`, so THE KOP MAIN does not appear under it.
-17. Next Garage steps: G2 (the store, no approval needed) and the first visible slice G3 (part selection by click, needs the owner's approval). See "Phase 18".
+17. Next Garage step: G7 (add objects from the library). It needs an owner decision on a triangle budget and a layout `formatVersion` 2, since G8's format 1 layouts hold only per-part overrides. See "Phase 18", "Next slices".
 
 ## Resolved
 
@@ -1436,8 +1540,9 @@ Status is judged from code reading, not from a fresh browser run in this update.
   when characters are typed then deleted (select all with Ctrl+A and paste a full code).
   A picked colour on a vertex-coloured material may multiply the vertex colours
   (unverified).
-- **Garage feature:** only partly built. G1-G6 (`6226ba2`, `3b7d9fb`, `3527c6c`, `d278ef3`,
-  `e829e1b`, `86f445e`) are done; G7-G11 are not started. See "Phase 18".
+- **Garage feature:** only partly built. G1-G6 and G8 (`6226ba2`, `3b7d9fb`, `3527c6c`,
+  `d278ef3`, `e829e1b`, `86f445e`, `15c1995`) are done; G7 and G9-G11 are not started. See
+  "Phase 18".
 - **Garage: moved/hidden/resized parts now refit the scene (fixed by G5, `e829e1b`).** The
   fit (`fit.size`, `fit.center`, `floorY`), the floor disc, shadow catcher, ring, camera
   presets, and Reel/PNG framing (`computeReelView`, `reelPose`, `platformReelPose`) are
@@ -1464,14 +1569,24 @@ Status is judged from code reading, not from a fresh browser run in this update.
   is one `THREE.Mesh` (a glTF mesh node/primitive); several parts sharing one mesh node is
   only exercised by the node test scripts' synthetic trees, not by a real GLB file (carried
   over from G3, unchanged by G4/G5).
-- **Garage: adding objects and saving/loading layouts are not yet built.** G7 (add objects
-  from the library) and G8 (save/load layouts) are not started. See "Phase 18".
+- **Garage: adding objects is not yet built.** G7 (add objects from the library) is not
+  started; G8 (save/load layouts) is done (`15c1995`). See "Phase 18".
 - **Garage: G6 per-part colour covers colour/metalness/roughness/opacity only.** No
   textures, emissive, or clearcoat/transmission per part yet - deferred to a later slice.
   See "Phase 18", G6.
-- **Garage: per-part colour overrides are not yet part of a save/load layout format.** G6's
-  overrides live in the live `garageStore` layout only; a named, persisted layout format is
-  G8, not yet built. See "Phase 18".
+- **Garage: per-part colour overrides are saved by G8 layouts** (together with move / rotate /
+  scale / hide), but not the camera, the selection, the whole-model transform panel or the
+  Materials panel. See "Phase 18", G8.
+- **Garage: G8 layouts hold only per-part overrides.** Format 1 envelopes cannot describe
+  objects added by G7, so G7 will need a layout `formatVersion` 2. See "Phase 18", G8.
+- **Garage: "X parts skipped" on load is verified by the node tests only**, not clicked through
+  in a browser. See "Phase 18", G8.
+- **Garage: the export lock is still unwired.** Nothing in `app/src` outside
+  `garageStore.js` calls `garageStore.setLocked` (checked with a grep for this update).
+- **Canvas hash is not deterministic (pre-existing, not caused by G8).** The on-screen canvas
+  hash of coffee-bike's default view varies across repeats even on unchanged code, while the
+  exported PNG sha256 is stable. Use the exported PNG sha256 as the identity check. See
+  "Phase 18", "Verification harness notes".
 - **Garage: adding objects from the library (G7) and the 3D gizmo (G11) are not yet built.**
   Editing today is numeric fields only, one existing part at a time. See "Phase 18".
 - **Garage per-part colours and the pre-existing whole-model Materials panel are two
@@ -1573,3 +1688,9 @@ boundaries UNVERIFIED against any release note).
   fixes a Materials-panel row-disappearing bug and a stale-override-on-product-switch bug
   found while running it in a browser, and adds `ignoreVertexColors` to replace (rather than
   tint) a model's baked vertex colours (see "Phase 18 - Garage", G6).
+- **Garage G8** — `15c1995` ("Garage G8: save/load named layouts (localStorage + .json, one
+  undo step)"): 4 files, 2 new (`app/src/garage/layoutLibrary.js`,
+  `app/scripts/test-garage-layouts.mjs`) plus an additive `loadPartsOverrides` in
+  `app/src/garage/garageStore.js` and `GarageLayoutSection` in `app/src/ui/InspectorRail.jsx`;
+  named layouts of per-part overrides in `localStorage` and `.json`, wrong-product refusal,
+  skipped-part count, one undo step per load (see "Phase 18 - Garage", G8).
