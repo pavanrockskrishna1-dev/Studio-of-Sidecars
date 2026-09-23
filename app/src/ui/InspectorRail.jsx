@@ -429,6 +429,116 @@ function GarageEditFields({ itemId, partId, busy }) {
   );
 }
 
+// Garage G6 — a compact slider using the SAME classes the Materials panel's
+// own Slider draws with (.sos-mat-field etc., defined once in ui-shell.css),
+// so a per-part colour override reads like the model-wide editor without a
+// new stylesheet rule.
+function GarageColorSlider({ label, testId, value, disabled, onCommit }) {
+  const v = typeof value === "number" ? value : 0;
+  return (
+    <label className="sos-mat-field">
+      <span className="sos-mat-field-head">
+        <span className="sos-mat-field-name">{label}</span>
+        <span className="sos-mat-field-num">{v.toFixed(2)}</span>
+      </span>
+      <input
+        type="range"
+        data-testid={testId}
+        min={0}
+        max={1}
+        step={0.01}
+        disabled={disabled}
+        value={v}
+        onChange={(e) => onCommit(parseFloat(e.target.value))}
+      />
+    </label>
+  );
+}
+
+// Garage G6 — the single selected part's colour override: base colour,
+// metalness/roughness/opacity and an "ignore baked colours" escape hatch for
+// vertex-painted models (Owner decisions 1-3 in HANDOFF's G6 slice). Reads
+// garageMode.apiRef.current.getPartMaterial (the part's composed effective
+// values — the ORIGINAL material's own values wherever no override field
+// exists) and writes through .commitPartMaterial (authoritative-copy, same
+// single-selection guard as commitPartEdit) or garageStore.setPartOverride
+// directly for the full reset — the exact same direct-store pattern
+// GarageEditFields' toggleHidden already uses above. This override lives
+// ONLY in garageStore's parts map: it is never a materialGroups() row and
+// never touches "sos-materials" persistence (see StudioCanvas.jsx's
+// applyPartMaterial and materials/apply.js's Garage-clone exclusion).
+function GarageColorFields({ itemId, partId, busy }) {
+  const api = garageMode.apiRef.current;
+  const m = api && typeof api.getPartMaterial === "function" ? api.getPartMaterial(itemId, partId) : null;
+  if (!m) {
+    return (
+      <p className="sos-hint">
+        <span>Part material not available yet.</span>
+      </p>
+    );
+  }
+  const commit = (patch) => {
+    if (api && typeof api.commitPartMaterial === "function") api.commitPartMaterial(itemId, partId, patch);
+  };
+  return (
+    <>
+      <span className="sos-label">Colour override</span>
+      <label className="sos-mat-field">
+        <span className="sos-mat-field-head">
+          <span className="sos-mat-field-name">Base colour</span>
+        </span>
+        <span className="sos-mat-color-row">
+          <input
+            type="color"
+            data-testid="ui-garage-color"
+            disabled={busy}
+            value={m.color}
+            onChange={(e) => commit({ color: e.target.value })}
+          />
+          <input
+            type="text"
+            className="sos-mat-hex"
+            data-testid="ui-garage-color-hex"
+            disabled={busy}
+            value={m.color}
+            aria-label="Part colour hex value"
+            spellCheck="false"
+            onChange={(e) => {
+              const v = e.target.value.trim();
+              if (/^#[0-9a-f]{6}$/i.test(v)) commit({ color: v });
+            }}
+          />
+        </span>
+      </label>
+      <GarageColorSlider label="Metalness" testId="ui-garage-metalness" disabled={busy} value={m.metalness} onCommit={(v) => commit({ metalness: v })} />
+      <GarageColorSlider label="Roughness" testId="ui-garage-roughness" disabled={busy} value={m.roughness} onCommit={(v) => commit({ roughness: v })} />
+      <GarageColorSlider label="Opacity" testId="ui-garage-opacity" disabled={busy} value={m.opacity} onCommit={(v) => commit({ opacity: v })} />
+      <div className="sos-frow">
+        <label className="sos-pchip" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <input
+            type="checkbox"
+            data-testid="ui-garage-ignore-vertex-colors"
+            checked={m.ignoreVertexColors}
+            disabled={busy}
+            onChange={(e) => commit({ ignoreVertexColors: e.target.checked })}
+          />
+          Ignore baked colours
+        </label>
+      </div>
+      <button
+        type="button"
+        className="sos-btn sos-btn-ghost sos-rail-export"
+        data-testid="ui-garage-reset-color"
+        disabled={busy || !m.overridden}
+        title="Remove this part's colour override"
+        onClick={() => garageStore.setPartOverride(itemId, partId, { material: null })}
+      >
+        Reset colour
+      </button>
+    </>
+  );
+}
+
 // Garage G3/G4 — the Parts switch and the selected part's read-out (and, from
 // G4, its numeric edit fields when exactly one part is selected). All state
 // comes from the Garage stores; nothing here touches the engine directly.
@@ -520,7 +630,10 @@ function GarageSection({ pickMode, garageState, busy }) {
       {/* Garage G4 — editing is numeric fields only, and only for exactly one
           selected part (Owner decisions 1 and 2). */}
       {single ? (
-        <GarageEditFields itemId={single.itemId} partId={single.partId} busy={busy} />
+        <>
+          <GarageEditFields itemId={single.itemId} partId={single.partId} busy={busy} />
+          <GarageColorFields itemId={single.itemId} partId={single.partId} busy={busy} />
+        </>
       ) : (
         <Hint>Select exactly one part to edit it.</Hint>
       )}

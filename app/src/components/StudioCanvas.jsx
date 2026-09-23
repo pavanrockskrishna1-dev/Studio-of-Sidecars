@@ -112,18 +112,90 @@ const isObj = (o) => typeof o === "object" && o !== null && !Array.isArray(o);
 // is recorded once, the first time it is touched, in a WeakMap the caller
 // owns. Every later override composes against this same recorded base via
 // compose.js, never against whatever the mesh currently holds.
+// Garage G6 — the SAME base object also records the mesh's original material
+// reference (the one the GLTF loader produced), captured on this same first
+// touch. A REVISIT of a product (switch away, then back to the SAME product)
+// can reach this function with a "new" WeakMap entry — e.g. a fresh effect
+// instance — while the mesh's LIVE material is still whatever it was left as
+// from before, which could already be a Garage clone if an override was
+// active and never reset. Trusting `mesh.material` blindly in that case would
+// permanently record the CLONE as "the original". Guard against exactly that
+// by unwrapping through the clone's own self-contained back-reference
+// (`sosGarageOriginal`, set in applyPartMaterial below) — the same field
+// materials/apply.js's materialGroups() already reads for the identical
+// reason, so a mesh is never mistaken for pristine while it visibly is not.
 function ensurePartBase(mesh, bases) {
   let base = bases.get(mesh);
   if (!base) {
+    const live = mesh.material;
+    const trueOriginal = (live && live.userData && live.userData.sosGarageOriginal) || live;
     base = {
       pos: mesh.position.toArray(),
       quat: mesh.quaternion.toArray(),
       scale: mesh.scale.toArray(),
       visible: mesh.visible,
+      material: trueOriginal,
     };
     bases.set(mesh, base);
   }
   return base;
+}
+
+// Garage G6 — hex string for a THREE.Color, matching materials/apply.js's own
+// helper in spirit (this module stays free of that import; Garage owns its
+// own tiny copy rather than reaching into the Materials editor's internals).
+const hexOfColor = (c) => (c && c.isColor ? `#${c.getHexString()}` : "#ffffff");
+
+// Garage G6 — applies (or removes) one part's colour override on the mesh's
+// LIVE material. No override: the mesh must point at the recorded original
+// material reference exactly (a hard reset, not a value copy), disposing any
+// clone this module owns (shared textures are never touched). An override:
+// clone the original exactly once (tagged so materials/apply.js's Materials
+// panel skips it and so this function recognises its own clone later), then
+// write every field with authoritative-copy semantics — a field present in
+// the override replaces the clone's value, a field absent falls back to the
+// ORIGINAL material's own value (read from `base`, never accumulated from
+// whatever the clone currently holds), so clearing one field can never leave
+// a trace of a value that used to be there.
+function applyPartMaterial(mesh, base, matOv) {
+  const original = base.material;
+  if (!original) return;
+  const isOwnClone = (m) => !!(m && m.userData && m.userData.sosGarageClone);
+  if (!matOv) {
+    if (mesh.material !== original) {
+      const prev = mesh.material;
+      mesh.material = original;
+      if (isOwnClone(prev) && typeof prev.dispose === "function") prev.dispose();
+    }
+    return;
+  }
+  let clone = isOwnClone(mesh.material) ? mesh.material : null;
+  if (!clone) {
+    clone = original.clone(); // textures are references on the clone, never duplicated
+    // sosGarageOriginal is a direct reference (not just a uuid/name copy) so
+    // materials/apply.js's materialGroups() can group this clone's mesh back
+    // under the ORIGINAL material's row without importing anything from
+    // Garage — the clone carries everything it needs to stay invisible.
+    clone.userData = { ...clone.userData, sosGarageClone: true, sosGarageOriginal: original };
+    clone.name = `${original.name || "Material"} (Garage)`;
+    mesh.material = clone;
+  }
+  if (clone.color) {
+    if (typeof matOv.color === "string") clone.color.set(matOv.color);
+    else if (original.color) clone.color.copy(original.color);
+  }
+  const numeric = (key, fallback) => {
+    if (!(key in clone)) return;
+    const v = typeof matOv[key] === "number" ? matOv[key] : fallback;
+    clone[key] = v;
+  };
+  numeric("metalness", typeof original.metalness === "number" ? original.metalness : 0);
+  numeric("roughness", typeof original.roughness === "number" ? original.roughness : 1);
+  const opacity = typeof matOv.opacity === "number" ? matOv.opacity : (typeof original.opacity === "number" ? original.opacity : 1);
+  clone.opacity = opacity;
+  clone.transparent = opacity < 1 ? true : original.transparent === true;
+  clone.vertexColors = matOv.ignoreVertexColors === true ? false : original.vertexColors;
+  clone.needsUpdate = true;
 }
 
 // Build one inverted-hull shell per collected mesh, expressed in the transform
@@ -1460,6 +1532,9 @@ function StudioStage({
           mesh.scale.fromArray(pose.scale);
         }
         mesh.visible = ov && typeof ov.visible === "boolean" ? ov.visible : base.visible;
+        // Garage G6 — same commit, same loop: a part with no material override
+        // never clones (rule 4); one that does gets authoritative-copy fields.
+        applyPartMaterial(mesh, base, ov && isObj(ov.material) ? ov.material : undefined);
       }
       refit();
     };
@@ -1588,6 +1663,45 @@ function StudioStage({
           }
           if (Object.keys(ovPatch).length === 0) return null;
           return garageStore.setPartOverride(itemId, partId, ovPatch);
+        },
+        // Garage G6 — the part's current effective colour override, composed
+        // as plain UI values: color as hex, metalness/roughness/opacity as
+        // numbers (0..1), ignoreVertexColors as boolean, defaulting to the
+        // ORIGINAL material's own values wherever no override field exists —
+        // never to whatever the live clone (if any) currently holds.
+        getPartMaterial: (itemId, partId) => {
+          if (!partIndex.ok) return null;
+          const mesh = partIndex.byId.get(partId);
+          if (!mesh) return null;
+          const base = ensurePartBase(mesh, partBasesRef.current);
+          const original = base.material;
+          if (!original) return null;
+          const layout = garageStore.getLayout();
+          const item = layout ? layout.items.find((i) => i.itemId === itemId) : null;
+          const part = item && Object.prototype.hasOwnProperty.call(item.parts, partId) ? item.parts[partId] : undefined;
+          const ov = part && isObj(part.material) ? part.material : undefined;
+          return {
+            color: ov && typeof ov.color === "string" ? ov.color : hexOfColor(original.color),
+            metalness:
+              ov && typeof ov.metalness === "number" ? ov.metalness : typeof original.metalness === "number" ? original.metalness : 0,
+            roughness:
+              ov && typeof ov.roughness === "number" ? ov.roughness : typeof original.roughness === "number" ? original.roughness : 1,
+            opacity: ov && typeof ov.opacity === "number" ? ov.opacity : typeof original.opacity === "number" ? original.opacity : 1,
+            ignoreVertexColors: ov && typeof ov.ignoreVertexColors === "boolean" ? ov.ignoreVertexColors : false,
+            hasVertexColors: original.vertexColors === true,
+            overridden: !!ov,
+          };
+        },
+        // Garage G6 — commits a partial colour patch as one material override
+        // (authoritative-copy: a value given replaces, `null` clears just
+        // that field, keeping every other field). Same single-selection
+        // guard as commitPartEdit — no mesh math needed here since colour
+        // overrides are never base-relative.
+        commitPartMaterial: (itemId, partId, patch) => {
+          if (!partIndex.ok || !isObj(patch)) return null;
+          const single = garageMode.singleSelectedPart(garageStore.getSnapshot());
+          if (!single || single.itemId !== itemId || single.partId !== partId) return null;
+          return garageStore.setPartOverride(itemId, partId, { material: patch });
         },
       }),
     [partIndex]

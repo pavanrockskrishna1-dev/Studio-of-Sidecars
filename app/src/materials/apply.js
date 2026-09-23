@@ -53,8 +53,16 @@ export function materialGroups(root) {
   root.traverse((obj) => {
     if (!obj.isMesh || !obj.visible || !obj.material) return;
     const list = Array.isArray(obj.material) ? obj.material : [obj.material];
-    for (const mat of list) {
-      if (!mat) continue;
+    for (const rawMat of list) {
+      if (!rawMat) continue;
+      // Garage G6 — a per-part colour override lives on a CLONE of the
+      // mesh's material, made and owned entirely outside this editor. Group
+      // by the clone's recorded ORIGINAL instead of the clone itself, so the
+      // override stays fully invisible here: the same row, same uuid, same
+      // values as if Garage had never touched the mesh — never a row that
+      // disappears (the clone is the only mesh left pointing at anything)
+      // and never a spurious extra one for the clone.
+      const mat = (rawMat.userData && rawMat.userData.sosGarageOriginal) || rawMat;
       if (!byId.has(mat.uuid)) {
         const entry = {
           id: mat.uuid,
