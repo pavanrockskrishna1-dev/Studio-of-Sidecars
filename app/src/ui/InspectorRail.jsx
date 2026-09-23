@@ -17,6 +17,9 @@ import * as animationStore from "../animation/animationStore";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
 import * as layoutLibrary from "../garage/layoutLibrary";
+import * as sceneObjects from "../garage/sceneObjects";
+import { PRODUCTS } from "../products/registry";
+import { useRuntimeAssets } from "../assets/runtimeRegistry";
 import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
 
@@ -540,17 +543,225 @@ function GarageColorFields({ itemId, partId, busy }) {
   );
 }
 
+// Garage G7a — the selected ADDED object's whole-object fields (Decision 5):
+// position (m), rotation (degrees, Euler XYZ) and one uniform scale (at least
+// 0.05; the layout's item transform has no per-axis scale), plus hidden and
+// Remove — the same GarageNumField conventions as the G4 part fields. Each
+// commit is one garageStore command (setItemTransform / setItemHidden via the
+// stage, which applies the triangle limit to showing / removeItem), so each
+// is one undo step. Nothing here edits a part inside the object.
+function GarageObjectFields({ itemId, busy }) {
+  const [message, setMessage] = useState("");
+  const api = garageMode.apiRef.current;
+  const obj = api && typeof api.listObjects === "function" ? api.listObjects().find((o) => o.itemId === itemId) : null;
+  if (!obj) {
+    return (
+      <p className="sos-hint">
+        <span>Object not available yet.</span>
+      </p>
+    );
+  }
+  const t = obj.transform;
+  const commit = (patch) => garageStore.setItemTransform(itemId, patch);
+  const toggleHidden = () => {
+    const r = api.setObjectHidden(itemId, !obj.hidden);
+    setMessage(r.ok ? "" : r.message);
+  };
+  return (
+    <>
+      <span className="sos-label">Object position</span>
+      <div className="sos-fields">
+        <GarageNumField label="X" unit="m" step={0.05} testId="ui-garage-object-pos-x" disabled={busy} value={t.x} onCommit={(v) => commit({ x: v })} />
+        <GarageNumField label="Y" unit="m" step={0.05} testId="ui-garage-object-pos-y" disabled={busy} value={t.y} onCommit={(v) => commit({ y: v })} />
+        <GarageNumField label="Z" unit="m" step={0.05} testId="ui-garage-object-pos-z" disabled={busy} value={t.z} onCommit={(v) => commit({ z: v })} />
+      </div>
+      <span className="sos-label">Object rotation</span>
+      <div className="sos-fields">
+        <GarageNumField label="X" unit="deg" step={1} testId="ui-garage-object-rot-x" disabled={busy} value={t.rx} onCommit={(v) => commit({ rx: v })} />
+        <GarageNumField label="Y" unit="deg" step={1} testId="ui-garage-object-rot-y" disabled={busy} value={t.ry} onCommit={(v) => commit({ ry: v })} />
+        <GarageNumField label="Z" unit="deg" step={1} testId="ui-garage-object-rot-z" disabled={busy} value={t.rz} onCommit={(v) => commit({ rz: v })} />
+      </div>
+      <span className="sos-label">Object scale</span>
+      <div className="sos-fields">
+        <GarageNumField
+          label="Uniform"
+          unit="x"
+          step={0.05}
+          testId="ui-garage-object-scale"
+          disabled={busy}
+          value={t.s}
+          onCommit={(v) => commit({ s: Math.max(0.05, v) })}
+        />
+      </div>
+      <div className="sos-frow">
+        <label className="sos-pchip" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <input
+            type="checkbox"
+            data-testid="ui-garage-object-hidden"
+            checked={obj.hidden}
+            disabled={busy}
+            onChange={toggleHidden}
+          />
+          Hidden
+        </label>
+      </div>
+      {message ? (
+        <p className="sos-hint" data-testid="ui-garage-object-status">
+          <span>{message}</span>
+        </p>
+      ) : null}
+      <button
+        type="button"
+        className="sos-btn sos-btn-ghost sos-rail-export"
+        data-testid="ui-garage-object-remove-selected"
+        disabled={busy}
+        title="Remove this object from the scene (one undo step)"
+        onClick={() => garageStore.removeItem(itemId)}
+      >
+        Remove object
+      </button>
+      <Hint>Added objects move, turn, scale and hide as whole objects; their parts are not editable.</Hint>
+    </>
+  );
+}
+
+// Garage G7a — "Add object" (a built-in product or an imported asset from
+// the Asset Library, both listed in the live PRODUCTS registry), the running
+// triangle counter (Decision 2) and one row per added object (select / remove).
+// Adding goes through the stage (garageMode.apiRef.current.addObject), which
+// applies the max-5 and triangle rules before its single garageStore.addItem.
+function GarageObjectsSection({ garageState, busy }) {
+  useRuntimeAssets(); // an asset imported while this is open appears at once
+  const [pick, setPick] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [message, setMessage] = useState("");
+  const api = garageMode.apiRef.current;
+  const ready = !!(api && typeof api.addObject === "function");
+  const choices = PRODUCTS.filter((p) => !p.placeholder && p.modelPath);
+  const chosen = choices.some((p) => p.id === pick) ? pick : choices[0] ? choices[0].id : "";
+  // Read per render: every garageStore commit re-renders this section
+  // (garageState is a fresh snapshot), so the list and counter stay current.
+  const objects = ready && garageState.hasLayout ? api.listObjects() : [];
+  const tris = ready && garageState.hasLayout ? api.getSceneTriangles() : null;
+  const add = async () => {
+    if (!ready || adding || !chosen) return;
+    setAdding(true);
+    setMessage("Loading the object…");
+    try {
+      const r = await api.addObject(chosen);
+      setMessage(r && r.message ? r.message : "The object could not be added.");
+    } finally {
+      setAdding(false);
+    }
+  };
+  const remove = (o) => {
+    const r = garageStore.removeItem(o.itemId);
+    setMessage(r.ok ? `Removed "${o.name}".` : "The object could not be removed.");
+  };
+  return (
+    <>
+      <span className="sos-label">Objects</span>
+      <label className="sos-field">
+        <em>Add object</em>
+        <select
+          data-testid="ui-garage-add-select"
+          value={chosen}
+          disabled={busy || adding}
+          onChange={(e) => setPick(e.target.value)}
+        >
+          {choices.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.source === "imported" ? " (imported)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-garage-add"
+          disabled={busy || adding || !ready || !chosen}
+          title="Add the chosen object beside the main product (one undo step)"
+          onClick={add}
+        >
+          {adding ? "Adding…" : "Add object"}
+        </button>
+      </div>
+      <p className="sos-hint" data-testid="ui-garage-triangles" data-level={tris ? tris.level : undefined}>
+        <span>{tris ? tris.message : "Scene triangles: not available yet"}</span>
+      </p>
+      {message ? (
+        <p className="sos-hint" data-testid="ui-garage-objects-status">
+          <span>{message}</span>
+        </p>
+      ) : null}
+      {objects.length === 0 ? (
+        <p className="sos-hint">
+          <span>No added objects (up to {sceneObjects.OBJECT_LIMITS.MAX_ADDED}).</span>
+        </p>
+      ) : (
+        <div data-testid="ui-garage-object-list">
+          {objects.map((o) => (
+            <div className="sos-frow" key={o.itemId} data-testid="ui-garage-object-row" data-item-id={o.itemId}>
+              <span className="sos-hint" style={{ flex: 1 }}>
+                <span>
+                  {o.name}
+                  {o.hidden ? " (hidden)" : ""}
+                </span>
+              </span>
+              <button
+                type="button"
+                className="sos-btn sos-btn-ghost"
+                data-testid="ui-garage-object-select"
+                disabled={busy}
+                title={`Select "${o.name}" (the whole object)`}
+                onClick={() => garageStore.select([{ itemId: o.itemId, partId: sceneObjects.OBJECT_PART_ID }])}
+              >
+                Select
+              </button>
+              <button
+                type="button"
+                className="sos-btn sos-btn-ghost"
+                data-testid="ui-garage-object-remove"
+                disabled={busy}
+                title={`Remove "${o.name}" (one undo step)`}
+                onClick={() => remove(o)}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 // Garage G3/G4 — the Parts switch and the selected part's read-out (and, from
 // G4, its numeric edit fields when exactly one part is selected). All state
 // comes from the Garage stores; nothing here touches the engine directly.
+// Garage G7a — a selection entry on an ADDED object means the whole object:
+// its read-out and fields replace the part ones.
 function GarageSection({ pickMode, garageState, busy }) {
   const selection = garageState.selection;
   const count = selection.length;
   const single = garageMode.singleSelectedPart(garageState);
-  const first = count > 0 ? garageMode.describePart(selection[0].partId) : null;
+  const layoutNow = garageState.hasLayout ? garageStore.getLayout() : null;
+  const primaryItem = layoutNow ? layoutNow.items.find((i) => i.primary) : null;
+  const primaryItemId = primaryItem ? primaryItem.itemId : "i0";
+  const isObjectEntry = (e) => e.itemId !== primaryItemId;
+  const objectName = (itemId) => {
+    const it = layoutNow ? layoutNow.items.find((i) => i.itemId === itemId) : null;
+    const asset = it ? PRODUCTS.find((p) => p.id === it.assetId) : null;
+    return asset ? asset.name : it ? it.assetId : itemId;
+  };
+  const singleObject = single && isObjectEntry(single) ? single : null;
+  const first = count > 0 && !isObjectEntry(selection[0]) ? garageMode.describePart(selection[0].partId) : null;
   const names = selection
     .slice(0, 5)
-    .map((e) => garageMode.describePart(e.partId)?.name ?? e.partId);
+    .map((e) => (isObjectEntry(e) ? `${objectName(e.itemId)} (object)` : garageMode.describePart(e.partId)?.name ?? e.partId));
   return (
     <>
       <span className="sos-label">Parts</span>
@@ -576,6 +787,10 @@ function GarageSection({ pickMode, garageState, busy }) {
         {count === 0 ? (
           <p className="sos-hint">
             <span>No part selected</span>
+          </p>
+        ) : singleObject ? (
+          <p className="sos-hint">
+            <span>{objectName(singleObject.itemId)} (whole added object)</span>
           </p>
         ) : count === 1 && first ? (
           <>
@@ -630,7 +845,9 @@ function GarageSection({ pickMode, garageState, busy }) {
       </Hint>
       {/* Garage G4 — editing is numeric fields only, and only for exactly one
           selected part (Owner decisions 1 and 2). */}
-      {single ? (
+      {singleObject ? (
+        <GarageObjectFields itemId={singleObject.itemId} busy={busy} />
+      ) : single ? (
         <>
           <GarageEditFields itemId={single.itemId} partId={single.partId} busy={busy} />
           <GarageColorFields itemId={single.itemId} partId={single.partId} busy={busy} />
@@ -638,6 +855,7 @@ function GarageSection({ pickMode, garageState, busy }) {
       ) : (
         <Hint>Select exactly one part to edit it.</Hint>
       )}
+      <GarageObjectsSection garageState={garageState} busy={busy} />
       <span className="sos-label">History</span>
       <div className="sos-frow">
         <button
@@ -707,7 +925,12 @@ function GarageLayoutSection({ productId, busy }) {
       setMessage("No layout to save yet.");
       return;
     }
-    const r = layoutLibrary.saveLayout(localStorage, { productId, name, layout, overwrite });
+    // Garage G7a — a format-1 layout holds only the main product's part
+    // edits: added objects are left out (saving them is slice G7b).
+    const primary = layout.items.find((i) => i.primary);
+    const addedCount = primary ? layout.items.length - 1 : 0;
+    const mainOnly = primary ? { ...layout, items: [primary], frontRef: primary.itemId } : layout;
+    const r = layoutLibrary.saveLayout(localStorage, { productId, name, layout: mainOnly, overwrite });
     if (!r.ok) {
       if (r.reason === "exists") {
         setPendingOverwrite(r.existing.name);
@@ -719,7 +942,11 @@ function GarageLayoutSection({ productId, busy }) {
       return;
     }
     setPendingOverwrite(null);
-    setMessage(`Saved "${r.envelope.name}".`);
+    setMessage(
+      addedCount > 0
+        ? `Saved "${r.envelope.name}". Added objects are not saved yet — this layout holds only the main product's part edits.`
+        : `Saved "${r.envelope.name}".`
+    );
     refresh();
   };
 

@@ -11,6 +11,9 @@ import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { PRODUCTS } from "../products/registry";
 import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
@@ -25,6 +28,7 @@ import * as garageMode from "../garage/garageMode";
 import { buildPartIndex } from "../garage/partTree";
 import { applyPartOverride, resetToBase } from "../garage/compose";
 import { unionBounds, floorYFor } from "../garage/bounds";
+import * as sceneObjects from "../garage/sceneObjects";
 import {
   backdropImageAspect,
   needsCoverCrop,
@@ -46,6 +50,15 @@ const CLICK_MOVE_TOLERANCE = 5; // px — below this a pointerup reads as a clic
 const PART_COLOR = 0x38bdf8;
 const PART_EXPAND = 1.03; // inverted hull grown about each part's own centre
 const OVERLAY_NAME = "garage-overlay";
+
+// Garage G7a — the group every added object hangs in (a sibling of the main
+// model inside the Turntable pivot, so the turntable spins everything
+// together and refit()'s union sees every visible object), the main
+// product's fixed item id, and the Draco decoder path drei's useGLTF uses (the
+// same loader setup, so an added copy renders like the main product).
+const OBJECTS_NAME = "garage-objects";
+const PRIMARY_ITEM_ID = "i0";
+const DRACO_DECODER_PATH = "https://www.gstatic.com/draco/versioned/decoders/1.5.5/";
 
 // Mission 6 (Transform Foundation) — the original transform reference. The
 // transform layer is a wrapper group starting at identity, so identity is the
@@ -294,6 +307,114 @@ function describeMesh(mesh, partId) {
     size: { x: size.x, y: size.y, z: size.z },
     materialName: mat && mat.name ? mat.name : "",
   };
+}
+
+// Garage G7a — the triangles a subtree draws, counted per mesh node (the same
+// way the model reports count them). visibleOnly skips hidden subtrees.
+function countTriangles(root, visibleOnly) {
+  let n = 0;
+  const visit = (obj) => {
+    if (!obj.isMesh || !obj.geometry) return;
+    const g = obj.geometry;
+    const pos = g.attributes && g.attributes.position;
+    n += Math.floor((g.index ? g.index.count : pos ? pos.count : 0) / 3);
+  };
+  if (visibleOnly) root.traverseVisible(visit);
+  else root.traverse(visit);
+  return n;
+}
+
+// Garage G7a — an added object is parsed by its OWN GLTFLoader call (never
+// the drei cache the main product and the Materials panel read), so it shares
+// no geometry, material or texture with either. Its own LoadingManager keeps
+// drei's useProgress (the full-screen LoadingScreen) out of it, like the HDR
+// loader above.
+const objectLoadingManager = new THREE.LoadingManager();
+let objectDracoLoader = null;
+
+function loadObjectScene(url) {
+  const loader = new GLTFLoader(objectLoadingManager);
+  if (!objectDracoLoader) {
+    objectDracoLoader = new DRACOLoader(objectLoadingManager);
+    objectDracoLoader.setDecoderPath(DRACO_DECODER_PATH);
+  }
+  loader.setDRACOLoader(objectDracoLoader);
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  return new Promise((resolve, reject) => {
+    loader.load(url, (gltf) => resolve(gltf.scene), undefined, reject);
+  });
+}
+
+// Garage G7a — everything one added object exclusively owns.
+function objectResources(root) {
+  const geometries = new Set();
+  const materials = new Set();
+  const textures = new Set();
+  root.traverse((obj) => {
+    if (obj.geometry) geometries.add(obj.geometry);
+    const list = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const m of list) {
+      if (!m || !m.isMaterial) continue;
+      materials.add(m);
+      for (const v of Object.values(m)) if (v && v.isTexture) textures.add(v);
+    }
+  });
+  return { geometries, materials, textures };
+}
+
+// Frees the GPU copies of an object's own resources. three.js uploads them
+// again if the object is drawn again (a redo brings a removed object back),
+// so the CPU data is kept for as long as the stage's history can reach it.
+function releaseObjectGpu(res) {
+  res.geometries.forEach((g) => g.dispose());
+  res.materials.forEach((m) => m.dispose());
+  res.textures.forEach((t) => t.dispose());
+}
+
+// Garage G7a — wraps a freshly parsed object so its item position is its BASE
+// CENTRE: anchor (the item transform: metres, degrees XYZ, uniform scale) >
+// inner (moves the model's own local box so its bottom-centre sits at the
+// anchor's origin) > the parsed scene. Measured with bounds.js's own union.
+function makeObjectEntry(assetId, modelPath, scene) {
+  scene.updateMatrixWorld(true);
+  const u = unionBounds(adaptObject3D(scene));
+  if (!u) return null;
+  enableModelShadows(scene);
+  const inner = new THREE.Group();
+  inner.position.set(-u.center[0], -u.min[1], -u.center[2]);
+  inner.add(scene);
+  const anchor = new THREE.Group();
+  anchor.add(inner);
+  return {
+    key: null,
+    itemId: null,
+    assetId,
+    modelPath,
+    anchor,
+    inner,
+    scene,
+    size: u.size.slice(),
+    triangles: countTriangles(scene, false),
+    resources: objectResources(scene),
+    attached: false,
+  };
+}
+
+// The whole-object transform, read the way the whole-model panel reads its own.
+function poseObject(entry, item) {
+  const t = item.transform;
+  entry.anchor.position.set(t.x, t.y, t.z);
+  entry.anchor.rotation.set(degToRad(t.rx), degToRad(t.ry), degToRad(t.rz), "XYZ");
+  entry.anchor.scale.setScalar(t.s);
+  entry.anchor.visible = item.hidden !== true;
+}
+
+// The added object (item id) a hit mesh belongs to, or null.
+function objectItemIdOf(obj) {
+  for (let o = obj; o; o = o.parent) {
+    if (o.userData && typeof o.userData.sosGarageItemId === "string") return o.userData.sosGarageItemId;
+  }
+  return null;
 }
 
 // Mission 8 (Capture Shot Foundation) — capture reuses THIS renderer, exactly
@@ -581,6 +702,16 @@ function StudioStage({
   // pivotRef are positioned IMPERATIVELY by refit() (never a declarative JSX
   // prop — see the transform group's JSX below for why).
   const pivotOffsetRef = useRef(null);
+  // Garage G7a — the group added objects hang in (next to the model, inside
+  // the pivot offset) and the stage's pool of loaded objects, keyed
+  // `${itemId}|${assetId}`: an entry stays in the pool (GPU copies released)
+  // while it is removed, so Undo/Redo can bring it straight back.
+  const objectsRootRef = useRef(null);
+  const objectPoolRef = useRef(new Map());
+  const pendingObjectRef = useRef(null); // { entry, adopted } during one addItem
+  const addingObjectRef = useRef(false);
+  const knownTrianglesRef = useRef(new Map()); // modelPath -> triangles
+  const stageAliveRef = useRef(true);
   const ringRef = useRef(null);
   const selectedRef = useRef(selected);
   const escHandlerRef = useRef(null);
@@ -690,7 +821,14 @@ function StudioStage({
       }
     }
     if (pivotRef.current && pivotOffsetRef.current) {
-      const localUnion = unionBounds(adaptObject3D(modelScene));
+      // Garage G7a (Decision 6) — with visible added objects the turntable
+      // spins the WHOLE scene about its common centre; with none, this is
+      // exactly the original model-only union.
+      const objectsRoot = objectsRootRef.current;
+      const withObjects = !!objectsRoot && objectsRoot.children.some((c) => c.visible);
+      const localUnion = withObjects
+        ? unionBounds({ children: [adaptObject3D(modelScene), adaptObject3D(objectsRoot)] })
+        : unionBounds(adaptObject3D(modelScene));
       const c = localUnion ? localUnion.center : fit.center.toArray();
       pivotRef.current.position.set(c[0], c[1], c[2]);
       pivotOffsetRef.current.position.set(-c[0], -c[1], -c[2]);
@@ -1496,6 +1634,195 @@ function StudioStage({
   // stale base into the next model.
   const partBasesRef = useRef(new WeakMap());
 
+  // Garage G7a — the pool lives exactly as long as this stage: a product
+  // switch (or unmount) releases every object's GPU copies and drops it. An
+  // add still loading when the stage goes sees stageAliveRef false and throws
+  // its object away instead of adding it.
+  useEffect(() => {
+    stageAliveRef.current = true;
+    const pool = objectPoolRef.current;
+    return () => {
+      stageAliveRef.current = false;
+      for (const entry of pool.values()) {
+        if (entry.anchor.parent) entry.anchor.parent.remove(entry.anchor);
+        entry.attached = false;
+        releaseObjectGpu(entry.resources);
+      }
+      pool.clear();
+    };
+  }, []);
+
+  // Garage G7a — puts the scene's added objects in step with the layout: every
+  // non-primary item is posed from its whole-object transform and hidden flag
+  // and hung in the objects group; a pooled object no longer in the layout
+  // (removed, or its add undone) is taken out and its GPU copies released. A
+  // brand-new item adopts the object addObject() is committing right now.
+  const syncObjects = useCallback((layout) => {
+    const root = objectsRootRef.current;
+    if (!root) return;
+    const pool = objectPoolRef.current;
+    const live = new Set();
+    for (const item of layout ? layout.items : []) {
+      if (item.primary) continue;
+      const key = `${item.itemId}|${item.assetId}`;
+      let entry = pool.get(key);
+      const pending = pendingObjectRef.current;
+      if (!entry && pending && !pending.adopted && pending.entry.assetId === item.assetId) {
+        entry = pending.entry;
+        pending.adopted = true;
+        entry.key = key;
+        entry.itemId = item.itemId;
+        entry.anchor.name = `garage-object:${item.itemId}`;
+        entry.anchor.userData.sosGarageItemId = item.itemId;
+        pool.set(key, entry);
+      }
+      if (!entry) continue;
+      live.add(key);
+      poseObject(entry, item);
+      if (!entry.attached) {
+        root.add(entry.anchor);
+        entry.attached = true;
+      }
+    }
+    for (const entry of pool.values()) {
+      if (entry.attached && !live.has(entry.key)) {
+        root.remove(entry.anchor);
+        entry.attached = false;
+        releaseObjectGpu(entry.resources);
+      }
+    }
+  }, []);
+
+  const attachedObject = useCallback((itemId) => {
+    for (const entry of objectPoolRef.current.values()) {
+      if (entry.attached && entry.itemId === itemId) return entry;
+    }
+    return null;
+  }, []);
+
+  // Decision 2 — main product (its visible meshes) + every VISIBLE added object.
+  const sceneTriangles = useCallback(() => {
+    const main = countTriangles(modelScene, true);
+    let added = 0;
+    const layout = garageStore.getLayout();
+    for (const item of layout ? layout.items : []) {
+      if (item.primary || item.hidden) continue;
+      const entry = objectPoolRef.current.get(`${item.itemId}|${item.assetId}`);
+      if (entry) added += entry.triangles;
+    }
+    return { main, added, total: main + added };
+  }, [modelScene]);
+
+  // Decision 4 — what a new object must not overlap, in the pivot offset's
+  // frame (where the model and the objects both hang): the main product's
+  // visible union and every added object's box, hidden ones included (they
+  // may be shown again).
+  const occupiedBoxes = useCallback(() => {
+    const boxes = [];
+    const main = unionBounds(adaptObject3D(modelScene));
+    if (main) boxes.push({ min: main.min, max: main.max });
+    else {
+      const half = fit.size.clone().multiplyScalar(0.5);
+      boxes.push({ min: fit.center.clone().sub(half).toArray(), max: fit.center.clone().add(half).toArray() });
+    }
+    for (const entry of objectPoolRef.current.values()) {
+      if (!entry.attached) continue;
+      entry.anchor.updateMatrix();
+      const u = unionBounds(adaptObject3D(entry.inner), { rootMatrix: entry.anchor.matrix.toArray() });
+      if (u) boxes.push({ min: u.min, max: u.max });
+    }
+    return boxes;
+  }, [modelScene, fit]);
+
+  // Decisions 1-4 — loads a built-in product or an imported asset as a NEW
+  // object (its own parse), checks the count and the triangle budget, places
+  // it beside the main product on the floor and adds it with ONE
+  // garageStore.addItem (one undo step). Anything refused or failed releases
+  // the loaded object and changes nothing. Resolves { ok, reason?, message }.
+  const addObject = useCallback(
+    async (assetId) => {
+      const refuse = (reason, message) => ({ ok: false, reason, message });
+      const addedNow = () => {
+        const l = garageStore.getLayout();
+        return l ? l.items.filter((i) => !i.primary).length : 0;
+      };
+      if (!garageStore.getLayout()) return refuse("no-layout", "No product is loaded yet.");
+      const count = sceneObjects.checkAddCount(addedNow());
+      if (!count.ok) return count;
+      if (addingObjectRef.current) return refuse("busy", "Another object is still loading.");
+      const asset = PRODUCTS.find((p) => p.id === assetId && !p.placeholder);
+      if (!asset || !asset.modelPath) return refuse("unknown-asset", "That object is not in the library.");
+      // A file whose weight is already known is refused before loading it again.
+      const known = knownTrianglesRef.current.get(asset.modelPath);
+      if (known !== undefined) {
+        const pre = sceneObjects.checkBudget(sceneTriangles().total, known);
+        if (!pre.ok) return pre;
+      }
+      addingObjectRef.current = true;
+      let scene;
+      try {
+        scene = await loadObjectScene(asset.modelPath);
+      } catch (err) {
+        console.warn(`Garage: could not load "${asset.name}".`, err);
+        return refuse("load-failed", `Could not load "${asset.name}"; nothing was added.`);
+      } finally {
+        addingObjectRef.current = false;
+      }
+      const entry = makeObjectEntry(assetId, asset.modelPath, scene);
+      const discard = () => releaseObjectGpu(entry ? entry.resources : objectResources(scene));
+      if (!stageAliveRef.current) {
+        discard();
+        return refuse("stage-gone", "The product changed while loading; nothing was added.");
+      }
+      if (!entry) {
+        discard();
+        return refuse("empty", `"${asset.name}" has nothing to show; nothing was added.`);
+      }
+      knownTrianglesRef.current.set(asset.modelPath, entry.triangles);
+      // Both rules again, against the scene as it is now.
+      const check = sceneObjects.checkAdd({
+        addedCount: addedNow(),
+        currentTriangles: sceneTriangles().total,
+        newTriangles: entry.triangles,
+      });
+      if (!check.ok) {
+        discard();
+        return check;
+      }
+      const placed = sceneObjects.placeObject({
+        occupied: occupiedBoxes(),
+        objectSize: entry.size,
+        floorY: fit.floorY,
+        frontAz: product.frontAz ?? 0,
+      });
+      if (!placed.ok) {
+        discard();
+        return refuse("placement", "Could not find a free place for this object; nothing was added.");
+      }
+      const pending = { entry, adopted: false };
+      pendingObjectRef.current = pending;
+      let r;
+      try {
+        const [x, y, z] = placed.position;
+        r = garageStore.addItem({ assetId, transform: { x, y, z, rx: 0, ry: 0, rz: 0, s: 1 } });
+      } finally {
+        pendingObjectRef.current = null;
+      }
+      // Not adopted: the pool already holds this very item (same id, same
+      // file) from before an undo, so the fresh copy is surplus.
+      if (!pending.adopted) discard();
+      if (!r.ok) return refuse(r.reason, "The object could not be added.");
+      return {
+        ok: true,
+        itemId: r.itemId,
+        total: check.total,
+        warn: check.warn,
+        message: check.warn ? `Added "${asset.name}". ${check.message}` : `Added "${asset.name}".`,
+      };
+    },
+    [fit, product.frontAz, sceneTriangles, occupiedBoxes]
+  );
+
   // Garage G4 — imperative live transform. On every real layout change (never
   // on a plain selection change, so a click never re-walks this) each part
   // mesh is set to its base pose composed with its current override (or reset
@@ -1507,11 +1834,13 @@ function StudioStage({
   // See the modelScene.visible write-back above: mutating a mesh reached
   // through a memoized part index is the same deliberate imperative-three.js
   // pattern, not an accidental mutation of the memo itself.
+  // Garage G7a — the same commit also syncs the added objects (syncObjects),
+  // still before refit(), so the measured union always includes them; a model
+  // without a part index still gets its objects synced and refit.
   // eslint-disable-next-line react-hooks/immutability
   useEffect(() => {
-    if (!partIndex.ok) return undefined;
     const bases = partBasesRef.current;
-    const parts = partIndex.parts;
+    const parts = partIndex.ok ? partIndex.parts : [];
     let lastRevision = -1;
     const applyOverrides = () => {
       const snap = garageStore.getSnapshot();
@@ -1536,11 +1865,12 @@ function StudioStage({
         // never clones (rule 4); one that does gets authoritative-copy fields.
         applyPartMaterial(mesh, base, ov && isObj(ov.material) ? ov.material : undefined);
       }
+      syncObjects(layout);
       refit();
     };
     applyOverrides();
     return garageStore.subscribe(applyOverrides);
-  }, [partIndex, refit]);
+  }, [partIndex, refit, syncObjects]);
 
   // Part overlay — imperative, rebuilt from a Garage store subscription (never
   // React state), parented to the same group as the whole-model outline. Hidden
@@ -1565,15 +1895,25 @@ function StudioStage({
     const rebuild = () => {
       const snap = garageStore.getSnapshot();
       const selection = snap.selection;
-      const key = `${snap.revision}|${selection.map((e) => e.partId).join(",")}`;
+      // Garage G7a — the key carries the item id too: two added objects share
+      // the same whole-object part id.
+      const key = `${snap.revision}|${selection.map((e) => `${e.itemId}:${e.partId}`).join(",")}`;
       if (key === lastKey) return;
       lastKey = key;
       teardown();
       const meshes = [];
-      if (partIndex.ok) {
-        for (const entry of selection) {
-          const mesh = partIndex.byId.get(entry.partId);
+      for (const entry of selection) {
+        if (entry.itemId === PRIMARY_ITEM_ID) {
+          const mesh = partIndex.ok ? partIndex.byId.get(entry.partId) : undefined;
           if (mesh && mesh.geometry && mesh.visible) meshes.push(mesh);
+        } else {
+          // Garage G7a — an added object is outlined whole (Decision 5).
+          const obj = attachedObject(entry.itemId);
+          if (obj && obj.anchor.visible) {
+            obj.scene.traverseVisible((m) => {
+              if (m.isMesh && m.geometry) meshes.push(m);
+            });
+          }
         }
       }
       if (meshes.length === 0) return;
@@ -1590,7 +1930,7 @@ function StudioStage({
       unsubscribe();
       teardown();
     };
-  }, [partIndex, fit.center]);
+  }, [partIndex, fit.center, attachedObject]);
 
   // The rail's part read-out, plus (Garage G4) the numeric-field read/commit
   // path. One registration, extended — never a second registerApi call.
@@ -1703,8 +2043,50 @@ function StudioStage({
           if (!single || single.itemId !== itemId || single.partId !== partId) return null;
           return garageStore.setPartOverride(itemId, partId, { material: patch });
         },
+        // Garage G7a — added objects, as whole objects only (Decision 5).
+        addObject,
+        // The running triangle counter (Decision 2), plus its level/line.
+        getSceneTriangles: () => {
+          const t = sceneTriangles();
+          return { ...t, level: sceneObjects.budgetLevel(t.total), message: sceneObjects.budgetMessage(t.total) };
+        },
+        // [{ itemId, assetId, name, hidden, triangles, transform }] in layout order.
+        listObjects: () => {
+          const layout = garageStore.getLayout();
+          return (layout ? layout.items : [])
+            .filter((i) => !i.primary)
+            .map((i) => {
+              const entry = objectPoolRef.current.get(`${i.itemId}|${i.assetId}`);
+              const asset = PRODUCTS.find((p) => p.id === i.assetId);
+              return {
+                itemId: i.itemId,
+                assetId: i.assetId,
+                name: asset ? asset.name : i.assetId,
+                hidden: i.hidden === true,
+                triangles: entry ? entry.triangles : null,
+                transform: { ...i.transform },
+              };
+            });
+        },
+        // Showing a hidden object brings its triangles back, so the same limit
+        // applies; hiding is always allowed. One garageStore command either way.
+        setObjectHidden: (itemId, hidden) => {
+          const layout = garageStore.getLayout();
+          const item = layout ? layout.items.find((i) => i.itemId === itemId && !i.primary) : null;
+          if (!item) return { ok: false, reason: "unknown-item", message: "That object is no longer in the scene." };
+          if (!hidden && item.hidden) {
+            const entry = objectPoolRef.current.get(`${item.itemId}|${item.assetId}`);
+            const c = sceneObjects.checkUnhide({
+              currentTriangles: sceneTriangles().total,
+              objectTriangles: entry ? entry.triangles : 0,
+            });
+            if (!c.ok) return c;
+          }
+          const r = garageStore.setItemHidden(itemId, hidden === true);
+          return r.ok ? { ok: true } : { ok: false, reason: r.reason, message: "The object could not be changed." };
+        },
       }),
-    [partIndex]
+    [partIndex, addObject, sceneTriangles]
   );
 
   // Parts mode: turning it ON drops a whole-model selection (the two never
@@ -1788,17 +2170,36 @@ function StudioStage({
       // intersect() nor Mesh.raycast() looks at it), so a part hidden via a
       // Garage override would otherwise still be clickable. Filter it out here
       // so a hidden part is never hit, in either pick mode.
+      // Garage G7a: with Parts ON the visible added objects are pick targets
+      // too (a hit selects the WHOLE object); with Parts OFF the targets are
+      // exactly the model's meshes, as before.
+      const pickMode = garageMode.getSnapshot().pickMode;
+      const objectTargets = [];
+      if (pickMode) {
+        objectsRootRef.current?.updateWorldMatrix(true, true);
+        for (const entry of objectPoolRef.current.values()) {
+          if (!entry.attached || !entry.anchor.visible) continue;
+          entry.scene.traverseVisible((m) => {
+            if (m.isMesh && m.geometry) objectTargets.push(m);
+          });
+        }
+      }
       const hits = raycaster.intersectObjects(
-        modelMeshes.filter((m) => m.visible),
+        objectTargets.length ? [...modelMeshes.filter((m) => m.visible), ...objectTargets] : modelMeshes.filter((m) => m.visible),
         false
       );
       // Garage G3: only with Parts ON does a click pick a part (shift toggles;
       // otherwise the pick replaces the selection); empty space clears. The
       // whole-model branch below is untouched and runs whenever Parts is OFF.
-      if (garageMode.getSnapshot().pickMode) {
-        const partId = hits.length > 0 && partIndex.ok ? partIndex.byRef.get(hits[0].object) : undefined;
+      if (pickMode) {
+        const hitItemId = hits.length > 0 ? objectItemIdOf(hits[0].object) : null;
+        const partId = hitItemId
+          ? sceneObjects.OBJECT_PART_ID
+          : hits.length > 0 && partIndex.ok
+            ? partIndex.byRef.get(hits[0].object)
+            : undefined;
         if (partId) {
-          const entry = { itemId: "i0", partId };
+          const entry = { itemId: hitItemId ?? PRIMARY_ITEM_ID, partId };
           if (e.shiftKey) garageStore.toggle(entry);
           else garageStore.select([entry]);
         } else if (hits.length === 0 && !e.shiftKey) {
@@ -1937,6 +2338,10 @@ function StudioStage({
         <group ref={pivotRef}>
           <group ref={pivotOffsetRef}>
             <primitive object={modelScene} />
+            {/* Garage G7a: added objects hang here (imperatively, syncObjects),
+                beside the model and inside the pivot, so the turntable spins
+                them with it and refit() measures them. */}
+            <group ref={objectsRootRef} name={OBJECTS_NAME} />
           </group>
         </group>
       </group>

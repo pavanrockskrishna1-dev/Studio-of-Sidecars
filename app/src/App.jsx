@@ -10,7 +10,21 @@ import { getProduct } from "./products/registry";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "./environments/registry";
 import { getLightingProfile } from "./lighting/profiles";
 import { DEFAULT_EXPORT_OPTS, exportFilename } from "./capture/exportOptions";
+import * as garageStore from "./garage/garageStore";
 import "./App.css";
+
+// Garage G7a (owner-approved) — every product switch passes here: with added
+// objects in the scene it asks first. Cancel changes nothing; OK removes the
+// added objects (each through the store), then the caller switches.
+function confirmProductSwitch(currentId, nextId) {
+  if (nextId === currentId) return true;
+  const layout = garageStore.getLayout();
+  const added = layout ? layout.items.filter((i) => !i.primary) : [];
+  if (added.length === 0) return true;
+  if (!window.confirm(`Remove ${added.length} added object${added.length === 1 ? "" : "s"}?`)) return false;
+  for (const item of added) garageStore.removeItem(item.itemId);
+  return true;
+}
 import "./export/export.css";
 
 export default function App() {
@@ -82,6 +96,10 @@ export default function App() {
   }
 
   const handleLockChange = useCallback((next) => setFocusLock(next), []);
+
+  const handleProductSelect = (id) => {
+    if (confirmProductSwitch(productId, id)) setProductId(id);
+  };
 
   const handleCameraPreset = (id) => {
     setViewLive(false);
@@ -247,6 +265,7 @@ export default function App() {
           const productOk = getProduct(snap.productId).id === snap.productId;
           const envOk = getEnvironment(snap.environmentId).id === snap.environmentId;
           const switching = productOk && snap.productId !== productId;
+          if (switching && !confirmProductSwitch(productId, snap.productId)) return;
           if (productOk) setProductId(snap.productId);
           if (envOk) setEnvironmentId(snap.environmentId);
           if (snap.lighting) setLighting(snap.lighting);
@@ -307,7 +326,7 @@ export default function App() {
         environmentId={environment.id}
         onEnvironmentSelect={handleEnvironmentSelect}
         productId={product.id}
-        onProductSelect={setProductId}
+        onProductSelect={handleProductSelect}
         activePresetId={viewLive ? null : cameraRequest.id}
         onCameraPreset={handleCameraPreset}
         onCaptureShot={handleCaptureShot}
