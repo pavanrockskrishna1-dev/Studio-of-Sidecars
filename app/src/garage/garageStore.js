@@ -462,6 +462,25 @@ export function createGarageStore() {
     return commitPart(p, partId, null);
   }
 
+  // Garage G8 — replaces an item's whole parts map (every per-part override:
+  // move/rotate/scale/hide/colour) in ONE commit, so loading a saved layout is
+  // exactly one undo step (Owner decision 5) instead of the hard reset
+  // startLayout/loadLayout do. Goes through the same wrap()+validateLayout
+  // sanitising as setPartOverride; the item's transform and hidden flag are
+  // untouched, since a G8 layout never carries those (layoutLibrary.js strips
+  // them before saving).
+  function loadPartsOverrides(itemId, parts) {
+    const p = prep(itemId);
+    if (p.err) return p.err;
+    if (!isObj(parts)) return fail("bad-input");
+    const v = validateLayout(wrap(p.item.itemId, p.item.transform, parts));
+    if (!v.ok) return fail("invalid");
+    const clean = v.layout.items[0].parts;
+    if (deepEqual(clean, p.item.parts)) return noop();
+    commit(withItem(p.idx, { ...p.item, parts: clean }), { type: "load-parts", itemId });
+    return { ok: true, changed: true, revision, parts: deepCopy(clean) };
+  }
+
   // Only finite numbers are accepted for the given keys (never null).
   function pickTransform(t) {
     const out = {};
@@ -621,6 +640,7 @@ export function createGarageStore() {
     markSaved: command(markSaved),
     setPartOverride: command(setPartOverride),
     resetPart: command(resetPart),
+    loadPartsOverrides: command(loadPartsOverrides),
     setItemTransform: command(setItemTransform),
     setItemHidden: command(setItemHidden),
     addItem: command(addItem),
@@ -643,7 +663,7 @@ const defaultStore = createGarageStore();
 export const {
   subscribe, getSnapshot, apiRef, registerApi, setLocked,
   startLayout, loadLayout, loadLayoutJson, getLayout, exportJson, markSaved,
-  setPartOverride, resetPart, setItemTransform, setItemHidden,
+  setPartOverride, resetPart, loadPartsOverrides, setItemTransform, setItemHidden,
   addItem, removeItem, setFrontRef,
   select, toggle, clearSelection,
   beginGesture, endGesture, cancelGesture, undo, redo,

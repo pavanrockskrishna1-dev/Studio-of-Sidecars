@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Icon from "./icons";
 import {
   CAMERA_FRAMINGS,
@@ -16,6 +16,7 @@ import * as cameraStudio from "../camera/cameraStudio";
 import * as animationStore from "../animation/animationStore";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
+import * as layoutLibrary from "../garage/layoutLibrary";
 import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
 
@@ -660,6 +661,259 @@ function GarageSection({ pickMode, garageState, busy }) {
           Redo
         </button>
       </div>
+      <GarageLayoutSection productId={garageState.primaryAssetId} busy={busy} />
+    </>
+  );
+}
+
+// Garage G8 — save/load named layouts. Saves ONLY garageStore's per-part
+// overrides (Owner decision 1: never the camera, selection, whole-model
+// transform panel or Materials panel) into localStorage, one key per product
+// via layoutLibrary.js's injected-storage helpers, plus a plain .json
+// download/upload backup. productId is garageState.primaryAssetId, which
+// StudioCanvas already sets to the live product id on every stage mount, so
+// no extra plumbing is needed to know "the current product". Loading goes
+// through garageStore.loadPartsOverrides so it is exactly one undo step.
+function GarageLayoutSection({ productId, busy }) {
+  const [name, setName] = useState("");
+  const [message, setMessage] = useState("");
+  const [pendingOverwrite, setPendingOverwrite] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // refreshKey has no direct read below — bumping it forces a re-read of
+  // localStorage after a save/delete, which happens outside React state.
+  const layouts = useMemo(() => {
+    if (typeof localStorage === "undefined" || !productId) return [];
+    return layoutLibrary.listLayouts(localStorage, productId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId, refreshKey]);
+
+  const refresh = () => setRefreshKey((k) => k + 1);
+
+  const saveReasonMessage = (reason) => {
+    if (reason === "bad-name") return "Enter a name (1-60 characters) before saving.";
+    if (reason === "bad-product") return "No product is loaded yet.";
+    if (reason === "storage-error") return "Could not save: browser storage is unavailable or full.";
+    return "This layout could not be saved.";
+  };
+
+  const runSave = (overwrite) => {
+    if (typeof localStorage === "undefined" || !productId) {
+      setMessage("No product is loaded yet.");
+      return;
+    }
+    const layout = garageStore.getLayout();
+    if (!layout) {
+      setMessage("No layout to save yet.");
+      return;
+    }
+    const r = layoutLibrary.saveLayout(localStorage, { productId, name, layout, overwrite });
+    if (!r.ok) {
+      if (r.reason === "exists") {
+        setPendingOverwrite(r.existing.name);
+        setMessage(`"${r.existing.name}" already exists — Overwrite?`);
+      } else {
+        setPendingOverwrite(null);
+        setMessage(saveReasonMessage(r.reason));
+      }
+      return;
+    }
+    setPendingOverwrite(null);
+    setMessage(`Saved "${r.envelope.name}".`);
+    refresh();
+  };
+
+  // Shared by "Load" (a saved-list row) and Upload (a file picked from disk):
+  // wrong-product is refused before anything is touched (Owner decision 3),
+  // then matching parts are applied and the rest counted as skipped (decision
+  // 4), as one garageStore commit (decision 5).
+  const applyEnvelope = (raw) => {
+    if (!productId) {
+      setMessage("No product is loaded yet.");
+      return;
+    }
+    const resolved = layoutLibrary.resolveLoad(raw, productId, (id) => garageMode.describePart(id) !== null);
+    if (!resolved.ok) {
+      if (resolved.reason === "wrong-product") {
+        setMessage(`Refused: this layout was saved for "${resolved.productId}", not the current product.`);
+      } else {
+        setMessage("This layout is not valid and was not applied.");
+      }
+      return;
+    }
+    const layout = garageStore.getLayout();
+    const item = layout ? layout.items.find((i) => i.primary) : null;
+    if (!item) {
+      setMessage("No model is loaded yet.");
+      return;
+    }
+    const r = garageStore.loadPartsOverrides(item.itemId, resolved.parts);
+    if (!r.ok) {
+      setMessage("This layout could not be applied.");
+      return;
+    }
+    setMessage(
+      resolved.skipped > 0
+        ? `Loaded "${resolved.name}" — ${resolved.skipped} part${resolved.skipped === 1 ? "" : "s"} skipped.`
+        : `Loaded "${resolved.name}".`
+    );
+  };
+
+  const doDelete = (entryName) => {
+    if (typeof localStorage === "undefined" || !productId) return;
+    layoutLibrary.deleteLayout(localStorage, productId, entryName);
+    if (pendingOverwrite === entryName) setPendingOverwrite(null);
+    setMessage(`Deleted "${entryName}".`);
+    refresh();
+  };
+
+  const doDownload = (entry) => {
+    const text = layoutLibrary.serializeEnvelope(entry);
+    if (!text) {
+      setMessage("Could not prepare the download.");
+      return;
+    }
+    const safe = entry.name.replace(/[^a-z0-9-_]+/gi, "_") || "layout";
+    saveBlob(new Blob([text], { type: "application/json" }), `${safe}.json`);
+  };
+
+  const handleUpload = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > layoutLibrary.MAX_UPLOAD_BYTES) {
+      setMessage("That file is too large (over 1 MB) and was not read.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      const parsed = layoutLibrary.parseEnvelopeJson(text);
+      if (!parsed.ok) {
+        setMessage("That file is not a valid layout and was not applied.");
+        return;
+      }
+      applyEnvelope(parsed.envelope);
+    };
+    reader.onerror = () => setMessage("Could not read that file.");
+    reader.readAsText(file);
+  };
+
+  return (
+    <>
+      <span className="sos-label">Layouts</span>
+      <label className="sos-field">
+        <em>Name</em>
+        <input
+          type="text"
+          data-testid="ui-garage-layout-name"
+          disabled={busy}
+          value={name}
+          maxLength={60}
+          onChange={(e) => {
+            setName(e.target.value);
+            setPendingOverwrite(null);
+          }}
+        />
+      </label>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-garage-layout-save"
+          disabled={busy || layoutLibrary.cleanLayoutName(name) === null}
+          title="Save the current part edits as a named layout"
+          onClick={() => runSave(false)}
+        >
+          Save
+        </button>
+        <label
+          className="sos-btn sos-btn-ghost"
+          style={{ display: "inline-flex", alignItems: "center", cursor: busy ? "default" : "pointer" }}
+        >
+          Upload .json
+          <input
+            type="file"
+            accept="application/json,.json"
+            data-testid="ui-garage-layout-upload"
+            disabled={busy}
+            style={{ display: "none" }}
+            onChange={handleUpload}
+          />
+        </label>
+      </div>
+      {pendingOverwrite ? (
+        <div className="sos-frow">
+          <button
+            type="button"
+            className="sos-btn sos-btn-ghost"
+            data-testid="ui-garage-layout-overwrite"
+            disabled={busy}
+            onClick={() => runSave(true)}
+          >
+            Overwrite
+          </button>
+          <button
+            type="button"
+            className="sos-btn sos-btn-ghost"
+            data-testid="ui-garage-layout-cancel-overwrite"
+            disabled={busy}
+            onClick={() => setPendingOverwrite(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
+      {message ? (
+        <p className="sos-hint" data-testid="ui-garage-layout-status">
+          <span>{message}</span>
+        </p>
+      ) : null}
+      {layouts.length === 0 ? (
+        <p className="sos-hint">
+          <span>No saved layouts for this product yet.</span>
+        </p>
+      ) : (
+        <div data-testid="ui-garage-layout-list">
+          {layouts.map((entry) => (
+            <div className="sos-frow" key={entry.name} data-testid="ui-garage-layout-row" data-layout-name={entry.name}>
+              <span className="sos-hint" style={{ flex: 1 }}>
+                <span>{entry.name}</span>
+              </span>
+              <button
+                type="button"
+                className="sos-btn sos-btn-ghost"
+                data-testid="ui-garage-layout-load"
+                disabled={busy}
+                title={`Load "${entry.name}"`}
+                onClick={() => applyEnvelope(entry)}
+              >
+                Load
+              </button>
+              <button
+                type="button"
+                className="sos-btn sos-btn-ghost"
+                data-testid="ui-garage-layout-download"
+                disabled={busy}
+                title={`Download "${entry.name}" as .json`}
+                onClick={() => doDownload(entry)}
+              >
+                Download
+              </button>
+              <button
+                type="button"
+                className="sos-btn sos-btn-ghost"
+                data-testid="ui-garage-layout-delete"
+                disabled={busy}
+                title={`Delete "${entry.name}"`}
+                onClick={() => doDelete(entry.name)}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
