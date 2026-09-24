@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G8 (G7 in two parts, G7a and G7b), and the THE KOP MAIN product; HEAD `3ef75ff`, "Garage G7b: layouts save and load added objects (formatVersion 2, one undo step)"; all work through Garage G7b is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
+## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G8 (G7 in two parts, G7a and G7b) and G11 (3D gizmo), and the THE KOP MAIN product; HEAD `56d2e3b`, "Garage G11: 3D gizmo (move/rotate/scale, snap, local/world, W/E/R, scale cap 100)"; all work through Garage G11 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -18,7 +18,7 @@
   2. Phase 15A
   3. Phase 15B (HDR lighting)
   4. Phase 16A / 16B (Camera Studio; Animation Studio and Reels), then Phase 17A audit findings (Creator Studio, read-only)
-     and Phase 18 (Garage design and slices G1-G8), then Products and models (three built-in products, THE KOP MAIN)
+     and Phase 18 (Garage design and slices G1-G8 and G11), then Products and models (three built-in products, THE KOP MAIN)
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -875,11 +875,11 @@ Items marked "unverified" were not re-checked here.
   Blender source `app/public/blender/THE_KOP_Studio_v01.blend` has not been opened
   (the file's presence and contents were not checked here: unverified).
 
-## Phase 18 - Garage (scene editor): design and slices G1-G8
+## Phase 18 - Garage (scene editor): design and slices G1-G8 and G11
 
-Status: designed; slices G1-G8 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
-G4 `d278ef3`, G5 `e829e1b`, G6 `86f445e`, G8 `15c1995`, G7a `12ef43b`, G7b `3ef75ff`); G9-G11
-are not started. G1 and G2 were pure modules
+Status: designed; slices G1-G8 and G11 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
+G4 `d278ef3`, G5 `e829e1b`, G6 `86f445e`, G8 `15c1995`, G7a `12ef43b`, G7b `3ef75ff`, G11
+`56d2e3b`); G9 and G10 are not started. G1 and G2 were pure modules
 and tests only, with nothing wired into the app (`git show --stat` on each commit: G1 touched
 only 6 new files under `app/src/garage/` and `app/scripts/test-garage.mjs`; G2 touched only 2
 new files, `app/src/garage/garageStore.js` and `app/scripts/test-garage-store.mjs`). G3 was
@@ -895,7 +895,9 @@ area of the code, kept fully invisible to it by construction. G8 added save/load
 layouts (per-part overrides only) in the browser and as a `.json` file, with loading as one
 undo step. G7a added objects to the scene (built-in products and imported assets, beside the
 main product, under a triangle budget). G7b made layouts save and load those added objects
-(`formatVersion` 2). See the G2/G3/G4/G5/G6/G8/G7a/G7b summaries below.
+(`formatVersion` 2). G11 added a 3D `TransformControls` gizmo (move / rotate / scale by
+dragging, W/E/R, World/Local, Snap) on the one selected part or added object. See the
+G2/G3/G4/G5/G6/G8/G7a/G7b/G11 summaries below.
 
 ### The wish and the scope (owner)
 
@@ -1373,6 +1375,73 @@ separately ran all eleven node test scripts himself after G7b: `test-path` 192,
 `test-garage-part-edit` 65, `test-garage-refit` 55, `test-garage-color` 60,
 `test-garage-layouts` 64, `test-garage-objects` 84, `test-garage-layouts-v2` 119, all 0 FAIL.
 
+### G11 - 3D `TransformControls` gizmo (commit `56d2e3b`)
+
+Touches 4 files (`git show --stat 56d2e3b`, 1,128 insertions, 1 deletion): a new pure module
+`app/src/garage/gizmo.js` (324 lines; no three.js, no DOM, no React), `app/src/components/
+StudioCanvas.jsx` (274 lines changed), `app/src/ui/InspectorRail.jsx` (66) and a new test
+script `app/scripts/test-garage-gizmo.mjs` (465 lines). `app/src/garage/garageStore.js` was not
+changed. three's own `TransformControls` is used directly (its helper added via `getHelper()`);
+it is created only while a gizmo shows and disposed on deselect.
+
+- **Owner-approved decisions.**
+  1. The gizmo appears only when exactly one visible thing is selected: a main-product part
+     with Parts on, or an added object (`gizmoTarget`).
+  2. Move / Rotate / Scale buttons in the rail plus W / E / R shortcuts (`MODE_KEYS`). They
+     were implemented because Step 0 found no existing W/E/R handlers (only Escape and Enter).
+     The shortcuts are ignored with Ctrl / Meta / Alt, while typing in an input, and mid-drag
+     (`shortcutMode`).
+  3. Scale follows the field rules: uniform for added objects, minimum 0.05 (`MIN_SCALE`).
+  4. A World / Local toggle, default World. (By the code, a scale drag always uses the object's
+     own axes: `effectiveSpace` returns `"local"` for scale.)
+  5. An optional Snap, default off: 0.05 m, 15 degrees, 0.1 scale (`SNAP`).
+  6. One drag is one undo step through the `garageStore` gesture API
+     (`createDragSession`); the numeric fields update on release.
+  7. The gizmo is never in PNG or Reel exports (the export path hides the helper named
+     `garage-gizmo` and restores it afterwards), and it is hidden while the turntable plays or
+     an export runs.
+  8. The gizmo never moves the camera: OrbitControls is disabled only while a handle is held.
+  9. The refit (G5) runs once, on release.
+  10. Pressing a handle never changes the selection.
+  11. Esc mid-drag cancels exactly: the pre-drag pose comes back and there is no undo entry.
+- **A bug found and fixed during G11.** Pressing the uniform-scale cube near its centre made
+  `TransformControls` compute absurd scales (21,174,888 was seen on an added object). The
+  owner-approved fix clamps gizmo scale drags to 0.05-100 in `gizmo.js` only (`MAX_SCALE` =
+  100, `clampScale`). The numeric fields still have no maximum (a candidate for the cleanup
+  slice). A dead-centre press on the cube can still jump straight to 100 or 0.05
+  (`TransformControls` flips the sign when the drag passes the centre); it is capped and
+  undoable.
+- **Known quirk: the pivot.** A part's gizmo sits at the part's own origin, the same pivot the
+  G4 numeric fields use. On many parts that is the model origin, so the gizmo can appear away
+  from the part (the owner saw this in his click test). Moving the pivot to each part's centre
+  is a possible future improvement.
+- **Verification (owner facts; the harness and its output are not in the repo).** Low RAM
+  blocked the before-edit browser baseline, so a `git archive HEAD` copy was built at 16:24:23
+  IST, before the first edit at 16:27:03. ORIGINAL = CURRENT exported PNG sha256 in all 12 runs
+  (dev-server output: coffee-bike `2b93e56c...`, 1,793,537 bytes; the-kop-main `3fc2abaf...`,
+  2,018,888 bytes; dev-server hashes, so they are not comparable with the G7a build hashes).
+  All checks a-p passed (the owner's own checklist; its individual items are not in the repo:
+  unverified here). Real-GPU FPS (Edge headless, Intel HD 5500, THE KOP MAIN): 10.98 with
+  nothing selected, 8.92 with the gizmo visible.
+- **Unverified (reported by the agent that built G11).** Ignoring Ctrl / Meta / Alt is checked
+  by the node tests only; the typed-back round trip (drag, then type the value back into a
+  field) was tested for the position fields only; browser checks b-o ran on the Coffee Bike
+  only; object snap is checked in node only; the Reel check used the export frame hooks, not
+  a full MP4 file.
+- **Owner-tested** (owner facts, in Edge, separate from what the repo's node tests prove): the
+  gizmo appears on a selected part; move and rotate drags with Undo; Esc mid-drag snaps back; a
+  PNG captured while the gizmo and the selection outline were showing contains neither; the
+  gizmo hides during the turntable preview; an added Cessna scales uniformly; orbit works
+  afterwards. All as expected.
+
+`app/scripts/test-garage-gizmo.mjs` (465 lines) prints 102 PASS lines, 0 FAIL, exit code 0,
+ending with `ALL CHECKS PASSED (102 PASS)` (run and counted for this update; the owner's own
+count matches). The owner separately ran all twelve node test scripts himself after G11:
+`test-path` 192, `test-backdrop` 84, `test-garage` 161, `test-garage-store` 219,
+`test-garage-select` 67, `test-garage-part-edit` 65, `test-garage-refit` 55,
+`test-garage-color` 60, `test-garage-layouts` 64, `test-garage-objects` 84,
+`test-garage-layouts-v2` 119, `test-garage-gizmo` 102, all 0 FAIL.
+
 ### Slice plan
 
 | Slice | What | Status | Owner approval needed when reached |
@@ -1388,10 +1457,11 @@ separately ran all eleven node test scripts himself after G7b: `test-path` 192,
 | G8 | Save and load layouts | **Done** (`15c1995`) | no |
 | G9 | Exclude the outline and ring from exports | not started | **yes** (PNGs lose the outline and ring) |
 | G10 | Virtual-part split | not started | no |
-| G11 | TransformControls gizmo | not started | no |
+| G11 | TransformControls gizmo | **Done** (`56d2e3b`) | **yes** (gizmo rules and the scale cap of 100) - given |
 
 Suggested order (from the report): G1, G2, G3, G4, G5, G6, G8, G7, G9, G10, G11. Each slice
-is independently shippable. Done so far, in that order: G1-G6, G8, G7a, G7b.
+is independently shippable. Done so far, in that order: G1-G6, G8, G7a, G7b, G11 (G11 was
+built before G9 and G10).
 
 ### How to verify
 
@@ -1402,11 +1472,11 @@ lines), `node scripts/test-garage-part-edit.mjs` (65 PASS lines), `node scripts/
 test-garage-refit.mjs` (55 PASS lines), `node scripts/test-garage-color.mjs` (60 PASS
 lines), `node scripts/test-garage-layouts.mjs` (64 PASS lines), `node scripts/
 test-garage-objects.mjs` (84 PASS lines), `node scripts/test-garage-layouts-v2.mjs` (119 PASS
-lines). Count the lines that start with PASS. Observed when this section was written: 192, 84,
-161, 219, 67, 65, 55, 60, 64, 84 and 119, no FAIL lines, exit 0 on all eleven (owner-reported
-for all eleven after G7b; the test-garage-objects and test-garage-layouts-v2 counts were also
-run and counted by the author of the G7b update and match). Lint and build were not run for
-this documentation update.
+lines), `node scripts/test-garage-gizmo.mjs` (102 PASS lines). Count the lines that start with
+PASS. Observed when this section was written: 192, 84, 161, 219, 67, 65, 55, 60, 64, 84, 119
+and 102, no FAIL lines (owner-reported for all twelve after G11; the test-garage-gizmo count
+was also run and counted by the author of the G11 update and matches, exit 0). Lint and build
+were not run for this documentation update.
 
 | Script | PASS lines |
 |---|---|
@@ -1421,6 +1491,7 @@ this documentation update.
 | `test-garage-layouts.mjs` | 64 |
 | `test-garage-objects.mjs` | 84 |
 | `test-garage-layouts-v2.mjs` | 119 |
+| `test-garage-gizmo.mjs` | 102 |
 
 ### Verification harness notes
 
@@ -1447,13 +1518,22 @@ Learned while verifying G7a and G7b (owner facts; the harness itself is not in t
   export can otherwise fire before the environment backdrop has loaded (see G7a,
   "pre-existing finding").
 
+Learned while verifying G11 (owner facts; the harness itself is not in the repo):
+
+- **Do not update or reload VS Code during a session.** A VS Code window reload (for example
+  from clicking VS Code's Update button) interrupts a running agent.
+- **After a background run, the agent may not wake itself.** The owner nudges it to check its
+  log.
+
 ### Next slices
 
-- **G11 - 3D `TransformControls` gizmo** is next.
-- **Then a cleanup slice:** G9 (keep the old gold outline and ring out of exports; needs owner
+- **G11 - 3D `TransformControls` gizmo** is done (`56d2e3b`).
+- **Next: a cleanup slice:** G9 (keep the old gold outline and ring out of exports; needs owner
   approval); wire the `garageStore.setLocked` export lock; gate exports on the backdrop
   texture being ready (the pre-existing finding under G7a); fix the Asset Library "Coffee
-  Bike" filter chip (Open Issue 16).
+  Bike" filter chip (Open Issue 16). Candidates for the owner to decide: a maximum scale of 100
+  on the numeric scale fields (the gizmo already caps at 100, see G11), and a gizmo pivot at
+  each part's centre instead of the part's origin (see G11, "Known quirk").
 - **Then G10** (virtual parts: the virtual-part split).
 
 ## Products and models
@@ -1566,7 +1646,7 @@ Resolved: **CAM-001** (camera presets ignored a transformed model) and **CAM-002
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
 | HDRI Environment Library | Partial | 2 of 11 environments have a real HDR; the other 9 use the probe plus a flat JPG. |
 | Animation Studio | Partial | Phase 16B (`c99fd69`, `f25d884`, `c936232`, `0b7c2ce`, `ea2482c`, `936f6d5`): Turntable preview and Reel export work (the model spins; the camera is fixed). No GLB animation mixer, no camera moves UI, no saving in sessions. See "Phase 16B". |
-| Garage (scene editor) | Partial | Slices G1-G8 are done (G7 as G7a `12ef43b` and G7b `3ef75ff`, the latest): part selection by click behind a Parts switch, per-part move/rotate/scale/hide with exact reset and undo, the refit event, per-part colour, save/load of named layouts, adding up to 5 objects under a 1,000,000-triangle budget, and layouts that save the added objects (`formatVersion` 2). G11 (3D gizmo) is next; G9 and G10 are not started. See "Phase 18". |
+| Garage (scene editor) | Partial | Slices G1-G8 and G11 are done (G7 as G7a `12ef43b` and G7b `3ef75ff`; G11 `56d2e3b`, the latest): part selection by click behind a Parts switch, per-part move/rotate/scale/hide with exact reset and undo, the refit event, per-part colour, save/load of named layouts, adding up to 5 objects under a 1,000,000-triangle budget, layouts that save the added objects (`formatVersion` 2), and a 3D `TransformControls` gizmo on the one selected part or added object. The cleanup slice (including G9) is next, then G10; G9 and G10 are not started. See "Phase 18". |
 | Products | 3 built-in | Coffee Bike, Cessna 172, THE KOP MAIN (`97dd1ac`, heavy: 483,311 triangles). See "Products and models". |
 
 Status is judged from code reading, not from a fresh browser run in this update.
@@ -1584,12 +1664,12 @@ Status is judged from code reading, not from a fresh browser run in this update.
 9. The other nine environments have no platform data: the Reel and social PNGs centre the model but it floats there.
 10. The new Cessna has garbled baked lettering on the fuselage, and its Tripo plan's terms for commercial publication are unchecked. The owner plans to replace it with a final model.
 11. The Reel distance is multiplied by the Distance slider % (252 % makes the Reel plane much smaller; 100 % fills about half of the frame).
-12. The "Garage" scene editor (per-part move / rotate / scale / hide / recolour, library objects, named layouts) is only partly built: slices G1-G8 are done (G7 as G7a `12ef43b` and G7b `3ef75ff`, the latest); G11 (3D gizmo) is next; G9 and G10 are not started. See "Phase 18".
+12. The "Garage" scene editor (per-part move / rotate / scale / hide / recolour, library objects, named layouts) is only partly built: slices G1-G8 and G11 are done (G7 as G7a `12ef43b` and G7b `3ef75ff`; G11, the 3D gizmo, `56d2e3b`, the latest); the cleanup slice is next; G9 and G10 are not started. See "Phase 18".
 13. THE KOP MAIN (`97dd1ac`) is heavy: 483,311 triangles and 753 draw calls. Its speed was only tested by the owner in his browser (smooth orbit, Turntable and a 4 s Reel), not measured. Whether clicking to select its 753 parts is smooth was not reported, and the selection outline on 753 parts is unmeasured.
 14. MAIN's material "Material" has a clearcoat factor of 3 (outside 0 to 1); how the loader and the app react is untested. Its sign parts are named "Temporary ..." (placeholders).
 15. Terms of use: the Tripo terms are unchecked for the Cessna, and for MAIN's 98 `tripo_part` pieces (Tripo origin inferred from the names; the owner confirms).
 16. The "Coffee Bike" filter chip in the Asset Library tests `id === "coffee-bike"`, so THE KOP MAIN does not appear under it.
-17. Next Garage step: G11 (3D `TransformControls` gizmo). Then a cleanup slice (G9 outline and ring out of exports, wire the export lock, gate exports on the backdrop being ready, the Asset Library "Coffee Bike" chip fix), then G10 (virtual parts). G7 is done (G7a `12ef43b`, G7b `3ef75ff`: the triangle budget and layout `formatVersion` 2 are built). See "Phase 18", "Next slices".
+17. Next Garage step: a cleanup slice (G9 outline and ring out of exports, wire the export lock, gate exports on the backdrop being ready, the Asset Library "Coffee Bike" chip fix; to decide: a maximum scale of 100 on the numeric fields, and a gizmo pivot at the part centre), then G10 (virtual parts). G7 is done (G7a `12ef43b`, G7b `3ef75ff`: the triangle budget and layout `formatVersion` 2 are built) and G11 is done (`56d2e3b`: the 3D `TransformControls` gizmo). See "Phase 18", "Next slices".
 
 ## Resolved
 
@@ -1666,8 +1746,8 @@ Status is judged from code reading, not from a fresh browser run in this update.
   A picked colour on a vertex-coloured material may multiply the vertex colours
   (unverified).
 - **Garage feature:** only partly built. G1-G8 (`6226ba2`, `3b7d9fb`, `3527c6c`,
-  `d278ef3`, `e829e1b`, `86f445e`, `15c1995`, and G7 as `12ef43b` and `3ef75ff`) are done;
-  G9-G11 are not started. See "Phase 18".
+  `d278ef3`, `e829e1b`, `86f445e`, `15c1995`, and G7 as `12ef43b` and `3ef75ff`) and G11
+  (`56d2e3b`) are done; G9 and G10 are not started. See "Phase 18".
 - **Garage: moved/hidden/resized parts now refit the scene (fixed by G5, `e829e1b`).** The
   fit (`fit.size`, `fit.center`, `floorY`), the floor disc, shadow catcher, ring, camera
   presets, and Reel/PNG framing (`computeReelView`, `reelPose`, `platformReelPose`) are
@@ -1687,9 +1767,9 @@ Status is judged from code reading, not from a fresh browser run in this update.
   `unionBounds` (`bounds.js`) already skipped invisible nodes; G5's `refit()` reads live
   visibility through `adaptObject3D`, so a part hidden with the Garage editor no longer
   contributes to the model's measured bounds.
-- **Garage: editing is one part at a time, numeric fields only, no gizmo yet.** G4's edit
-  fields (Position/Rotation/Scale/Hidden) are hidden behind a hint whenever 2+ parts are
-  selected; a 3D `TransformControls` gizmo is deferred to G11.
+- **Garage: editing is one part at a time.** G4's edit fields (Position/Rotation/Scale/Hidden)
+  are hidden behind a hint whenever 2+ parts are selected, and the G11 gizmo appears only when
+  exactly one visible part or added object is selected.
 - **Garage: multi-primitive glTF meshes are only tested with synthetic data.** A part in G3/G4
   is one `THREE.Mesh` (a glTF mesh node/primitive); several parts sharing one mesh node is
   only exercised by the node test scripts' synthetic trees, not by a real GLB file (carried
@@ -1730,8 +1810,20 @@ Status is judged from code reading, not from a fresh browser run in this update.
   hash of coffee-bike's default view varies across repeats even on unchanged code, while the
   exported PNG sha256 is stable. Use the exported PNG sha256 as the identity check. See
   "Phase 18", "Verification harness notes".
-- **Garage: the 3D gizmo (G11) is not yet built.** Editing today is numeric fields only, one
-  part or one added object at a time. See "Phase 18".
+- **Garage: the gizmo sits at a part's own origin, not its centre (G11).** It uses the same
+  pivot as the G4 numeric fields; on many parts that is the model origin, so the gizmo can
+  appear away from the part (owner-tested). A pivot at each part's centre is a candidate for
+  the cleanup slice. See "Phase 18", G11.
+- **Garage: a dead-centre press on the gizmo's uniform-scale cube can jump the scale straight
+  to 100 or 0.05 (G11).** `TransformControls` flips the sign when the drag passes the centre;
+  the gizmo caps scale drags at 0.05-100 (`MAX_SCALE`), and the jump is one undoable step.
+  See "Phase 18", G11.
+- **Garage: the numeric scale fields have no maximum.** Only gizmo drags are capped at 100;
+  typing a larger value into a field is still accepted (a max of 100 on the fields is a
+  candidate for the cleanup slice). See "Phase 18", G11.
+- **Garage: about 9 FPS with the gizmo on THE KOP MAIN.** Real-GPU FPS (Edge headless, Intel HD
+  5500, owner facts): 10.98 with nothing selected, 8.92 with the gizmo visible. See "Phase 18",
+  G11.
 - **Garage per-part colours and the pre-existing whole-model Materials panel are two
   separate, non-interacting systems by design.** A Garage colour override never appears as a
   row in the Materials panel and is never written to its persistence (IndexedDB
@@ -1849,3 +1941,9 @@ boundaries UNVERIFIED against any release note).
   `app/src/garage/garageStore.js`, an additive `loadObjects()` in
   `app/src/components/StudioCanvas.jsx`, and `app/src/ui/InspectorRail.jsx`; layout
   `formatVersion` 2 with added objects, one undo step per load (see "Phase 18 - Garage", G7b).
+- **Garage G11** — `56d2e3b` ("Garage G11: 3D gizmo (move/rotate/scale, snap, local/world,
+  W/E/R, scale cap 100)"): 4 files, 2 new (`app/src/garage/gizmo.js`,
+  `app/scripts/test-garage-gizmo.mjs`) plus additions to `app/src/components/StudioCanvas.jsx`
+  and `app/src/ui/InspectorRail.jsx`; `garageStore.js` unchanged; a `TransformControls` gizmo
+  on the one selected part or added object, one undo step per drag, gizmo scale drags capped
+  at 0.05-100 (see "Phase 18 - Garage", G11).
