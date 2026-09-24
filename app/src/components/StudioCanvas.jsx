@@ -14,6 +14,7 @@ import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { PRODUCTS } from "../products/registry";
 import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
@@ -30,6 +31,7 @@ import { applyPartOverride, resetToBase } from "../garage/compose";
 import { unionBounds, floorYFor } from "../garage/bounds";
 import * as sceneObjects from "../garage/sceneObjects";
 import * as layoutLibrary from "../garage/layoutLibrary";
+import * as gizmo from "../garage/gizmo";
 import {
   backdropImageAspect,
   needsCoverCrop,
@@ -60,6 +62,10 @@ const OVERLAY_NAME = "garage-overlay";
 const OBJECTS_NAME = "garage-objects";
 const PRIMARY_ITEM_ID = "i0";
 const DRACO_DECODER_PATH = "https://www.gstatic.com/draco/versioned/decoders/1.5.5/";
+
+// Garage G11 — the TransformControls helper's name: an editor-only object
+// every export hides, exactly like the part overlay above.
+const GIZMO_NAME = "garage-gizmo";
 
 // Mission 6 (Transform Foundation) — the original transform reference. The
 // transform layer is a wrapper group starting at identity, so identity is the
@@ -487,10 +493,13 @@ function CaptureBridge({ captureRef, reelViewRef }) {
       let restore;
       // Garage G3: the editor overlay never appears in an export frame. It is
       // hidden for the synchronous render only and put back in this same task,
-      // also when the render fails.
+      // also when the render fails. Garage G11: the gizmo, the same way.
       const overlay = scene.getObjectByName(OVERLAY_NAME);
       const overlayWasVisible = overlay ? overlay.visible : false;
       if (overlay) overlay.visible = false;
+      const gizmoHelper = scene.getObjectByName(GIZMO_NAME);
+      const gizmoWasVisible = gizmoHelper ? gizmoHelper.visible : false;
+      if (gizmoHelper) gizmoHelper.visible = false;
       try {
         restore = renderExportFrame(
           gl,
@@ -505,6 +514,7 @@ function CaptureBridge({ captureRef, reelViewRef }) {
         throw err;
       } finally {
         if (overlay) overlay.visible = overlayWasVisible;
+        if (gizmoHelper) gizmoHelper.visible = gizmoWasVisible;
       }
       return new Promise((resolve, reject) => {
         gl.domElement.toBlob(
@@ -720,6 +730,12 @@ function StudioStage({
   const ringRef = useRef(null);
   const selectedRef = useRef(selected);
   const escHandlerRef = useRef(null);
+  // Garage G11 — the live TransformControls (null = no gizmo), the function
+  // that re-decides whether it shows, and whether the current pointer press
+  // began on one of its handles (such a press never selects or clears).
+  const gizmoRef = useRef(null);
+  const gizmoSyncRef = useRef(null);
+  const gizmoPressRef = useRef(false);
   // Deterministic frame stepping (Slice C) — the running export (null = none):
   // target size, the turntable spec, the Distance % read at begin, and what
   // endExport restores. A ref, never React state.
@@ -910,6 +926,8 @@ function StudioStage({
     const partOverlay = transformRef.current?.getObjectByName(OVERLAY_NAME);
     if (partOverlay) partOverlay.visible = !hidden;
     if (ringRef.current) ringRef.current.visible = hidden ? false : selectedRef.current;
+    // Garage G11: the gizmo reads the preview / export refs itself.
+    if (gizmoSyncRef.current) gizmoSyncRef.current();
   }, []);
 
   // Ends the preview. `restore` puts the camera and target back through the
@@ -2248,6 +2266,252 @@ function StudioStage({
     [partIndex, addObject, loadObjects, sceneTriangles]
   );
 
+  // Garage G11 — the TransformControls gizmo. It exists only while exactly one
+  // SHOWN thing is selected (a part with Parts on, or an added object) and is
+  // disposed the moment that stops, so it leaves nothing on the GPU. Its
+  // helper hangs at the scene root (outside transformRef, so refit() never
+  // measures it) under GIZMO_NAME, hidden and disabled while the preview or an
+  // export runs and hidden around every PNG render (CaptureBridge).
+  // One drag = one garageStore gesture: nothing is written to the store while
+  // the handle is held (TransformControls moves the Object3D; gizmo.js turns
+  // that into field values and the preview shows exactly those), and on
+  // release the result is committed with the SAME command the numeric fields
+  // use, inside the gesture, then the gesture closes — one undo step, one
+  // store notification, so the G5 refit runs once, after the drag. Esc during
+  // a drag puts the object's own saved pose back and cancels the gesture: no
+  // undo entry. OrbitControls is disabled only while a handle is held; the
+  // camera is never written here. No React state anywhere in this path.
+  useEffect(() => {
+    let tc = null;
+    let helper = null;
+    let target = null; // { kind, itemId, partId, obj }
+    let drag = null; // { target, mode, start, saved, fields }
+    const session = gizmo.createDragSession(garageStore);
+
+    const hiddenNow = () => !!(animRunRef.current || exportRunRef.current);
+
+    const setPartOverlayVisible = (visible) => {
+      const overlay = transformRef.current?.getObjectByName(OVERLAY_NAME);
+      if (overlay) overlay.visible = visible;
+    };
+
+    // Ends a drag in the engine: the orbit comes back (unless the preview or
+    // an export, which own it then, is running) and the part overlay shows
+    // again (a commit rebuilds it; a no-op or cancel keeps the old one).
+    const releaseDrag = () => {
+      drag = null;
+      if (controlsRef.current && !hiddenNow()) controlsRef.current.enabled = true;
+      setPartOverlayVisible(!hiddenNow());
+      applySettings();
+    };
+
+    const restoreSaved = (d) => {
+      d.target.obj.position.copy(d.saved.position);
+      d.target.obj.quaternion.copy(d.saved.quaternion);
+      d.target.obj.scale.copy(d.saved.scale);
+      invalidateShadowMap(gl);
+    };
+
+    // Esc, or anything that takes the gizmo away mid-drag: exact pre-drag
+    // pose, no undo entry. pointerUp(null) ends TransformControls' own drag
+    // (its mouseUp then finds no drag and does nothing).
+    const cancelDrag = () => {
+      const d = drag;
+      if (!d) return;
+      releaseDrag();
+      restoreSaved(d);
+      session.cancel();
+      if (tc) tc.pointerUp(null);
+    };
+
+    // The values the numeric fields show right now, in their units.
+    const startFields = (t) => {
+      if (t.kind === "part") {
+        const pt = garageMode.getPartTransform(t.itemId, t.partId);
+        return pt ? { pos: pt.pos, rot: pt.rot, scale: pt.scale } : null;
+      }
+      const layout = garageStore.getLayout();
+      const item = layout ? layout.items.find((i) => i.itemId === t.itemId) : null;
+      return item ? gizmo.fieldsFromItemTransform(item.transform) : null;
+    };
+
+    const onMouseDown = () => {
+      gizmoPressRef.current = true;
+      if (!target || drag) return;
+      const start = startFields(target);
+      const begun = start && !hiddenNow() ? session.begin() : null;
+      if (!begun || !begun.ok) {
+        // Locked, or nothing to edit: the press is swallowed, nothing moves.
+        if (tc) tc.pointerUp(null);
+        return;
+      }
+      const obj = target.obj;
+      drag = {
+        target,
+        mode: tc.mode,
+        start,
+        saved: { position: obj.position.clone(), quaternion: obj.quaternion.clone(), scale: obj.scale.clone() },
+        fields: null,
+      };
+      if (controlsRef.current) controlsRef.current.enabled = false;
+      setPartOverlayVisible(false); // its shells were built for the old pose
+    };
+
+    // Mid-drag: what the fields WILL show, applied to the object so the view
+    // matches the commit (snap, uniform scale and the 0.05 floor included).
+    const onObjectChange = () => {
+      const d = drag;
+      if (!d) return;
+      const obj = d.target.obj;
+      const fields = gizmo.resolveDrag({
+        kind: d.target.kind,
+        mode: d.mode,
+        start: d.start,
+        live: { pos: obj.position.toArray(), quat: obj.quaternion.toArray(), scale: obj.scale.toArray() },
+        snap: gizmo.getSnapshot().snap,
+      });
+      if (!fields) return;
+      d.fields = fields;
+      const pose = gizmo.poseFromFields(fields);
+      obj.position.fromArray(pose.pos);
+      obj.quaternion.fromArray(pose.quat);
+      obj.scale.fromArray(pose.scale);
+      invalidateShadowMap(gl);
+    };
+
+    const onMouseUp = () => {
+      const d = drag;
+      if (!d) return;
+      releaseDrag();
+      const t = d.target;
+      const result = session.finish(() => {
+        if (!d.fields) return null;
+        if (t.kind === "part") return garageMode.commitPartEdit(t.itemId, t.partId, gizmo.partPatchFromFields(d.fields, d.mode));
+        return garageStore.setItemTransform(t.itemId, gizmo.itemPatchFromFields(d.fields, d.mode));
+      });
+      // Changed: the store's commit has already re-posed the object from the
+      // layout. Unchanged: put the exact saved pose back (the preview wrote
+      // values converted through degrees).
+      if (!result.changed) restoreSaved(d);
+    };
+
+    const applySettings = () => {
+      if (!tc || drag) return;
+      const s = gizmo.getSnapshot();
+      if (tc.mode !== s.mode) tc.setMode(s.mode);
+      const space = gizmo.effectiveSpace(s.mode, s.space);
+      if (tc.space !== space) tc.setSpace(space);
+    };
+
+    const destroy = () => {
+      if (!tc) return;
+      cancelDrag();
+      tc.detach();
+      if (helper && helper.parent) helper.parent.remove(helper);
+      tc.dispose(); // disconnects its listeners and frees the helper's geometry and materials
+      tc = null;
+      helper = null;
+      target = null;
+      gizmoRef.current = null;
+    };
+
+    const create = () => {
+      tc = new TransformControls(camera, gl.domElement);
+      helper = tc.getHelper();
+      helper.name = GIZMO_NAME;
+      tc.addEventListener("mouseDown", onMouseDown);
+      tc.addEventListener("objectChange", onObjectChange);
+      tc.addEventListener("mouseUp", onMouseUp);
+      scene.add(helper);
+      gizmoRef.current = tc;
+    };
+
+    // The one shown thing the selection names, as { kind, itemId, partId, obj }.
+    const resolveTarget = () => {
+      const t = gizmo.gizmoTarget({
+        pickMode: garageMode.getSnapshot().pickMode,
+        selection: garageStore.getSnapshot().selection,
+        primaryItemId: PRIMARY_ITEM_ID,
+        objectPartId: sceneObjects.OBJECT_PART_ID,
+      });
+      if (!t) return null;
+      if (t.kind === "part") {
+        const mesh = partIndex.ok ? partIndex.byId.get(t.partId) : undefined;
+        if (!mesh || !mesh.parent) return null;
+        const pt = garageMode.getPartTransform(t.itemId, t.partId);
+        if (!pt || pt.hidden) return null;
+        return { ...t, obj: mesh };
+      }
+      const entry = attachedObject(t.itemId);
+      if (!entry || !entry.anchor.parent) return null;
+      const layout = garageStore.getLayout();
+      const item = layout ? layout.items.find((i) => i.itemId === t.itemId) : null;
+      if (!item || item.hidden === true) return null;
+      return { ...t, obj: entry.anchor };
+    };
+
+    const sync = () => {
+      const next = resolveTarget();
+      if (!next) {
+        destroy();
+        return;
+      }
+      if (!tc) create();
+      if (!target || target.obj !== next.obj) {
+        cancelDrag();
+        tc.attach(next.obj);
+      }
+      target = next;
+      const hidden = hiddenNow();
+      if (hidden) cancelDrag();
+      helper.visible = !hidden; // attach() shows it; the preview and exports hide it
+      tc.enabled = !hidden;
+      applySettings();
+    };
+
+    // Esc cancels a drag. Capture phase, so it runs before (and pre-empts,
+    // via defaultPrevented) the Parts-mode Escape that clears the selection.
+    const onEscape = (e) => {
+      if (e.key !== "Escape" || !drag) return;
+      e.preventDefault();
+      cancelDrag();
+    };
+
+    // Decision 2 — W / E / R (unused anywhere else in the app) pick the mode
+    // while a gizmo is shown; never with a modifier, never while typing, and
+    // never mid-drag.
+    const onShortcut = (e) => {
+      if (!tc || !tc.enabled || drag || e.defaultPrevented) return;
+      const t = e.target;
+      const mode = gizmo.shortcutMode({
+        key: e.key,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        altKey: e.altKey,
+        targetTag: t && t.nodeName,
+        isContentEditable: !!(t && t.isContentEditable),
+      });
+      if (mode) gizmo.setMode(mode);
+    };
+
+    gizmoSyncRef.current = sync;
+    sync();
+    const unsubStore = garageStore.subscribe(sync);
+    const unsubMode = garageMode.subscribe(sync);
+    const unsubSettings = gizmo.subscribe(applySettings);
+    window.addEventListener("keydown", onEscape, true);
+    window.addEventListener("keydown", onShortcut);
+    return () => {
+      unsubStore();
+      unsubMode();
+      unsubSettings();
+      window.removeEventListener("keydown", onEscape, true);
+      window.removeEventListener("keydown", onShortcut);
+      if (gizmoSyncRef.current === sync) gizmoSyncRef.current = null;
+      destroy();
+    };
+  }, [scene, camera, gl, partIndex, attachedObject]);
+
   // Parts mode: turning it ON drops a whole-model selection (the two never
   // coexist); Escape clears the part selection, and that listener exists only
   // while Parts is ON. It yields to a running preview or export (the preview's
@@ -2296,9 +2560,17 @@ function StudioStage({
       downX = e.clientX;
       downY = e.clientY;
       downButton = e.button;
+      // Garage G11: a press on a gizmo handle (hovered now, or already taken
+      // by the gizmo if its listener ran first) is the gizmo's, never a pick.
+      const tc = gizmoRef.current;
+      gizmoPressRef.current = !!(tc && tc.enabled && (tc.dragging || tc.axis !== null));
     };
 
     const onPointerUp = (e) => {
+      if (gizmoPressRef.current) {
+        gizmoPressRef.current = false;
+        return;
+      }
       const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
       // A genuine click selects. Drags (orbit/pan/zoom-pinch) must NOT select.
       const isClick =

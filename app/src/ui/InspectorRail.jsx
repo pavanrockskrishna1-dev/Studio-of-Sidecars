@@ -18,6 +18,7 @@ import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
 import * as layoutLibrary from "../garage/layoutLibrary";
 import * as sceneObjects from "../garage/sceneObjects";
+import * as gizmo from "../garage/gizmo";
 import { PRODUCTS } from "../products/registry";
 import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
@@ -739,6 +740,70 @@ function GarageObjectsSection({ garageState, busy }) {
   );
 }
 
+// Garage G11 — the 3D gizmo's settings: Move / Rotate / Scale, World / Local
+// axes and Snap (0.05 m, 15 degrees, 0.1). The gizmo itself lives in the
+// stage; these only write the gizmo settings store it follows.
+function GarageGizmoControls({ isObject, busy }) {
+  const s = useSyncExternalStore(gizmo.subscribe, gizmo.getSnapshot, gizmo.getSnapshot);
+  return (
+    <>
+      <span className="sos-label">Gizmo</span>
+      <div className="sos-frow">
+        {gizmo.GIZMO_MODES.map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            className="sos-pchip"
+            data-testid={`ui-garage-gizmo-${mode}`}
+            data-on={s.mode === mode || undefined}
+            aria-pressed={s.mode === mode}
+            disabled={busy}
+            title={`${gizmo.MODE_LABELS[mode]} with the gizmo (${Object.keys(gizmo.MODE_KEYS).find((k) => gizmo.MODE_KEYS[k] === mode).toUpperCase()})`}
+            onClick={() => gizmo.setMode(mode)}
+          >
+            {gizmo.MODE_LABELS[mode]}
+          </button>
+        ))}
+      </div>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-pchip"
+          data-testid="ui-garage-gizmo-space"
+          data-on={s.space === "local" || undefined}
+          aria-pressed={s.space === "local"}
+          disabled={busy}
+          title={
+            s.space === "local"
+              ? "Axes: Local (the object's own axes). Click for World."
+              : "Axes: World. Click for Local (the object's own axes)."
+          }
+          onClick={gizmo.toggleSpace}
+        >
+          {s.space === "local" ? "Axes: Local" : "Axes: World"}
+        </button>
+        <button
+          type="button"
+          className="sos-pchip"
+          data-testid="ui-garage-gizmo-snap"
+          data-on={s.snap || undefined}
+          aria-pressed={s.snap}
+          disabled={busy}
+          title={`Snap is ${s.snap ? "ON" : "OFF"}: ${gizmo.SNAP.translate} m, ${gizmo.SNAP.rotate} degrees, ${gizmo.SNAP.scale} scale`}
+          onClick={gizmo.toggleSnap}
+        >
+          {s.snap ? "Snap: on" : "Snap: off"}
+        </button>
+      </div>
+      <Hint>
+        Drag a handle in the view (W / E / R switch Move / Rotate / Scale; Esc cancels a drag). Each drag
+        is one undo step; the fields below update on release. Scale always uses the object&rsquo;s own axes
+        {isObject ? " and stays uniform for an added object" : ""}.
+      </Hint>
+    </>
+  );
+}
+
 // Garage G3/G4 — the Parts switch and the selected part's read-out (and, from
 // G4, its numeric edit fields when exactly one part is selected). All state
 // comes from the Garage stores; nothing here touches the engine directly.
@@ -845,6 +910,7 @@ function GarageSection({ pickMode, garageState, busy }) {
       </Hint>
       {/* Garage G4 — editing is numeric fields only, and only for exactly one
           selected part (Owner decisions 1 and 2). */}
+      {singleObject || (single && pickMode) ? <GarageGizmoControls isObject={!!singleObject} busy={busy} /> : null}
       {singleObject ? (
         <GarageObjectFields itemId={singleObject.itemId} busy={busy} />
       ) : single ? (
