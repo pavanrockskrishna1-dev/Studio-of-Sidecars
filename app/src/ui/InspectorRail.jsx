@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Icon from "./icons";
 import {
   CAMERA_FRAMINGS,
@@ -19,7 +19,7 @@ import * as garageMode from "../garage/garageMode";
 import * as layoutLibrary from "../garage/layoutLibrary";
 import * as sceneObjects from "../garage/sceneObjects";
 import { PRODUCTS } from "../products/registry";
-import { useRuntimeAssets } from "../assets/runtimeRegistry";
+import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
 
@@ -892,6 +892,20 @@ function GarageSection({ pickMode, garageState, busy }) {
 // StudioCanvas already sets to the live product id on every stage mount, so
 // no extra plumbing is needed to know "the current product". Loading goes
 // through garageStore.loadPartsOverrides so it is exactly one undo step.
+// Garage G7b — saves also carry every added object (formatVersion 2), and a
+// format-2 load replaces the added objects too, still as one undo step.
+// Garage G7b — what a saved object records about its asset, and whether an
+// asset is available in this browser (built-ins, plus imported assets from
+// the Asset Library, which the runtime registry mirrors into PRODUCTS).
+function describeAsset(assetId) {
+  const p = PRODUCTS.find((x) => x.id === assetId);
+  return p ? { source: p.source === "imported" ? "imported" : "builtin", name: p.name } : null;
+}
+
+function assetExists(assetId) {
+  return PRODUCTS.some((p) => p.id === assetId && !p.placeholder && p.modelPath);
+}
+
 function GarageLayoutSection({ productId, busy }) {
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
@@ -925,12 +939,9 @@ function GarageLayoutSection({ productId, busy }) {
       setMessage("No layout to save yet.");
       return;
     }
-    // Garage G7a — a format-1 layout holds only the main product's part
-    // edits: added objects are left out (saving them is slice G7b).
-    const primary = layout.items.find((i) => i.primary);
-    const addedCount = primary ? layout.items.length - 1 : 0;
-    const mainOnly = primary ? { ...layout, items: [primary], frontRef: primary.itemId } : layout;
-    const r = layoutLibrary.saveLayout(localStorage, { productId, name, layout: mainOnly, overwrite });
+    // Garage G7b — every save is formatVersion 2: the main product's part
+    // edits plus every added object (its source, name, transform, hidden).
+    const r = layoutLibrary.saveLayout(localStorage, { productId, name, layout, overwrite, describeAsset });
     if (!r.ok) {
       if (r.reason === "exists") {
         setPendingOverwrite(r.existing.name);
@@ -942,11 +953,8 @@ function GarageLayoutSection({ productId, busy }) {
       return;
     }
     setPendingOverwrite(null);
-    setMessage(
-      addedCount > 0
-        ? `Saved "${r.envelope.name}". Added objects are not saved yet — this layout holds only the main product's part edits.`
-        : `Saved "${r.envelope.name}".`
-    );
+    const n = r.envelope.objects.length;
+    setMessage(n > 0 ? `Saved "${r.envelope.name}" with ${n} added object${n === 1 ? "" : "s"}.` : `Saved "${r.envelope.name}".`);
     refresh();
   };
 
@@ -954,15 +962,23 @@ function GarageLayoutSection({ productId, busy }) {
   // wrong-product is refused before anything is touched (Owner decision 3),
   // then matching parts are applied and the rest counted as skipped (decision
   // 4), as one garageStore commit (decision 5).
-  const applyEnvelope = (raw) => {
+  // Garage G7b — a formatVersion 1 envelope still takes exactly that path
+  // (added objects untouched). A formatVersion 2 envelope goes through the
+  // stage's loadObjects, which loads its objects and REPLACES the added
+  // objects and the parts in one commit; objects whose asset is not in this
+  // browser are skipped and counted. Only the newest load writes its result.
+  const loadSeqRef = useRef(0);
+  const applyEnvelope = async (raw) => {
     if (!productId) {
       setMessage("No product is loaded yet.");
       return;
     }
-    const resolved = layoutLibrary.resolveLoad(raw, productId, (id) => garageMode.describePart(id) !== null);
+    const resolved = layoutLibrary.resolveLoad(raw, productId, (id) => garageMode.describePart(id) !== null, assetExists);
     if (!resolved.ok) {
       if (resolved.reason === "wrong-product") {
         setMessage(`Refused: this layout was saved for "${resolved.productId}", not the current product.`);
+      } else if (resolved.reason === "max-objects") {
+        setMessage(resolved.message);
       } else {
         setMessage("This layout is not valid and was not applied.");
       }
@@ -974,15 +990,38 @@ function GarageLayoutSection({ productId, busy }) {
       setMessage("No model is loaded yet.");
       return;
     }
-    const r = garageStore.loadPartsOverrides(item.itemId, resolved.parts);
-    if (!r.ok) {
-      setMessage("This layout could not be applied.");
+    if (resolved.objects === null) {
+      const r = garageStore.loadPartsOverrides(item.itemId, resolved.parts);
+      if (!r.ok) {
+        setMessage("This layout could not be applied.");
+        return;
+      }
+      setMessage(layoutLibrary.loadResultMessage({ name: resolved.name, partsSkipped: resolved.skipped }));
+      return;
+    }
+    const api = garageMode.apiRef.current;
+    if (!api || typeof api.loadObjects !== "function") {
+      setMessage("The stage is not ready yet; the layout was not loaded.");
+      return;
+    }
+    if (resolved.skippedObjects.length > 0 && !isHydrated()) {
+      setMessage("The Asset Library is still loading; try again in a moment.");
+      return;
+    }
+    const seq = (loadSeqRef.current += 1);
+    setMessage("Loading layout...");
+    const r = await api.loadObjects(resolved.parts, resolved.objects);
+    if (loadSeqRef.current !== seq) return;
+    if (!r || !r.ok) {
+      setMessage(r && r.message ? r.message : "This layout could not be applied; nothing was changed.");
       return;
     }
     setMessage(
-      resolved.skipped > 0
-        ? `Loaded "${resolved.name}" — ${resolved.skipped} part${resolved.skipped === 1 ? "" : "s"} skipped.`
-        : `Loaded "${resolved.name}".`
+      layoutLibrary.loadResultMessage({
+        name: resolved.name,
+        partsSkipped: resolved.skipped,
+        skippedObjects: [...resolved.skippedObjects, ...r.skipped],
+      })
     );
   };
 
@@ -1049,7 +1088,7 @@ function GarageLayoutSection({ productId, busy }) {
           className="sos-btn sos-btn-ghost"
           data-testid="ui-garage-layout-save"
           disabled={busy || layoutLibrary.cleanLayoutName(name) === null}
-          title="Save the current part edits as a named layout"
+          title="Save the current part edits and added objects as a named layout"
           onClick={() => runSave(false)}
         >
           Save

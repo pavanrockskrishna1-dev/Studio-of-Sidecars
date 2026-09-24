@@ -481,6 +481,47 @@ export function createGarageStore() {
     return { ok: true, changed: true, revision, parts: deepCopy(clean) };
   }
 
+  // Garage G7b — loads a formatVersion 2 layout in ONE commit, so the whole
+  // load is exactly one undo step: the primary item's whole parts map is
+  // replaced (as loadPartsOverrides does) AND every added item is replaced by
+  // `objects` ([{ assetId, transform, hidden? }], in order; new item ids are
+  // the lowest free "iN"). Replace, never merge. The front falls back to the
+  // primary item, and selection entries on added items are dropped (the
+  // items they named are gone). Everything goes through validateLayout; a
+  // refused input changes nothing.
+  function loadLayoutItems(itemId, parts, objects) {
+    const p = prep(itemId);
+    if (p.err) return p.err;
+    if (gesture) return fail("gesture-open");
+    if (!p.item.primary) return fail("not-primary");
+    if (!isObj(parts) || !Array.isArray(objects)) return fail("bad-input");
+    if (objects.length + 1 > LAYOUT_LIMITS.MAX_ITEMS) return fail("limit");
+    const rawItems = [{ itemId: p.item.itemId, assetId: p.item.assetId, transform: p.item.transform, parts }];
+    const used = new Set([p.item.itemId]);
+    let n = 0;
+    for (const o of objects) {
+      if (!isObj(o) || typeof o.assetId !== "string" || o.assetId === "" || !isObj(o.transform)) return fail("bad-input");
+      if (o.hidden !== undefined && typeof o.hidden !== "boolean") return fail("bad-input");
+      const t = pickTransform(o.transform);
+      if (!t) return fail("bad-input");
+      while (used.has(`i${n}`)) n += 1;
+      used.add(`i${n}`);
+      rawItems.push({ itemId: `i${n}`, assetId: o.assetId, transform: t, hidden: o.hidden === true });
+    }
+    const v = validateLayout({ version: 1, name: "x", items: rawItems });
+    if (!v.ok || v.layout.items.length !== rawItems.length) return fail("invalid");
+    const primary = Object.freeze({ ...p.item, parts: deepFreeze(v.layout.items[0].parts) });
+    const added = v.layout.items.slice(1).map((it) => deepFreeze({ ...it, primary: false }));
+    const current = layout.items.filter((i) => i !== p.item);
+    if (deepEqual(primary.parts, p.item.parts) && deepEqual(added, current)) return noop();
+    const items = Object.freeze([primary, ...added]);
+    const kept = selection.filter((e) => e.itemId === p.item.itemId);
+    const selectionChanged = kept.length !== selection.length;
+    if (selectionChanged) selection = kept.length ? Object.freeze(kept) : EMPTY;
+    commit(Object.freeze({ ...layout, items, frontRef: p.item.itemId }), { type: "load-layout", itemId }, selectionChanged);
+    return { ok: true, changed: true, revision, itemIds: added.map((i) => i.itemId) };
+  }
+
   // Only finite numbers are accepted for the given keys (never null).
   function pickTransform(t) {
     const out = {};
@@ -641,6 +682,7 @@ export function createGarageStore() {
     setPartOverride: command(setPartOverride),
     resetPart: command(resetPart),
     loadPartsOverrides: command(loadPartsOverrides),
+    loadLayoutItems: command(loadLayoutItems),
     setItemTransform: command(setItemTransform),
     setItemHidden: command(setItemHidden),
     addItem: command(addItem),
@@ -663,7 +705,7 @@ const defaultStore = createGarageStore();
 export const {
   subscribe, getSnapshot, apiRef, registerApi, setLocked,
   startLayout, loadLayout, loadLayoutJson, getLayout, exportJson, markSaved,
-  setPartOverride, resetPart, loadPartsOverrides, setItemTransform, setItemHidden,
+  setPartOverride, resetPart, loadPartsOverrides, loadLayoutItems, setItemTransform, setItemHidden,
   addItem, removeItem, setFrontRef,
   select, toggle, clearSelection,
   beginGesture, endGesture, cancelGesture, undo, redo,

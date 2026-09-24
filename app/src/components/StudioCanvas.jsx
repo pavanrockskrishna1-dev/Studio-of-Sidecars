@@ -29,6 +29,7 @@ import { buildPartIndex } from "../garage/partTree";
 import { applyPartOverride, resetToBase } from "../garage/compose";
 import { unionBounds, floorYFor } from "../garage/bounds";
 import * as sceneObjects from "../garage/sceneObjects";
+import * as layoutLibrary from "../garage/layoutLibrary";
 import {
   backdropImageAspect,
   needsCoverCrop,
@@ -709,6 +710,10 @@ function StudioStage({
   const objectsRootRef = useRef(null);
   const objectPoolRef = useRef(new Map());
   const pendingObjectRef = useRef(null); // { entry, adopted } during one addItem
+  // Garage G7b — [{ entry, adopted }] during one loadLayoutItems commit, and
+  // the running layout load ({ aborted }, null = none).
+  const pendingListRef = useRef(null);
+  const loadRunRef = useRef(null);
   const addingObjectRef = useRef(false);
   const knownTrianglesRef = useRef(new Map()); // modelPath -> triangles
   const stageAliveRef = useRef(true);
@@ -1643,6 +1648,7 @@ function StudioStage({
     const pool = objectPoolRef.current;
     return () => {
       stageAliveRef.current = false;
+      if (loadRunRef.current) loadRunRef.current.aborted = true;
       for (const entry of pool.values()) {
         if (entry.anchor.parent) entry.anchor.parent.remove(entry.anchor);
         entry.attached = false;
@@ -1666,7 +1672,12 @@ function StudioStage({
       if (item.primary) continue;
       const key = `${item.itemId}|${item.assetId}`;
       let entry = pool.get(key);
-      const pending = pendingObjectRef.current;
+      let pending = pendingObjectRef.current;
+      // Garage G7b — a layout load hands over several loaded objects at once;
+      // each new item takes the first unadopted one of its asset.
+      if (!entry && !(pending && !pending.adopted && pending.entry.assetId === item.assetId) && pendingListRef.current) {
+        pending = pendingListRef.current.find((p) => !p.adopted && p.entry.assetId === item.assetId) || null;
+      }
       if (!entry && pending && !pending.adopted && pending.entry.assetId === item.assetId) {
         entry = pending.entry;
         pending.adopted = true;
@@ -1747,6 +1758,8 @@ function StudioStage({
         return l ? l.items.filter((i) => !i.primary).length : 0;
       };
       if (!garageStore.getLayout()) return refuse("no-layout", "No product is loaded yet.");
+      // Garage G7b — a new add cancels a layout load still in progress.
+      if (loadRunRef.current) loadRunRef.current.aborted = true;
       const count = sceneObjects.checkAddCount(addedNow());
       if (!count.ok) return count;
       if (addingObjectRef.current) return refuse("busy", "Another object is still loading.");
@@ -1821,6 +1834,150 @@ function StudioStage({
       };
     },
     [fit, product.frontAz, sceneTriangles, occupiedBoxes]
+  );
+
+  // Garage G7b — the main product's visible triangles as they WILL be once
+  // `parts` (a layout's per-part overrides) replaces the current ones: a part
+  // mesh is visible by its override's flag, else by its recorded base; every
+  // other node by its own flag (the root always counts, as the stage keeps it
+  // visible every frame). Counted the same way as countTriangles.
+  const mainTrianglesFor = useCallback(
+    (parts) => {
+      const bases = partBasesRef.current;
+      let n = 0;
+      const visit = (obj, isRoot) => {
+        let visible = isRoot ? true : obj.visible;
+        const id = partIndex.ok ? partIndex.byRef.get(obj) : undefined;
+        if (id !== undefined) {
+          const ov = Object.prototype.hasOwnProperty.call(parts, id) ? parts[id] : undefined;
+          visible = ov && typeof ov.visible === "boolean" ? ov.visible : ensurePartBase(obj, bases).visible;
+        }
+        if (!visible) return;
+        if (obj.isMesh && obj.geometry) {
+          const g = obj.geometry;
+          const pos = g.attributes && g.attributes.position;
+          n += Math.floor((g.index ? g.index.count : pos ? pos.count : 0) / 3);
+        }
+        for (const child of obj.children) visit(child, false);
+      };
+      visit(modelScene, true);
+      return n;
+    },
+    [modelScene, partIndex]
+  );
+
+  // Garage G7b — applies a formatVersion 2 layout: `parts` (the main product's
+  // resolved overrides) and `specs` ([{ assetId, name, transform, hidden }],
+  // the objects whose assets exist here) REPLACE the current parts and added
+  // objects in ONE garageStore.loadLayoutItems commit (one undo step).
+  // Owner conditions: the max-5 rule is checked before anything loads; the
+  // objects load one at a time (each its own parse, as addObject does) and
+  // the running total (main visible + every visible object loaded so far) is
+  // checked after each — the first overflow releases everything loaded and
+  // commits nothing; a product change, or another add or load starting,
+  // aborts the same way; a file that fails to load is skipped with its reason.
+  // Resolves { ok:true, changed, skipped:[{ assetId, name, reason }], total }
+  // or { ok:false, reason, message }.
+  const loadObjects = useCallback(
+    async (parts, specs) => {
+      const refuse = (reason, message) => ({ ok: false, reason, message });
+      const layoutNow = garageStore.getLayout();
+      const primary = layoutNow ? layoutNow.items.find((i) => i.primary) : null;
+      if (!primary) return refuse("no-layout", "No product is loaded yet.");
+      if (!isObj(parts) || !Array.isArray(specs)) return refuse("bad-input", "This layout is not valid and was not applied.");
+      if (specs.length > sceneObjects.OBJECT_LIMITS.MAX_ADDED) return refuse("max-objects", layoutLibrary.maxObjectsMessage(specs.length));
+      if (addingObjectRef.current) return refuse("busy", "Another object is still loading; the layout was not loaded.");
+      if (loadRunRef.current) loadRunRef.current.aborted = true; // the newer load wins
+      const run = { aborted: false };
+      loadRunRef.current = run;
+      const loaded = []; // [{ spec, entry }]
+      const skipped = [];
+      const releaseAll = () => {
+        for (const l of loaded) releaseObjectGpu(l.entry.resources);
+        loaded.length = 0;
+      };
+      const gone = () => run.aborted || !stageAliveRef.current;
+      const aborted = () => {
+        releaseAll();
+        return refuse(
+          "aborted",
+          "Layout load cancelled: the product changed, or another add or load started. Nothing was changed."
+        );
+      };
+      try {
+        let running = mainTrianglesFor(parts);
+        for (const spec of specs) {
+          const label = typeof spec.name === "string" && spec.name ? spec.name : spec.assetId;
+          const asset = PRODUCTS.find((p) => p.id === spec.assetId && !p.placeholder);
+          if (!asset || !asset.modelPath) {
+            skipped.push({ assetId: spec.assetId, name: label, reason: "missing" });
+            continue;
+          }
+          const counts = spec.hidden !== true;
+          // A file whose weight is already known is refused before loading it.
+          const known = knownTrianglesRef.current.get(asset.modelPath);
+          if (counts && known !== undefined) {
+            const pre = layoutLibrary.loadBudgetStep(running, known);
+            if (!pre.ok) {
+              releaseAll();
+              return pre;
+            }
+          }
+          let scene;
+          try {
+            scene = await loadObjectScene(asset.modelPath);
+          } catch (err) {
+            if (gone()) return aborted();
+            console.warn(`Garage: could not load "${label}" for the layout.`, err);
+            skipped.push({ assetId: spec.assetId, name: label, reason: "load-failed" });
+            continue;
+          }
+          const entry = makeObjectEntry(spec.assetId, asset.modelPath, scene);
+          if (gone()) {
+            releaseObjectGpu(entry ? entry.resources : objectResources(scene));
+            return aborted();
+          }
+          if (!entry) {
+            releaseObjectGpu(objectResources(scene));
+            skipped.push({ assetId: spec.assetId, name: label, reason: "empty" });
+            continue;
+          }
+          knownTrianglesRef.current.set(asset.modelPath, entry.triangles);
+          if (counts) {
+            const step = layoutLibrary.loadBudgetStep(running, entry.triangles);
+            if (!step.ok) {
+              releaseObjectGpu(entry.resources);
+              releaseAll();
+              return step;
+            }
+            running = step.total;
+          }
+          loaded.push({ spec, entry });
+        }
+        if (gone()) return aborted();
+        const pending = loaded.map((l) => ({ entry: l.entry, adopted: false }));
+        pendingListRef.current = pending;
+        let r;
+        try {
+          r = garageStore.loadLayoutItems(
+            primary.itemId,
+            parts,
+            loaded.map((l) => ({ assetId: l.spec.assetId, transform: l.spec.transform, hidden: l.spec.hidden === true }))
+          );
+        } finally {
+          pendingListRef.current = null;
+        }
+        // Not adopted: the pool already holds that very item (same id, same
+        // file), or nothing was committed — the fresh copy is surplus.
+        for (const p of pending) if (!p.adopted) releaseObjectGpu(p.entry.resources);
+        loaded.length = 0;
+        if (!r.ok) return refuse(r.reason, "This layout could not be applied; nothing was changed.");
+        return { ok: true, changed: r.changed === true, skipped, total: running };
+      } finally {
+        if (loadRunRef.current === run) loadRunRef.current = null;
+      }
+    },
+    [mainTrianglesFor]
   );
 
   // Garage G4 — imperative live transform. On every real layout change (never
@@ -2045,6 +2202,8 @@ function StudioStage({
         },
         // Garage G7a — added objects, as whole objects only (Decision 5).
         addObject,
+        // Garage G7b — a formatVersion 2 layout's parts + objects, one commit.
+        loadObjects,
         // The running triangle counter (Decision 2), plus its level/line.
         getSceneTriangles: () => {
           const t = sceneTriangles();
@@ -2086,7 +2245,7 @@ function StudioStage({
           return r.ok ? { ok: true } : { ok: false, reason: r.reason, message: "The object could not be changed." };
         },
       }),
-    [partIndex, addObject, sceneTriangles]
+    [partIndex, addObject, loadObjects, sceneTriangles]
   );
 
   // Parts mode: turning it ON drops a whole-model selection (the two never
