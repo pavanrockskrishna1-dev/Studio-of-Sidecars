@@ -23,6 +23,15 @@ import { PRODUCTS } from "../products/registry";
 import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
+import {
+  backdropGate,
+  exportsAllowed,
+  withExportLock,
+  clampFieldScale,
+  BACKDROP_STATUS,
+  GATE_LABEL,
+  BACKDROP_FAILED_WARNING,
+} from "../capture/exportGate";
 
 /* ==========================================================================
    Right inspector rail (Agent #2 · UI ONLY)
@@ -350,11 +359,11 @@ function GarageEditFields({ itemId, partId, busy }) {
   };
   const commitScaleAxis = (axis, v) => {
     const scale = t.scale.slice();
-    scale[axis] = Math.max(0.05, v);
+    scale[axis] = clampFieldScale(v);
     garageMode.commitPartEdit(itemId, partId, { scale });
   };
   const commitScaleUniform = (v) => {
-    const s = Math.max(0.05, v);
+    const s = clampFieldScale(v);
     garageMode.commitPartEdit(itemId, partId, { scale: [s, s, s] });
   };
   const toggleHidden = () => {
@@ -591,7 +600,7 @@ function GarageObjectFields({ itemId, busy }) {
           testId="ui-garage-object-scale"
           disabled={busy}
           value={t.s}
-          onCommit={(v) => commit({ s: Math.max(0.05, v) })}
+          onCommit={(v) => commit({ s: clampFieldScale(v) })}
         />
       </div>
       <div className="sos-frow">
@@ -1318,8 +1327,13 @@ export default function InspectorRail({
       alive = false;
     };
   }, []);
+  // Cleanup slice: the export buttons wait for the backdrop ("failed" never
+  // blocks), and a Reel export holds the Garage lock until it ends, however
+  // it ends (finished, cancelled or stopped).
+  const gate = useSyncExternalStore(backdropGate.subscribe, backdropGate.getSnapshot, backdropGate.getSnapshot);
+  const gateBlocked = !exportsAllowed(gate);
   const handleExportClick = useCallback(async () => {
-    const r = await exportReel();
+    const r = await withExportLock(garageStore, () => exportReel());
     if (r.ok) saveBlob(r.blob, r.filename);
   }, []);
   const [activeCard, setActiveCard] = useState(null);
@@ -1429,6 +1443,12 @@ export default function InspectorRail({
           ))}
         </div>
       </div>
+
+      {gate.status === BACKDROP_STATUS.FAILED ? (
+        <p className="sos-hint" role="alert" data-testid="ui-backdrop-warning">
+          <span>{BACKDROP_FAILED_WARNING}</span>
+        </p>
+      ) : null}
 
       <div className="sos-rail-scroll">
         {SECTIONS.map((section) => (
@@ -1582,16 +1602,18 @@ export default function InspectorRail({
                   disabled={
                     animExporting
                       ? false
-                      : !(animState.ready && animState.mode === "idle" && exportSupport?.ok)
+                      : gateBlocked || !(animState.ready && animState.mode === "idle" && exportSupport?.ok)
                   }
                   title={
                     animExporting
                       ? "Cancel the running export"
-                      : "Render the turntable at 1080x1920 and save it as an MP4"
+                      : gateBlocked
+                        ? "Waiting for the environment backdrop to load"
+                        : "Render the turntable at 1080x1920 and save it as an MP4"
                   }
                   onClick={animExporting ? animationStore.cancelExport : handleExportClick}
                 >
-                  {animExporting ? "Cancel export" : "Export Reel (MP4)"}
+                  {animExporting ? "Cancel export" : gateBlocked ? GATE_LABEL : "Export Reel (MP4)"}
                 </button>
                 <Hint>
                   {animExporting
@@ -1609,7 +1631,7 @@ export default function InspectorRail({
               <GarageSection
                 pickMode={garageModeState.pickMode}
                 garageState={garageState}
-                busy={animState.mode !== "idle"}
+                busy={animState.mode !== "idle" || garageState.locked}
               />
             ) : (
               <>
@@ -1640,12 +1662,16 @@ export default function InspectorRail({
                   type="button"
                   className="sos-btn sos-btn-ghost sos-rail-export"
                   data-testid="ui-rail-export-png"
-                  disabled={animBusy}
-                  title="Export PNG — captures the current view with the chosen format (same as Capture Shot)"
+                  disabled={animBusy || gateBlocked}
+                  title={
+                    gateBlocked
+                      ? "Waiting for the environment backdrop to load"
+                      : "Export PNG — captures the current view with the chosen format (same as Capture Shot)"
+                  }
                   onClick={exportPng}
                 >
                   <Icon name="upload" size={15} />
-                  Export PNG
+                  {gateBlocked ? GATE_LABEL : "Export PNG"}
                 </button>
                 <Hint>
                   Same capture as Capture Shot: opens the preview, where

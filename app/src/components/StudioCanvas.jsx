@@ -32,6 +32,7 @@ import { unionBounds, floorYFor } from "../garage/bounds";
 import * as sceneObjects from "../garage/sceneObjects";
 import * as layoutLibrary from "../garage/layoutLibrary";
 import * as gizmo from "../garage/gizmo";
+import { backdropGate, withExportLock } from "../capture/exportGate";
 import {
   backdropImageAspect,
   needsCoverCrop,
@@ -67,6 +68,15 @@ const DRACO_DECODER_PATH = "https://www.gstatic.com/draco/versioned/decoders/1.5
 // every export hides, exactly like the part overlay above.
 const GIZMO_NAME = "garage-gizmo";
 
+// Garage G9 — the old whole-model selection indicator: the gold outline group
+// and the gold footprint ring. Both exist only because of a selection, so
+// every PNG export hides them like the part overlay and the gizmo (the Reel
+// already hides them through setOverlaysHidden). The floor disc and the
+// shadow catcher are the normal look and are never hidden.
+const OUTLINE_NAME = "selection-outline";
+const RING_NAME = "selection-ring";
+const EXPORT_HIDDEN_NAMES = [OVERLAY_NAME, GIZMO_NAME, OUTLINE_NAME, RING_NAME];
+
 // Mission 6 (Transform Foundation) — the original transform reference. The
 // transform layer is a wrapper group starting at identity, so identity is the
 // exact original placement/rotation/scale of every model.
@@ -99,7 +109,7 @@ function collectModelMeshes(root) {
 // measured bounds union (camera presets, Reel/PNG framing, the floor, the
 // Turntable pivot). See the whole-model outline (buildOutlineShells) and the
 // Garage part overlay (buildPartShells) below, which create these groups.
-const REFIT_SKIP_NAMES = new Set(["selection-outline", OVERLAY_NAME]);
+const REFIT_SKIP_NAMES = new Set([OUTLINE_NAME, OVERLAY_NAME]);
 
 // Garage G5 — builds bounds.js's plain node tree from a LIVE three.js
 // Object3D graph. Every node's pos/quat/scale is LOCAL (bounds.js composes
@@ -476,7 +486,7 @@ function CaptureBridge({ captureRef, reelViewRef }) {
   const { gl, scene, camera } = useThree();
   useEffect(() => {
     if (!captureRef) return undefined;
-    captureRef.current = (opts = {}) => {
+    const capture = (opts = {}) => {
       const [width, height] = computeExportSize(
         gl.domElement.width,
         gl.domElement.height,
@@ -494,12 +504,15 @@ function CaptureBridge({ captureRef, reelViewRef }) {
       // Garage G3: the editor overlay never appears in an export frame. It is
       // hidden for the synchronous render only and put back in this same task,
       // also when the render fails. Garage G11: the gizmo, the same way.
-      const overlay = scene.getObjectByName(OVERLAY_NAME);
-      const overlayWasVisible = overlay ? overlay.visible : false;
-      if (overlay) overlay.visible = false;
-      const gizmoHelper = scene.getObjectByName(GIZMO_NAME);
-      const gizmoWasVisible = gizmoHelper ? gizmoHelper.visible : false;
-      if (gizmoHelper) gizmoHelper.visible = false;
+      // Garage G9: the old whole-model outline and ring, the same way.
+      const hidden = [];
+      for (const name of EXPORT_HIDDEN_NAMES) {
+        const obj = scene.getObjectByName(name);
+        if (obj) {
+          hidden.push([obj, obj.visible]);
+          obj.visible = false;
+        }
+      }
       try {
         restore = renderExportFrame(
           gl,
@@ -513,8 +526,7 @@ function CaptureBridge({ captureRef, reelViewRef }) {
         if (restorePose) restorePose();
         throw err;
       } finally {
-        if (overlay) overlay.visible = overlayWasVisible;
-        if (gizmoHelper) gizmoHelper.visible = gizmoWasVisible;
+        for (const [obj, wasVisible] of hidden) obj.visible = wasVisible;
       }
       return new Promise((resolve, reject) => {
         gl.domElement.toBlob(
@@ -534,6 +546,10 @@ function CaptureBridge({ captureRef, reelViewRef }) {
         if (restorePose) restorePose();
       });
     };
+    // Cleanup slice: every Garage edit is refused while the PNG is captured;
+    // the lock is released when the capture settles, also when it fails. The
+    // render above still runs synchronously in the caller's task.
+    captureRef.current = (opts) => withExportLock(garageStore, () => capture(opts));
     return () => {
       captureRef.current = null;
     };
@@ -757,23 +773,41 @@ function StudioStage({
   // changes ONLY the background (lighting, camera, and model stay untouched).
   // The photographic backdrops contain their own display platform, so the
   // 3D floor disc is hidden while one is active (see <mesh visible=...>).
+  // Cleanup slice: the export buttons wait for this load through backdropGate
+  // ("Loading backdrop..."); an environment with no photo is ready at once; a
+  // failed load warns and lets exports run without it. An environment or
+  // product switch (this effect's cleanup) re-engages the gate.
   useEffect(() => {
     let disposed = false;
     let texture = null;
-    const loader = new THREE.TextureLoader();
-    loader.load(environment.file, (tex) => {
-      if (disposed) {
-        tex.dispose();
-        return;
-      }
-      tex.colorSpace = THREE.SRGBColorSpace;
-      texture = tex;
-      scene.background = tex;
-    });
+    const token = backdropGate.begin(environment.file);
+    if (environment.file) {
+      const loader = new THREE.TextureLoader();
+      loader.load(
+        environment.file,
+        (tex) => {
+          if (disposed) {
+            tex.dispose();
+            return;
+          }
+          tex.colorSpace = THREE.SRGBColorSpace;
+          texture = tex;
+          scene.background = tex;
+          backdropGate.loaded(token);
+        },
+        undefined,
+        (err) => {
+          if (disposed) return;
+          console.warn("Backdrop failed to load:", environment.file, err);
+          backdropGate.failed(token);
+        }
+      );
+    }
     return () => {
       disposed = true;
       if (texture) texture.dispose();
       scene.background = null;
+      backdropGate.clear(token);
     };
   }, [scene, environment]);
 
@@ -921,7 +955,7 @@ function StudioStage({
   // Turntable preview. The selection outline (a child of the transform group,
   // so it would not turn with the model) and the ring are hidden while it plays.
   const setOverlaysHidden = useCallback((hidden) => {
-    const outline = transformRef.current?.getObjectByName("selection-outline");
+    const outline = transformRef.current?.getObjectByName(OUTLINE_NAME);
     if (outline) outline.visible = !hidden;
     const partOverlay = transformRef.current?.getObjectByName(OVERLAY_NAME);
     if (partOverlay) partOverlay.visible = !hidden;
@@ -1269,7 +1303,10 @@ function StudioStage({
     });
     return () => {
       stopPreview({ restore: false });
-      finishExport({ restoreCamera: false, render: false });
+      // Cleanup slice: an export this ends can never finish, so its Garage
+      // lock goes now (the rail's finally releases it again, harmlessly);
+      // otherwise the next stage's startLayout would be refused as locked.
+      if (finishExport({ restoreCamera: false, render: false })) garageStore.setLocked(false);
       unregister();
     };
   }, [startPreview, stopPreview, beginExport, stepExport, finishExport, gl.domElement]);
@@ -1631,7 +1668,7 @@ function StudioStage({
     if (!parent) return undefined;
     const shells = buildOutlineShells(modelMeshes, fit.center, parent);
     const group = new THREE.Group();
-    group.name = "selection-outline";
+    group.name = OUTLINE_NAME;
     group.add(...shells);
     parent.add(group);
     return () => {
@@ -2729,6 +2766,7 @@ function StudioStage({
           Garage G5: same liveFit centre/footprint, same pinned fit.floorY. */}
       <mesh
         ref={ringRef}
+        name={RING_NAME}
         visible={selected}
         rotation={[-Math.PI / 2, 0, 0]}
         position={[liveFit.center.x, fit.floorY + 0.006, liveFit.center.z]}

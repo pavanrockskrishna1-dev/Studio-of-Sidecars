@@ -1,5 +1,7 @@
+import { useSyncExternalStore } from "react";
 import Icon from "./icons";
 import { exportPng } from "./engineCapture";
+import { backdropGate, exportsAllowed, GATE_LABEL } from "../capture/exportGate";
 
 /* ==========================================================================
    Top header (Agent #2 · UI ONLY)
@@ -28,6 +30,9 @@ export default function TopHeader({
   onProjectNameBlur,
   session,
 }) {
+  // Cleanup slice: Export waits for the environment backdrop to load.
+  const gate = useSyncExternalStore(backdropGate.subscribe, backdropGate.getSnapshot, backdropGate.getSnapshot);
+  const exportBlocked = !exportsAllowed(gate);
   return (
     <header className="sos-topbar sos-panel" aria-label="Studio header">
       <div className="sos-brand">
@@ -119,10 +124,15 @@ export default function TopHeader({
           type="button"
           className="sos-btn sos-btn-primary"
           data-testid="ui-export"
-          title="Export PNG — captures the current view with the chosen format (same as Capture Shot)"
+          title={
+            exportBlocked
+              ? "Waiting for the environment backdrop to load"
+              : "Export PNG — captures the current view with the chosen format (same as Capture Shot)"
+          }
+          disabled={exportBlocked}
           onClick={exportPng}
         >
-          Export
+          {exportBlocked ? GATE_LABEL : "Export"}
           <Icon name="upload" size={15} />
         </button>
         <button

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { backdropGate, exportsAllowed, GATE_LABEL } from "../capture/exportGate";
 import { ENVIRONMENTS } from "../environments/registry";
 import { PRODUCTS } from "../products/registry";
 import { EXPORT_PRESETS, EXPORT_SCALES } from "../capture/exportOptions";
@@ -499,10 +500,14 @@ function ExportOptions({ exportOpts, onChange }) {
 // (environment, model, transform, camera, selection) and changes nothing.
 function CaptureRow({ onCapture }) {
   const [hover, setHover] = useState(false);
+  // Cleanup slice: disabled until the environment backdrop has loaded.
+  const gate = useSyncExternalStore(backdropGate.subscribe, backdropGate.getSnapshot, backdropGate.getSnapshot);
+  const blocked = !exportsAllowed(gate);
   return (
     <button
       data-testid="capture-shot"
-      title="Capture the current view as a PNG"
+      title={blocked ? "Waiting for the environment backdrop to load" : "Capture the current view as a PNG"}
+      disabled={blocked}
       onClick={onCapture}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -521,7 +526,8 @@ function CaptureRow({ onCapture }) {
         border: "1px solid rgba(232,181,77,0.35)",
         background: hover ? "rgba(232,181,77,0.18)" : "rgba(232,181,77,0.06)",
         color: GOLD,
-        cursor: "pointer",
+        cursor: blocked ? "default" : "pointer",
+        opacity: blocked ? 0.5 : 1,
       }}
     >
       {/* shutter glyph */}
@@ -536,7 +542,7 @@ function CaptureRow({ onCapture }) {
         />
         <circle cx="6" cy="6" r="2" fill="currentColor" />
       </svg>
-      Capture Shot
+      {blocked ? GATE_LABEL : "Capture Shot"}
     </button>
   );
 }

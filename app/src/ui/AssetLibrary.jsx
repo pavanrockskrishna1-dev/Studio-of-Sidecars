@@ -154,7 +154,7 @@ function matchesFilter(kind, item, filter) {
   if (filter === "imported") return item.source === "imported";
   if (filter === "builtin") return item.source !== "imported" && !item.placeholder;
   if (kind === "product") {
-    if (filter === "coffee") return item.id === "coffee-bike";
+    if (filter === "coffee") return item.id === "coffee-bike" || item.id === "the-kop-main";
     if (filter === "bbq") return item.id === "bbq-bike";
     if (filter === "aircraft") return item.id === "cessna-172" || (item.source === "imported" && item.category === "Aircraft");
   }
