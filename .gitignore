@@ -39,3 +39,6 @@ Thumbs.db
 
 # sandbox marker
 .sudo_as_admin_successful
+
+*.blend
+*.blend1

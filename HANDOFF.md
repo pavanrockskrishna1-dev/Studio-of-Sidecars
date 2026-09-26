@@ -1,6 +1,6 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
-## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G8 (G7 in two parts, G7a and G7b) and G11 (3D gizmo), and the THE KOP MAIN product; HEAD `56d2e3b`, "Garage G11: 3D gizmo (move/rotate/scale, snap, local/world, W/E/R, scale cap 100)"; all work through Garage G11 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
+## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G8 (G7 in two parts, G7a and G7b) and G11 (3D gizmo), the Cleanup slice (G9, the export lock, the backdrop gate, the Coffee Bike chip fix, scale max 100), Garage M0 (real size and the measure tool), the THE KOP MAIN product, and the move of the Blender working files out of the repo; HEAD `2a6cd74`, "M0: measure and real size (sizes, calibration, file-in-metres, cm/in, measure tool)"; all work through M0 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
   (r186, `@react-three/fiber` + drei) creator studio in `app/src`. Everything
@@ -875,11 +875,12 @@ Items marked "unverified" were not re-checked here.
   Blender source `app/public/blender/THE_KOP_Studio_v01.blend` has not been opened
   (the file's presence and contents were not checked here: unverified).
 
-## Phase 18 - Garage (scene editor): design and slices G1-G8 and G11
+## Phase 18 - Garage (scene editor): design and slices G1-G8, G11, the Cleanup slice and M0
 
-Status: designed; slices G1-G8 and G11 are committed (G1 `6226ba2`, G2 `3b7d9fb`, G3 `3527c6c`,
-G4 `d278ef3`, G5 `e829e1b`, G6 `86f445e`, G8 `15c1995`, G7a `12ef43b`, G7b `3ef75ff`, G11
-`56d2e3b`); G9 and G10 are not started. G1 and G2 were pure modules
+Status: designed; slices G1-G8, G11, the Cleanup slice and M0 are committed (G1 `6226ba2`, G2
+`3b7d9fb`, G3 `3527c6c`, G4 `d278ef3`, G5 `e829e1b`, G6 `86f445e`, G8 `15c1995`, G7a `12ef43b`,
+G7b `3ef75ff`, G11 `56d2e3b`, Cleanup `8a370eb`, M0 `2a6cd74`); G9 is done, folded into the
+Cleanup slice; G10 is not started. G1 and G2 were pure modules
 and tests only, with nothing wired into the app (`git show --stat` on each commit: G1 touched
 only 6 new files under `app/src/garage/` and `app/scripts/test-garage.mjs`; G2 touched only 2
 new files, `app/src/garage/garageStore.js` and `app/scripts/test-garage-store.mjs`). G3 was
@@ -896,8 +897,12 @@ layouts (per-part overrides only) in the browser and as a `.json` file, with loa
 undo step. G7a added objects to the scene (built-in products and imported assets, beside the
 main product, under a triangle budget). G7b made layouts save and load those added objects
 (`formatVersion` 2). G11 added a 3D `TransformControls` gizmo (move / rotate / scale by
-dragging, W/E/R, World/Local, Snap) on the one selected part or added object. See the
-G2/G3/G4/G5/G6/G8/G7a/G7b/G11 summaries below.
+dragging, W/E/R, World/Local, Snap) on the one selected part or added object. The Cleanup slice
+removed the old outline/ring from exports (G9), wired the export lock to both exports, gated
+exports on the backdrop being ready, fixed the Asset Library "Coffee Bike" filter chip, and
+capped the numeric scale fields at 100. M0 added per-model real-size calibration, a cm/in
+toggle, and a two-point measure tool. See the G2/G3/G4/G5/G6/G8/G7a/G7b/G11/Cleanup/M0
+summaries below.
 
 ### The wish and the scope (owner)
 
@@ -989,13 +994,15 @@ exports:
   entries; selection is explicitly not itself an undo step and is not saved with the layout.
 - **A lock.** `setLocked(true)` makes `startLayout`, `loadLayout`, part/item edits and gesture
   commands refuse with `{ ok:false, reason:"locked" }` (selection is not blocked). The module
-  comment frames this as an export lock, but as of this update nothing in `app/src` calls
-  `garageStore.setLocked` outside the module's own file (checked with a repo-wide grep for
-  this update) - it is a primitive a later slice (or G3/G4's own export path) can use, not yet
-  wired to the app's PNG/Reel export.
-- Nothing here implements Decisions 1-3 (floor-stays-at-original-base, PNG exports dropping
-  the outline/ring, no-turntable-with-several-objects); those remain for later slices per the
-  module's own comment.
+  comment frames this as an export lock; at G2 it was a primitive nothing else called (checked
+  with a repo-wide grep for the G2 update). **Wired in the Cleanup slice (`8a370eb`):**
+  `capture/exportGate.js`'s `withExportLock` calls it around every PNG capture and Reel export,
+  released in a `finally` so it always releases, including on a throw, a cancelled export, or
+  the stage unmounting mid-export for a product switch. See "Cleanup slice" below.
+- Decision 3 (no-turntable-with-several-objects) was replaced by G7a's decision 7 (one scene:
+  the turntable and every export include added objects). Decision 2 (PNG exports dropping the
+  outline/ring) was implemented as G9 in the Cleanup slice below. Decision 1
+  (floor-stays-at-original-base) is `floorYFor` in `bounds.js`, used since G1.
 
 `app/scripts/test-garage-store.mjs` (815 lines) prints 219 PASS lines (counted for this
 update; owner-reported count matches).
@@ -1442,6 +1449,128 @@ count matches). The owner separately ran all twelve node test scripts himself af
 `test-garage-color` 60, `test-garage-layouts` 64, `test-garage-objects` 84,
 `test-garage-layouts-v2` 119, `test-garage-gizmo` 102, all 0 FAIL.
 
+### Cleanup slice - old outline out of exports, export lock, backdrop gate, Coffee Bike chip, scale max 100 (commit `8a370eb`)
+
+Touches 7 files (`git show --stat 8a370eb`, 602 insertions, 41 deletions): a new pure module
+`app/src/capture/exportGate.js` (140 lines; no three.js, no DOM, no React), `app/src/
+components/StudioCanvas.jsx` (84 lines changed), `app/src/ui/InspectorRail.jsx` (48),
+`app/src/ui/TopHeader.jsx` (14), `app/src/components/StudioControls.jsx` (14), `app/src/ui/
+AssetLibrary.jsx` (2, the Coffee Bike chip fix) and a new test script `app/scripts/
+test-cleanup.mjs` (341 lines). This is Garage G9 plus the export-lock and backdrop items left
+open in "Next slices" after G11.
+
+- **Owner-approved decisions** (`exportGate.js`'s own numbering).
+  1. PNG exports stop including the gold whole-model selection outline and footprint ring
+     (G9): `CaptureBridge`'s capture function now hides four named scene objects for the
+     synchronous export render and restores them afterward - the part overlay, the gizmo
+     helper, the outline (its literal name `"selection-outline"` became the shared constant
+     `OUTLINE_NAME`) and a new `RING_NAME` (`"selection-ring"`, now set as the footprint ring
+     mesh's `name`). `EXPORT_HIDDEN_NAMES` lists all four; a Reel export already hid the
+     outline and ring through `setOverlaysHidden`, so this closes the PNG-only gap.
+  2. **The export lock.** `withExportLock(store, fn)` calls `garageStore.setLocked(true)`
+     before `fn` runs and releases it in a `finally`, so it always releases: on success, on a
+     throw or rejection, and on a cancelled export. Only a call that actually acquired the lock
+     releases it (`r.ok && r.changed`), so it never steals a lock someone else holds. Wired at
+     both PNG capture (`CaptureBridge`) and Reel export (`InspectorRail`'s
+     `handleExportClick`); `GarageSection`'s existing `busy` prop now also reads
+     `garageState.locked`, so Garage edits are refused for the length of either export. On
+     stage unmount mid-export (a product switch), the cleanup effect calls
+     `garageStore.setLocked(false)` when `finishExport` reports it actually aborted a live
+     export, so a lock never survives past the export that set it.
+  3. **The backdrop gate.** A small state machine (`BACKDROP_STATUS`: `loading` / `ready` /
+     `failed` / `none`) tracks the current environment's backdrop load, with a token per load
+     attempt so a late result from an environment or product already switched away is ignored.
+     Every export button (Capture Shot, header Export, rail Export PNG, rail Export Reel)
+     disables itself and shows "Loading backdrop..." (`GATE_LABEL`) while `loading`; `failed`
+     never blocks exports (a `console.warn` plus a rail warning, `BACKDROP_FAILED_WARNING`,
+     "The backdrop photo could not be loaded. Exports will not include it."); an environment
+     with no photo file is `none` and ready at once. This closes the pre-existing G7a finding
+     that an export could fire before the backdrop had loaded.
+  4. **The Coffee Bike filter chip.** `AssetLibrary.jsx`'s `matchesFilter` now also matches
+     `item.id === "the-kop-main"` under the `"coffee"` filter, so THE KOP MAIN lists alongside
+     Coffee Bike (Open Issue 16).
+  5. **Scale max 100.** `clampFieldScale(n)` clamps to `[MIN_SCALE, MAX_SCALE]` (0.05 to 100,
+     importing the gizmo's own constants so the two caps can never drift apart); `NaN` or a
+     non-number returns `MIN_SCALE`. Used by every Garage numeric scale field: the per-part
+     axis and uniform scale fields (`GarageEditFields`) and the added-object uniform scale
+     field (`GarageObjectFields`) - previously they only floored at 0.05 with no ceiling (the
+     "no maximum" item left open at G11).
+- **Not touched:** `garageStore.js` itself (its existing lock primitive is now only called from
+  `exportGate.js`); the gizmo's own `MAX_SCALE`/`MIN_SCALE` values (reused, not changed); G10
+  (virtual parts, still not started).
+- **Verification.** `node scripts/test-cleanup.mjs` prints 109 PASS lines, 0 FAIL, exit code 0,
+  ending with `ALL CHECKS PASSED (109 PASS)` (the 13th node test script; run and counted for
+  this documentation update). No browser/PNG verification for this commit is recorded in the
+  repo; lint and build were not run for this documentation update.
+
+### M0 - real size and the measure tool (commit `2a6cd74`)
+
+Touches 4 files (`git show --stat 2a6cd74`, 915 insertions, 17 deletions): a new pure module
+`app/src/garage/measure.js` (275 lines; no three.js, no DOM, no React, in the pattern of
+`gizmo.js`), `app/src/components/StudioCanvas.jsx` (231 lines changed), `app/src/ui/
+InspectorRail.jsx` (230) and a new test script `app/scripts/test-measure.mjs` (197 lines).
+
+- **Owner-approved decisions 1-7** (`measure.js`'s own numbering; UI in `InspectorRail.jsx`).
+  1. The rail's Size line shows W x H x D for the selected part or added object: real units
+     once calibrated (for example "132.1 x 55.9 x 55.9 cm"), else the existing "(model units,
+     real size unknown)" fallback (`formatSize`). Size is now read from a MODEL-local box
+     (`modelUnitBox`, relative to `modelScene`) instead of the mesh's world box, so it excludes
+     the whole-model Transform panel's position/rotation/scale and the turntable pivot groups.
+     `describeMesh`'s only consumer is the Garage rail read-out (verified with a repo-wide
+     search for this update).
+  2. **Set real size:** pick an axis (Width/Height/Depth) and type a real length in cm or in;
+     `deriveCalibration` divides that length (in metres) by the chosen axis's current
+     model-unit size to get one `metersPerModelUnit` factor for the whole model. Validation:
+     the length must be greater than 0 and at most `MAX_REAL_LENGTH_M` (100 m), and the chosen
+     axis must be larger than `MIN_AXIS_MODEL_UNITS` (1e-6) - each rejected with its own
+     message, with nothing saved.
+  3. **"File is in metres"** (`markAsMetres`): a one-click shortcut that writes a calibration of
+     exactly 1 (1 model unit = 1 m), the same storage shape as Set real size.
+  4. Calibration is stored PER MODEL, on this device, in `localStorage` under
+     `sos-units:<assetId>` (`calibrationKey`), for built-in and imported assets alike - the same
+     asset calibrated once covers every part of it and every place it is added to the scene.
+  5. Not part of undo, and not saved in Garage layouts: calibration is a device-level fact about
+     a model, not a scene edit, so it is written straight to `localStorage`
+     (`writeCalibration`, bypassing `garageStore` entirely) and is invisible to
+     `layoutLibrary.js`'s save/load.
+  6. **Reset real size** (`clearCalibration`) removes the stored calibration; the Size line and
+     the measure label fall back to the model-units string immediately.
+  7. Real size is a label only: no geometry, transform, or export is affected by calibrating -
+     only what the rail and the measure label print changes.
+  8. **cm/in toggle** (`GarageUnitsToggle`, storage key `sos-units-display`, default `"cm"`): one
+     global chip pair drives every Size line and the measure label alike, since both read
+     `measure.js`'s live `unit` field from the one shared store instance.
+  9. **The measure tool** (`GarageMeasureSection`, a `garage-measure` scene-root group): a
+     "Measure: on/off" toggle; the first click on a visible surface (the main product or any
+     added object, regardless of the Parts switch) sets point A, the next sets point B and
+     draws a line plus a floating distance label at the midpoint; a third click starts a fresh
+     pair. Clicking while Measure is on never selects a part (checked before the part-selection
+     raycast). The tool is hidden while the turntable plays or an export runs (folded into the
+     existing `setOverlaysHidden`) and is separately listed in `EXPORT_HIDDEN_NAMES` for PNG
+     captures, so it is never in an export. Esc clears the current pair without turning Measure
+     off; the pair is also cleared on a product switch. The label always uses the MAIN
+     product's own calibration and divides out only the whole-model Transform panel's uniform
+     scale.
+- **Not touched:** `garageStore.js`, `layoutLibrary.js`, `gizmo.js` (its `MIN_SCALE`/`MAX_SCALE`
+  are only imported, not changed), the undo/redo history.
+
+#### M0 evidence summary (owner facts; the harness and its output are not in the repo)
+
+- PNG export sha256 was identical between the ORIGINAL code and the current code for both
+  Coffee Bike and THE KOP MAIN, across 3 repeats each.
+- A PNG exported after calibrating a model and after drawing a measure line was unchanged from
+  a PNG exported before either action (the measure group and its label sprite are excluded from
+  every export, per Decision 9 above).
+- `renderer.info` (geometries/textures) showed no growth across repeated calibrate/measure
+  cycles.
+- Invalid inputs were refused: a zero or negative real length, a length over 100 m, and
+  calibrating from an axis at or below `MIN_AXIS_MODEL_UNITS`.
+- The owner's own click test passed on 26 Sep.
+
+**Verification.** `node scripts/test-measure.mjs` prints 62 PASS lines, 0 FAIL, exit code 0,
+ending with `ALL CHECKS PASSED (62 PASS)` (the 14th node test script; run and counted for this
+documentation update). Lint and build were not run for this documentation update.
+
 ### Slice plan
 
 | Slice | What | Status | Owner approval needed when reached |
@@ -1455,13 +1584,14 @@ count matches). The owner separately ran all twelve node test scripts himself af
 | G7a | Add objects from the library (place, edit, remove; triangle budget; switch confirm) | **Done** (`12ef43b`) | **yes** (budget, placement, switch confirm, and two STOPs) - given |
 | G7b | Layouts save and load added objects (`formatVersion` 2) | **Done** (`3ef75ff`) | **yes** (format 2 rules and one STOP) - given |
 | G8 | Save and load layouts | **Done** (`15c1995`) | no |
-| G9 | Exclude the outline and ring from exports | not started | **yes** (PNGs lose the outline and ring) |
+| G9 | Exclude the outline and ring from exports | **Done** (`8a370eb`, as part of the Cleanup slice) | **yes** (PNGs lose the outline and ring) - given |
 | G10 | Virtual-part split | not started | no |
 | G11 | TransformControls gizmo | **Done** (`56d2e3b`) | **yes** (gizmo rules and the scale cap of 100) - given |
 
 Suggested order (from the report): G1, G2, G3, G4, G5, G6, G8, G7, G9, G10, G11. Each slice
-is independently shippable. Done so far, in that order: G1-G6, G8, G7a, G7b, G11 (G11 was
-built before G9 and G10).
+is independently shippable. Done so far, in that order: G1-G6, G8, G7a, G7b, G11, G9 (G11 and
+G9 were both built out of order - G11 before G9, and G9 as part of the Cleanup slice,
+`8a370eb`); G10 is not started.
 
 ### How to verify
 
@@ -1472,11 +1602,14 @@ lines), `node scripts/test-garage-part-edit.mjs` (65 PASS lines), `node scripts/
 test-garage-refit.mjs` (55 PASS lines), `node scripts/test-garage-color.mjs` (60 PASS
 lines), `node scripts/test-garage-layouts.mjs` (64 PASS lines), `node scripts/
 test-garage-objects.mjs` (84 PASS lines), `node scripts/test-garage-layouts-v2.mjs` (119 PASS
-lines), `node scripts/test-garage-gizmo.mjs` (102 PASS lines). Count the lines that start with
-PASS. Observed when this section was written: 192, 84, 161, 219, 67, 65, 55, 60, 64, 84, 119
-and 102, no FAIL lines (owner-reported for all twelve after G11; the test-garage-gizmo count
-was also run and counted by the author of the G11 update and matches, exit 0). Lint and build
-were not run for this documentation update.
+lines), `node scripts/test-garage-gizmo.mjs` (102 PASS lines), `node scripts/test-cleanup.mjs`
+(109 PASS lines), `node scripts/test-measure.mjs` (62 PASS lines). Count the lines that start
+with PASS. Observed when this section was written: 192, 84, 161, 219, 67, 65, 55, 60, 64, 84,
+119, 102, 109 and 62, no FAIL lines (run and counted for this documentation update; the first
+twelve match the owner's own count after G11). Fourteen scripts now (13 -> 14 with this
+update: the Cleanup slice added `test-cleanup.mjs` as the 13th, M0 adds `test-measure.mjs` as
+the 14th); their PASS lines sum to 1,443. Lint and build were not run for this documentation
+update.
 
 | Script | PASS lines |
 |---|---|
@@ -1492,6 +1625,9 @@ were not run for this documentation update.
 | `test-garage-objects.mjs` | 84 |
 | `test-garage-layouts-v2.mjs` | 119 |
 | `test-garage-gizmo.mjs` | 102 |
+| `test-cleanup.mjs` | 109 |
+| `test-measure.mjs` | 62 |
+| **Total** | **1,443** |
 
 ### Verification harness notes
 
@@ -1525,16 +1661,32 @@ Learned while verifying G11 (owner facts; the harness itself is not in the repo)
 - **After a background run, the agent may not wake itself.** The owner nudges it to check its
   log.
 
+Learned while verifying the Cleanup slice and M0 (owner facts; the harness itself is not in the
+repo):
+
+- **Agents skip the pre-edit baseline.** The fallback is a clean-`HEAD` build (`git worktree`
+  or `git archive`) used as ORIGINAL, built before the first edit.
+- **The identity check is the exported PNG's sha256, not the on-screen canvas hash.** The
+  canvas hash is non-deterministic across repeats even on unchanged code (see "Learned while
+  verifying G8" above); this recurred and is worth repeating here.
+- **Build and scratch folders go OUTSIDE the repo.**
+- **A VS Code reload interrupts a running agent** (see "Learned while verifying G11" above;
+  this recurred).
+- **Low RAM blocks browser checks.** Restart the machine with only VS Code open before running
+  browser verification (see "Learned while verifying G7a" above; this recurred).
+- **A long one-line PowerShell paste can crash PSReadLine in a small terminal.** Make the
+  terminal taller, or use shorter commands, to avoid it.
+
 ### Next slices
 
 - **G11 - 3D `TransformControls` gizmo** is done (`56d2e3b`).
-- **Next: a cleanup slice:** G9 (keep the old gold outline and ring out of exports; needs owner
-  approval); wire the `garageStore.setLocked` export lock; gate exports on the backdrop
-  texture being ready (the pre-existing finding under G7a); fix the Asset Library "Coffee
-  Bike" filter chip (Open Issue 16). Candidates for the owner to decide: a maximum scale of 100
-  on the numeric scale fields (the gizmo already caps at 100, see G11), and a gizmo pivot at
-  each part's centre instead of the part's origin (see G11, "Known quirk").
-- **Then G10** (virtual parts: the virtual-part split).
+- **The cleanup slice is done (`8a370eb`):** G9 (the old gold outline and ring out of exports),
+  the export lock wired to both PNG and Reel export, the backdrop gate (the pre-existing
+  finding under G7a), the Asset Library "Coffee Bike" filter chip fix (Open Issue 16), and a
+  maximum scale of 100 on the numeric scale fields. See "Cleanup slice" above. Still open: a
+  gizmo pivot at each part's centre instead of the part's origin (see G11, "Known quirk").
+- **M0 (real size and the measure tool) is done (`2a6cd74`).** See "M0" above.
+- **Next: G10** (virtual parts: the virtual-part split).
 
 ## Products and models
 
@@ -1646,7 +1798,7 @@ Resolved: **CAM-001** (camera presets ignored a transformed model) and **CAM-002
 | Loading Screen | Complete | Real GLB progress via drei `useProgress` (see Known Limitations for the environment-switch flash). |
 | HDRI Environment Library | Partial | 2 of 11 environments have a real HDR; the other 9 use the probe plus a flat JPG. |
 | Animation Studio | Partial | Phase 16B (`c99fd69`, `f25d884`, `c936232`, `0b7c2ce`, `ea2482c`, `936f6d5`): Turntable preview and Reel export work (the model spins; the camera is fixed). No GLB animation mixer, no camera moves UI, no saving in sessions. See "Phase 16B". |
-| Garage (scene editor) | Partial | Slices G1-G8 and G11 are done (G7 as G7a `12ef43b` and G7b `3ef75ff`; G11 `56d2e3b`, the latest): part selection by click behind a Parts switch, per-part move/rotate/scale/hide with exact reset and undo, the refit event, per-part colour, save/load of named layouts, adding up to 5 objects under a 1,000,000-triangle budget, layouts that save the added objects (`formatVersion` 2), and a 3D `TransformControls` gizmo on the one selected part or added object. The cleanup slice (including G9) is next, then G10; G9 and G10 are not started. See "Phase 18". |
+| Garage (scene editor) | Partial | Slices G1-G8, G11, the Cleanup slice (G9) and M0 are done (G7 as G7a `12ef43b` and G7b `3ef75ff`; G11 `56d2e3b`; Cleanup `8a370eb`; M0 `2a6cd74`, the latest): part selection by click behind a Parts switch, per-part move/rotate/scale/hide with exact reset and undo, the refit event, per-part colour, save/load of named layouts, adding up to 5 objects under a 1,000,000-triangle budget, layouts that save the added objects (`formatVersion` 2), a 3D `TransformControls` gizmo, exports that exclude the old outline/ring and wait for the backdrop, an export lock, and per-model real-size calibration with a cm/in toggle and a two-point measure tool. G10 (virtual parts) is not started. See "Phase 18". |
 | Products | 3 built-in | Coffee Bike, Cessna 172, THE KOP MAIN (`97dd1ac`, heavy: 483,311 triangles). See "Products and models". |
 
 Status is judged from code reading, not from a fresh browser run in this update.
@@ -1668,8 +1820,26 @@ Status is judged from code reading, not from a fresh browser run in this update.
 13. THE KOP MAIN (`97dd1ac`) is heavy: 483,311 triangles and 753 draw calls. Its speed was only tested by the owner in his browser (smooth orbit, Turntable and a 4 s Reel), not measured. Whether clicking to select its 753 parts is smooth was not reported, and the selection outline on 753 parts is unmeasured.
 14. MAIN's material "Material" has a clearcoat factor of 3 (outside 0 to 1); how the loader and the app react is untested. Its sign parts are named "Temporary ..." (placeholders).
 15. Terms of use: the Tripo terms are unchecked for the Cessna, and for MAIN's 98 `tripo_part` pieces (Tripo origin inferred from the names; the owner confirms).
-16. The "Coffee Bike" filter chip in the Asset Library tests `id === "coffee-bike"`, so THE KOP MAIN does not appear under it.
-17. Next Garage step: a cleanup slice (G9 outline and ring out of exports, wire the export lock, gate exports on the backdrop being ready, the Asset Library "Coffee Bike" chip fix; to decide: a maximum scale of 100 on the numeric fields, and a gizmo pivot at the part centre), then G10 (virtual parts). G7 is done (G7a `12ef43b`, G7b `3ef75ff`: the triangle budget and layout `formatVersion` 2 are built) and G11 is done (`56d2e3b`: the 3D `TransformControls` gizmo). See "Phase 18", "Next slices".
+16. **Fixed in the Cleanup slice (`8a370eb`).** The "Coffee Bike" filter chip's `matchesFilter` now also matches `item.id === "the-kop-main"`, so THE KOP MAIN lists under it alongside Coffee Bike.
+17. **The cleanup slice is done (`8a370eb`):** G9 (outline and ring out of exports), the export lock, the backdrop gate, the Coffee Bike chip fix (see 16 above), and a maximum scale of 100 on the numeric fields. **M0 is done (`2a6cd74`):** real-size calibration and the measure tool (see "Phase 18", "M0"). Next Garage step: G10 (virtual parts). G7 is done (G7a `12ef43b`, G7b `3ef75ff`: the triangle budget and layout `formatVersion` 2 are built) and G11 is done (`56d2e3b`: the 3D `TransformControls` gizmo). See "Phase 18", "Next slices".
+18. Lighting sliders are NOT locked during a Reel export: the Cleanup slice's export lock covers Garage edits only; the rail's Lighting section is untouched.
+19. Real-scale mismatch: a calibrated added object does not display at the main product's real scale - about 19.5% off in one owner test. A "Match real scale" slice is planned; see "Roadmap".
+20. The cm/in toggle appeared to reset to cm when switching product (the owner saw "in" on Coffee Bike, then "cm" on THE KOP MAIN after switching); by the code (`sos-units-display`) it is meant to be one global setting, so this needs investigating.
+21. Reels are turntable only: no camera moves or multi-shot Reels yet; see "Roadmap", C2.
+
+## Roadmap
+
+In order, per the owner (none started unless noted otherwise):
+
+1. **C1 - Poster studio.**
+2. **C2 - camera moves / multi-shot Reels** (Reels are turntable only today; see Open Issue 21).
+3. **C3 - detail tour.**
+4. **C4 - GLB animation playback + part keyframes.**
+5. **Import inspector.**
+6. **Match real scale** (a calibrated added object should display at the main product's real scale; see Open Issue 19, about 19.5% off in one owner test).
+7. **Modeling:** M1a (shapes/pipes), M1b (extrude + 3D text), M2 (boolean cut, via `three-bvh-csg`), M3 (export GLB).
+8. **G10** (Garage virtual parts; see "Phase 18").
+9. **Later items:** batch export, colourway Reels, lock all controls during a Reel export (today only the Cleanup slice's Garage lock applies; Lighting is not locked, see Open Issue 18), Configurator.
 
 ## Resolved
 
@@ -1799,13 +1969,14 @@ Status is judged from code reading, not from a fresh browser run in this update.
   "Phase 18", G7b.
 - **Garage: "X parts skipped" on load is verified by the node tests only**, not clicked through
   in a browser. See "Phase 18", G8.
-- **Garage: the export lock is still unwired.** Nothing in `app/src` outside
-  `garageStore.js` calls `garageStore.setLocked` (checked with a grep for the G8 update; still
-  planned for the cleanup slice after G11).
-- **Exports can fire before the backdrop has loaded (pre-existing, not caused by G7a).** The
-  `TextureLoader` in `StudioStage` has no ready gate and Capture Shot has no disabled state.
-  Real users are covered by the loading overlay; scripted clicks are not. Planned for the
-  cleanup slice. See "Phase 18", G7a.
+- **Garage: the export lock is wired, fixed in the Cleanup slice (`8a370eb`).** `capture/
+  exportGate.js`'s `withExportLock` calls `garageStore.setLocked` around every PNG capture and
+  Reel export, released in a `finally` so it always releases, including on stage unmount for a
+  product switch mid-export. See "Phase 18", "Cleanup slice".
+- **Exports now wait for the backdrop, fixed in the Cleanup slice (`8a370eb`).** `capture/
+  exportGate.js`'s backdrop gate disables every export button and shows "Loading backdrop..."
+  while the current environment's texture loads; a failed load warns and allows exports without
+  it, so nothing gets stuck. See "Phase 18", "Cleanup slice".
 - **Canvas hash is not deterministic (pre-existing, not caused by G8).** The on-screen canvas
   hash of coffee-bike's default view varies across repeats even on unchanged code, while the
   exported PNG sha256 is stable. Use the exported PNG sha256 as the identity check. See
@@ -1818,9 +1989,10 @@ Status is judged from code reading, not from a fresh browser run in this update.
   to 100 or 0.05 (G11).** `TransformControls` flips the sign when the drag passes the centre;
   the gizmo caps scale drags at 0.05-100 (`MAX_SCALE`), and the jump is one undoable step.
   See "Phase 18", G11.
-- **Garage: the numeric scale fields have no maximum.** Only gizmo drags are capped at 100;
-  typing a larger value into a field is still accepted (a max of 100 on the fields is a
-  candidate for the cleanup slice). See "Phase 18", G11.
+- **Garage: the numeric scale fields are capped at 100, fixed in the Cleanup slice (`8a370eb`).**
+  `clampFieldScale` (`capture/exportGate.js`) clamps every Garage scale field (per-part and
+  added-object) to the gizmo's own 0.05-100 range, so typing 1000 now saves as 100. See
+  "Phase 18", "Cleanup slice".
 - **Garage: about 9 FPS with the gizmo on THE KOP MAIN.** Real-GPU FPS (Edge headless, Intel HD
   5500, owner facts): 10.98 with nothing selected, 8.92 with the gizmo visible. See "Phase 18",
   G11.
@@ -1830,9 +2002,20 @@ Status is judged from code reading, not from a fresh browser run in this update.
   `sos-materials`); the Materials panel's Undo/Reset/presets do not see or affect a Garage
   override, and vice versa. See "Phase 18", G6.
 - **THE KOP MAIN is heavy** (483,311 triangles, 753 draw calls): speed was only tested by the owner in his browser, not measured; the selection outline on 753 parts is unmeasured; the clearcoat factor 3 on the material "Material" is untested; its sign parts are "Temporary"; the 23 MB file is in git history for good; the Tripo origin of its 98 bike pieces is an inference and the terms are unchecked (also unchecked for the Cessna). See "Products and models".
-- **Gold ring and outline in PNG exports:** by code reading (unverified by a run) a plain PNG includes the gold selection outline and ring when something is selected; slice G9 is planned to remove them from exports.
-- **Coffee Bike filter chip** in the Asset Library tests the id `coffee-bike`, so THE KOP MAIN does not list under it.
+- **Gold ring and outline are out of PNG exports, fixed by G9 in the Cleanup slice (`8a370eb`).**
+  `CaptureBridge`'s capture hides the outline and ring (plus the part overlay and the gizmo) for
+  the synchronous export render and restores them afterward.
+- **Coffee Bike filter chip fixed in the Cleanup slice (`8a370eb`).** The chip now also matches
+  `id === "the-kop-main"`, so THE KOP MAIN lists under it too.
 - **Environments:** the other nine environments still have no platform data (see Phase 16B).
+- **Garage M0: a calibrated added object does not display at the main product's real scale.**
+  About 19.5% off in one owner test; a "Match real scale" slice is planned. See "Roadmap".
+- **Lighting sliders are not locked during a Reel export.** Only Garage edits are refused by
+  the Cleanup slice's export lock; the rail's Lighting section is untouched.
+- **The cm/in display toggle may not be as global as the code intends.** The owner saw "in" on
+  Coffee Bike reset to "cm" after switching to THE KOP MAIN, though `sos-units-display` is
+  meant to be one setting for every model; unverified, uninvestigated.
+- **Reels are turntable only.** No camera moves or multi-shot Reels yet; see "Roadmap".
 
 ## Project rules
 
@@ -1947,3 +2130,22 @@ boundaries UNVERIFIED against any release note).
   and `app/src/ui/InspectorRail.jsx`; `garageStore.js` unchanged; a `TransformControls` gizmo
   on the one selected part or added object, one undo step per drag, gizmo scale drags capped
   at 0.05-100 (see "Phase 18 - Garage", G11).
+- **Cleanup slice** — `8a370eb` ("Cleanup: old outline out of exports, export lock, backdrop
+  gate, Coffee Bike chip, scale max 100"): 7 files, 2 new (`app/src/capture/exportGate.js`,
+  `app/scripts/test-cleanup.mjs`) plus changes to `app/src/components/StudioCanvas.jsx`,
+  `app/src/ui/InspectorRail.jsx`, `app/src/ui/TopHeader.jsx`,
+  `app/src/components/StudioControls.jsx` and `app/src/ui/AssetLibrary.jsx`; Garage G9 (the old
+  outline/ring out of exports), the export lock wired to PNG and Reel export, a backdrop-ready
+  gate on every export button, the Coffee Bike filter chip fix, and a 100 cap on the numeric
+  scale fields (see "Phase 18 - Garage", "Cleanup slice").
+- **Move Blender working files out of the repo** — `bc3926d`: deletes
+  `app/public/blender/THE_KOP_Studio_v01.blend` and `.blend1` (17,856,648 and 17,856,856 bytes)
+  from the working tree; both remain in git history. `.gitignore` was given `*.blend` and
+  `*.blend1` entries in this HANDOFF.md update so they cannot be re-added by accident.
+- **Garage M0** — `2a6cd74` ("M0: measure and real size (sizes, calibration, file-in-metres,
+  cm/in, measure tool)"): 4 files, 2 new (`app/src/garage/measure.js`,
+  `app/scripts/test-measure.mjs`) plus changes to `app/src/components/StudioCanvas.jsx` and
+  `app/src/ui/InspectorRail.jsx`; `garageStore.js` and `layoutLibrary.js` unchanged; per-model
+  real-size calibration (Set real size, File is in metres, Reset real size), a global cm/in
+  display toggle, and a two-point measure tool, never in undo or layouts and never in an export
+  (see "Phase 18 - Garage", "M0").
