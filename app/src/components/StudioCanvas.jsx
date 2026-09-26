@@ -40,6 +40,7 @@ import {
   photoToFrame,
   withBackdropCrop,
 } from "../capture/backdropCrop";
+import { getPosterSpec, posterAspectOk, drawPoster, ensureLogoImage } from "../poster/poster.js";
 
 const FOV = 45;
 
@@ -590,6 +591,42 @@ function CaptureBridge({ captureRef, reelViewRef }) {
         throw err;
       } finally {
         for (const [obj, wasVisible] of hidden) obj.visible = wasVisible;
+      }
+      // Slice C1a (owner decisions 1-2, 7): the poster is a 2D layer drawn OVER
+      // the finished exported frame, never touching the 3D scene, camera,
+      // lights or Garage. With Poster off (or an aspect other than 4:5/1:1)
+      // this whole branch is skipped and the export below is byte-identical to
+      // pre-C1a. When it applies, the WebGL frame is copied into an offscreen
+      // 2D canvas via drawImage — which, like toBlob below, copies the bitmap
+      // synchronously at call time (HTML spec) — so the live camera still goes
+      // back in this SAME synchronous task; only the (async) font wait and PNG
+      // encode of that offscreen canvas happen after.
+      const posterSpec = getPosterSpec();
+      if (posterSpec && posterAspectOk(width, height)) {
+        const composed = document.createElement("canvas");
+        composed.width = width;
+        composed.height = height;
+        const ctx2d = composed.getContext("2d");
+        ctx2d.drawImage(gl.domElement, 0, 0, width, height);
+        restore();
+        if (restorePose) restorePose();
+        // Always await the logo image before drawing/encoding — never trust a
+        // synchronously-read cache, which can still be mid-decode the first
+        // time a kit's logo is used in a session. ensureLogoImage is itself
+        // cache-backed, so once decoded this await resolves immediately.
+        return Promise.all([document.fonts.ready, ensureLogoImage(posterSpec.kit?.id)]).then(
+          ([, logoImage]) =>
+            new Promise((resolve, reject) => {
+              drawPoster(ctx2d, width, height, { ...posterSpec, logoImage });
+              composed.toBlob((blob) => {
+                if (blob) {
+                  resolve({ blob, width, height });
+                } else {
+                  reject(new Error("Capture failed: canvas produced no image"));
+                }
+              }, "image/png");
+            })
+        );
       }
       return new Promise((resolve, reject) => {
         gl.domElement.toBlob(

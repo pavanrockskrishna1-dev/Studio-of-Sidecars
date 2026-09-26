@@ -173,13 +173,17 @@ export default function AssetGrid({ group, activeId, onSelect, collapsed }) {
   const [reveal, setReveal] = useState(null);
 
   const items = useMemo(() => {
+    // A stored imported asset can predate the name fallback in ImportPanel's
+    // save() and have no (or a non-string) `name` — never crash the search
+    // filter or the sort on it, fall back to the asset's id, then "".
+    const nameOf = (it) => (typeof it.name === "string" ? it.name : it.id || "");
     const q = query.trim().toLowerCase();
     const list = group.items.filter(
-      (it) => matchesFilter(group.kind, it, filter) && (!q || it.name.toLowerCase().includes(q))
+      (it) => matchesFilter(group.kind, it, filter) && (!q || nameOf(it).toLowerCase().includes(q))
     );
     const idx = new Map(group.items.map((it, i) => [it.id, i]));
     const stamp = (it) => it.importedAt || idx.get(it.id) || 0;
-    if (sort === "name") list.sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === "name") list.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
     if (sort === "newest") list.sort((a, b) => stamp(b) - stamp(a));
     if (sort === "oldest") list.sort((a, b) => stamp(a) - stamp(b));
     return list;

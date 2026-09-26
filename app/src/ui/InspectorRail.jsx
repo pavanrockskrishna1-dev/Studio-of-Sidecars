@@ -24,6 +24,7 @@ import { PRODUCTS } from "../products/registry";
 import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
+import PosterPanel from "./PosterPanel";
 import {
   backdropGate,
   exportsAllowed,
@@ -59,6 +60,7 @@ const SECTIONS = [
   { id: "render", name: "Render", sub: "output presets", icon: "render" },
   { id: "animate", name: "Animate", sub: "turntable preview", icon: "film" },
   { id: "garage", name: "Garage", sub: "pick parts by click", icon: "frame" },
+  { id: "poster", name: "Poster", sub: "PNG poster overlay", icon: "swatch" },
 ];
 
 /* --------------------------------------------------------------------------
@@ -1847,6 +1849,8 @@ export default function InspectorRail({
                 garageState={garageState}
                 busy={animState.mode !== "idle" || garageState.locked}
               />
+            ) : section.id === "poster" ? (
+              <PosterPanel />
             ) : (
               <>
                 <span className="sos-label">Format</span>
