@@ -19,6 +19,7 @@ import * as garageMode from "../garage/garageMode";
 import * as layoutLibrary from "../garage/layoutLibrary";
 import * as sceneObjects from "../garage/sceneObjects";
 import * as gizmo from "../garage/gizmo";
+import * as measure from "../garage/measure";
 import { PRODUCTS } from "../products/registry";
 import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
@@ -291,8 +292,6 @@ function RailCard({ section, open, onToggle, collapsed, onOpenFromStrip, childre
   );
 }
 
-const fmtUnits = (n) => (Number.isFinite(n) ? n.toFixed(3) : "?");
-
 // Garage G4 — a compact numeric field in the rail's own field style
 // (.sos-field / native input, already styled in ui-shell.css), mirroring the
 // whole-model transform panel's convention: commits on blur or Enter, keeps a
@@ -553,6 +552,143 @@ function GarageColorFields({ itemId, partId, busy }) {
   );
 }
 
+// Garage M0 — real-size calibration for the selected part or added object
+// (Owner decisions 1-4, 6): the Size line (real units once calibrated, the
+// existing "(model units, real size unknown)" fallback until then — the
+// SAME formatting measure.js's on-canvas label uses), an axis choice + a
+// typed real length to derive this MODEL's real-world scale, "File is in
+// metres", and "Reset real size". assetId is the OWNING model's asset id:
+// the main product's for a part, the object's own for an added object
+// (Owner decision 4 — calibration is per model, on this device, never per
+// selection). size is that selection's CURRENT model-unit box (already
+// including its own Garage scale — StudioCanvas's describeMesh /
+// getObjectModelSize), or null while it is not available yet.
+const SIZE_AXES = [
+  { key: "x", label: "Width" },
+  { key: "y", label: "Height" },
+  { key: "z", label: "Depth" },
+];
+
+function GarageSizeControls({ assetId, size, busy }) {
+  const measureState = useSyncExternalStore(measure.subscribe, measure.getSnapshot, measure.getSnapshot);
+  const [axis, setAxis] = useState("x");
+  const [draft, setDraft] = useState("");
+  const [message, setMessage] = useState("");
+  const storage = typeof localStorage === "undefined" ? null : localStorage;
+  // Re-read on every render: measureState (subscribed above) changes on a
+  // calibrationRev bump from ANY selection's Set real size / File is in
+  // metres / Reset real size, which is exactly the re-render trigger this
+  // needs — calibration itself is never cached here, storage stays the one
+  // source of truth (same convention as layoutLibrary's injected storage).
+  const calibration = measure.readCalibration(storage, assetId);
+
+  const setRealSize = () => {
+    const length = parseFloat(draft);
+    const r = measure.deriveCalibration({
+      axisModelUnits: size ? size[axis] : NaN,
+      length,
+      unit: measureState.unit,
+    });
+    if (!r.ok) {
+      setMessage(r.message);
+      return;
+    }
+    const ok = measure.writeCalibration(storage, assetId, r.metersPerModelUnit);
+    setMessage(ok ? "Real size set." : "Could not save: browser storage is unavailable or full.");
+    if (ok) measure.touchCalibration();
+  };
+
+  const fileIsMetres = () => {
+    const ok = measure.markAsMetres(storage, assetId);
+    setMessage(ok ? "Marked as metres (1 model unit = 1 m)." : "Could not save: browser storage is unavailable or full.");
+    if (ok) measure.touchCalibration();
+  };
+
+  const resetRealSize = () => {
+    measure.clearCalibration(storage, assetId);
+    setMessage("Real size cleared.");
+    measure.touchCalibration();
+  };
+
+  return (
+    <>
+      <span className="sos-label">Size</span>
+      <p className="sos-hint" data-testid="ui-garage-size">
+        <span>{measure.formatSize(size, calibration, measureState.unit)}</span>
+      </p>
+      <div className="sos-frow">
+        {SIZE_AXES.map((a) => (
+          <button
+            key={a.key}
+            type="button"
+            className="sos-pchip"
+            data-testid={`ui-garage-size-axis-${a.key}`}
+            data-on={axis === a.key || undefined}
+            aria-pressed={axis === a.key}
+            disabled={busy}
+            title={`Set real size along ${a.label}`}
+            onClick={() => setAxis(a.key)}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+      <div className="sos-fields">
+        <label className="sos-field">
+          <em>Real length ({measureState.unit})</em>
+          <input
+            type="number"
+            step={0.1}
+            data-testid="ui-garage-size-length"
+            disabled={busy}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+        </label>
+      </div>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-garage-size-set"
+          disabled={busy || draft === "" || !size}
+          title="Derive this model's real-world scale from the chosen axis"
+          onClick={setRealSize}
+        >
+          Set real size
+        </button>
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-garage-size-metres"
+          disabled={busy}
+          title="Mark this model's file as already being in metres (1 model unit = 1 m)"
+          onClick={fileIsMetres}
+        >
+          File is in metres
+        </button>
+      </div>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-garage-size-reset"
+          disabled={busy || calibration === null}
+          title="Remove this model's real-size calibration"
+          onClick={resetRealSize}
+        >
+          Reset real size
+        </button>
+      </div>
+      {message ? (
+        <p className="sos-hint" data-testid="ui-garage-size-status">
+          <span>{message}</span>
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 // Garage G7a — the selected ADDED object's whole-object fields (Decision 5):
 // position (m), rotation (degrees, Euler XYZ) and one uniform scale (at least
 // 0.05; the layout's item transform has no per-axis scale), plus hidden and
@@ -577,8 +713,12 @@ function GarageObjectFields({ itemId, busy }) {
     const r = api.setObjectHidden(itemId, !obj.hidden);
     setMessage(r.ok ? "" : r.message);
   };
+  // Garage M0 — the object's model-unit size (already including its own
+  // Garage scale, t.s) and the asset it's calibrated as (Owner decision 4).
+  const objSize = typeof api.getObjectModelSize === "function" ? api.getObjectModelSize(itemId) : null;
   return (
     <>
+      <GarageSizeControls assetId={obj.assetId} size={objSize} busy={busy} />
       <span className="sos-label">Object position</span>
       <div className="sos-fields">
         <GarageNumField label="X" unit="m" step={0.05} testId="ui-garage-object-pos-x" disabled={busy} value={t.x} onCommit={(v) => commit({ x: v })} />
@@ -813,6 +953,83 @@ function GarageGizmoControls({ isObject, busy }) {
   );
 }
 
+// Garage M0 — the cm/in display toggle (Owner decision 6): global, stored on
+// this device, drives every Size line and the measure tool's label alike
+// (both read measure.js's live `unit`, so this one chip covers all of them).
+function GarageUnitsToggle({ busy }) {
+  const measureState = useSyncExternalStore(measure.subscribe, measure.getSnapshot, measure.getSnapshot);
+  return (
+    <>
+      <span className="sos-label">Units</span>
+      <div className="sos-frow">
+        {measure.UNITS.map((u) => (
+          <button
+            key={u}
+            type="button"
+            className="sos-pchip"
+            data-testid={`ui-garage-units-${u}`}
+            data-on={measureState.unit === u || undefined}
+            aria-pressed={measureState.unit === u}
+            disabled={busy}
+            title={`Show real sizes in ${u === "cm" ? "centimetres" : "inches"}`}
+            onClick={() => measure.setUnit(u)}
+          >
+            {u}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// Garage M0 — the two-point measure tool (Owner decision 7): a Measure
+// toggle and a plain status line. The distance itself is never duplicated
+// here — StudioCanvas draws the one line + label in the view (it alone
+// knows the live whole-model Transform panel scale the conversion needs),
+// so the rail only reports how many points are picked.
+function GarageMeasureSection({ busy }) {
+  const measureState = useSyncExternalStore(measure.subscribe, measure.getSnapshot, measure.getSnapshot);
+  const status = measureState.pointA
+    ? measureState.pointB
+      ? "Two points picked — see the distance label in the view. Click again to start a new pair."
+      : "First point picked — click a second surface point."
+    : measureState.active
+      ? "Click two surface points on the main product or an added object."
+      : "";
+  return (
+    <>
+      <span className="sos-label">Measure</span>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-pchip"
+          data-testid="ui-garage-measure"
+          data-on={measureState.active || undefined}
+          aria-pressed={measureState.active}
+          disabled={busy}
+          title={
+            measureState.active
+              ? "Measure is ON: click two surface points to draw a distance line. Click to turn OFF."
+              : "Measure is OFF. Click to turn ON: click two surface points to draw a distance line."
+          }
+          onClick={measure.toggleActive}
+        >
+          {measureState.active ? "Measure: on" : "Measure: off"}
+        </button>
+      </div>
+      {status ? (
+        <p className="sos-hint" data-testid="ui-garage-measure-status">
+          <span>{status}</span>
+        </p>
+      ) : null}
+      <Hint>
+        Measure uses the main product&rsquo;s real-size calibration. Esc clears the current pair without
+        turning Measure off; switching product also clears it.
+      </Hint>
+    </>
+  );
+}
+
 // Garage G3/G4 — the Parts switch and the selected part's read-out (and, from
 // G4, its numeric edit fields when exactly one part is selected). All state
 // comes from the Garage stores; nothing here touches the engine directly.
@@ -857,6 +1074,8 @@ function GarageSection({ pickMode, garageState, busy }) {
           {pickMode ? "Parts: on" : "Parts: off"}
         </button>
       </div>
+      <GarageUnitsToggle busy={busy} />
+      <GarageMeasureSection busy={busy} />
       <div data-testid="ui-garage-readout">
         {count === 0 ? (
           <p className="sos-hint">
@@ -879,12 +1098,7 @@ function GarageSection({ pickMode, garageState, busy }) {
                 {first.triangles.toLocaleString()} triangles, {first.vertices.toLocaleString()} vertices
               </span>
             </p>
-            <p className="sos-hint">
-              <span>
-                Size {fmtUnits(first.size.x)} x {fmtUnits(first.size.y)} x {fmtUnits(first.size.z)}{" "}
-                (model units, real size unknown)
-              </span>
-            </p>
+            <GarageSizeControls assetId={garageState.primaryAssetId} size={first.size} busy={busy} />
             <p className="sos-hint">
               <span>Material: {first.materialName || "(unnamed)"}</span>
             </p>

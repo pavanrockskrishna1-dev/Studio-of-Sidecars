@@ -32,6 +32,7 @@ import { unionBounds, floorYFor } from "../garage/bounds";
 import * as sceneObjects from "../garage/sceneObjects";
 import * as layoutLibrary from "../garage/layoutLibrary";
 import * as gizmo from "../garage/gizmo";
+import * as measure from "../garage/measure";
 import { backdropGate, withExportLock } from "../capture/exportGate";
 import {
   backdropImageAspect,
@@ -75,7 +76,12 @@ const GIZMO_NAME = "garage-gizmo";
 // shadow catcher are the normal look and are never hidden.
 const OUTLINE_NAME = "selection-outline";
 const RING_NAME = "selection-ring";
-const EXPORT_HIDDEN_NAMES = [OVERLAY_NAME, GIZMO_NAME, OUTLINE_NAME, RING_NAME];
+
+// Garage M0 — the measure tool's line + label: an editor-only, scene-root
+// group (like the gizmo helper) every export hides, and every PNG export
+// hides by name exactly like the rest of EXPORT_HIDDEN_NAMES.
+const MEASURE_NAME = "garage-measure";
+const EXPORT_HIDDEN_NAMES = [OVERLAY_NAME, GIZMO_NAME, OUTLINE_NAME, RING_NAME, MEASURE_NAME];
 
 // Mission 6 (Transform Foundation) — the original transform reference. The
 // transform layer is a wrapper group starting at identity, so identity is the
@@ -307,14 +313,29 @@ function buildPartShells(meshes, parent) {
   return shells;
 }
 
-// Garage G3 — what the rail shows for one part (model units: the world box of
-// the part, so it includes the Scale slider).
-function describeMesh(mesh, partId) {
+// Garage M0 — a mesh's box in the MODEL's own local frame: relative to
+// modelScene, so it carries the mesh's full chain WITHIN the model (every
+// GLTF node transform, plus any Garage per-part override already baked into
+// the mesh's live local transform — Owner decision 1's "own Garage scale"),
+// but excludes everything ABOVE modelScene: the turntable pivot groups
+// (translation only, so this would not matter anyway) and, critically, the
+// old whole-model Transform panel's position/rotation/scale.
+function modelUnitBox(mesh, modelScene) {
+  mesh.updateWorldMatrix(true, false);
+  modelScene.updateWorldMatrix(true, false);
+  const rel = new THREE.Matrix4().copy(modelScene.matrixWorld).invert().multiply(mesh.matrixWorld);
+  const g = mesh.geometry;
+  if (!g.boundingBox) g.computeBoundingBox();
+  return g.boundingBox.clone().applyMatrix4(rel);
+}
+
+// Garage G3 — what the rail shows for one part (Garage M0: "model units" is
+// modelUnitBox above, not the mesh's world box — see its comment for why).
+function describeMesh(mesh, partId, modelScene) {
   const g = mesh.geometry;
   const vertices = g && g.attributes && g.attributes.position ? g.attributes.position.count : 0;
   const triangles = g ? Math.floor((g.index ? g.index.count : vertices) / 3) : 0;
-  mesh.updateWorldMatrix(true, false);
-  const size = new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3());
+  const size = modelUnitBox(mesh, modelScene).getSize(new THREE.Vector3());
   const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
   return {
     name: mesh.name || "(unnamed)",
@@ -324,6 +345,48 @@ function describeMesh(mesh, partId) {
     size: { x: size.x, y: size.y, z: size.z },
     materialName: mat && mat.name ? mat.name : "",
   };
+}
+
+// Garage M0 — a small canvas-texture label for the measure tool's distance
+// readout, in the same "paint on a canvas, wrap in a CanvasTexture" style as
+// materials/textures.js. Built fresh per label (labels change rarely — one
+// per pick, unit toggle or calibration edit — so no cache is needed).
+function makeLabelSprite(text) {
+  const scale = 2; // crisp on high-DPI screens
+  const paddingX = 14;
+  const height = 40;
+  const font = "600 22px system-ui, sans-serif";
+  const measuring = document.createElement("canvas").getContext("2d");
+  measuring.font = font;
+  const width = Math.ceil(measuring.measureText(text).width) + paddingX * 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  const r = 8;
+  ctx.fillStyle = "rgba(20, 20, 24, 0.85)";
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.arcTo(width, 0, width, height, r);
+  ctx.arcTo(width, height, 0, height, r);
+  ctx.arcTo(0, height, 0, 0, r);
+  ctx.arcTo(0, 0, width, 0, r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#f5deb3";
+  ctx.font = font;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.fillText(text, width / 2, height / 2 + 1);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  const material = new THREE.SpriteMaterial({ map: texture, depthTest: false, toneMapped: false });
+  const sprite = new THREE.Sprite(material);
+  const worldHeight = 0.05;
+  sprite.scale.set((width / height) * worldHeight, worldHeight, 1);
+  return sprite;
 }
 
 // Garage G7a — the triangles a subtree draws, counted per mesh node (the same
@@ -960,9 +1023,14 @@ function StudioStage({
     const partOverlay = transformRef.current?.getObjectByName(OVERLAY_NAME);
     if (partOverlay) partOverlay.visible = !hidden;
     if (ringRef.current) ringRef.current.visible = hidden ? false : selectedRef.current;
+    // Garage M0: the measure line/label, the same way (hidden while the
+    // turntable plays or a Reel export runs — Owner decision 7). PNG export
+    // hides it separately, by name, in CaptureBridge (EXPORT_HIDDEN_NAMES).
+    const measureGroup = scene.getObjectByName(MEASURE_NAME);
+    if (measureGroup) measureGroup.visible = hidden ? false : measure.getSnapshot().pointA != null;
     // Garage G11: the gizmo reads the preview / export refs itself.
     if (gizmoSyncRef.current) gizmoSyncRef.current();
-  }, []);
+  }, [scene]);
 
   // Ends the preview. `restore` puts the camera and target back through the
   // guard (so the view is not marked live and nothing is published as a user
@@ -2144,6 +2212,83 @@ function StudioStage({
     };
   }, [partIndex, fit.center, attachedObject]);
 
+  // Garage M0 — the measure tool's line + label: two small markers, a line
+  // between them once both are picked, and a distance label at the midpoint.
+  // A scene-ROOT group (like the gizmo helper), never a child of
+  // transformRef: its two points are literal world positions from the click
+  // and must not inherit the whole-model Transform panel a second time.
+  // Rebuilt on every points/unit/calibration change — measure.js's store
+  // covers all three in one snapshot, so one subscription is enough.
+  useEffect(() => {
+    const group = new THREE.Group();
+    group.name = MEASURE_NAME;
+    group.visible = false;
+    scene.add(group);
+    const markerGeo = new THREE.SphereGeometry(0.015, 12, 8);
+    const markerMat = new THREE.MeshBasicMaterial({ color: SELECT_COLOR, toneMapped: false, depthTest: false });
+    const disposeChildren = () => {
+      while (group.children.length) {
+        const child = group.children.pop();
+        if (child.geometry && child.geometry !== markerGeo) child.geometry.dispose();
+        if (child.material && child.material !== markerMat) {
+          if (child.material.map) child.material.map.dispose();
+          child.material.dispose();
+        }
+      }
+    };
+    const rebuild = () => {
+      disposeChildren();
+      const snap = measure.getSnapshot();
+      group.visible = !!snap.pointA;
+      if (snap.pointA) {
+        const a = new THREE.Mesh(markerGeo, markerMat);
+        a.position.fromArray(snap.pointA);
+        a.renderOrder = 999;
+        group.add(a);
+      }
+      if (snap.pointB) {
+        const b = new THREE.Mesh(markerGeo, markerMat);
+        b.position.fromArray(snap.pointB);
+        b.renderOrder = 999;
+        group.add(b);
+      }
+      if (snap.pointA && snap.pointB) {
+        const a = new THREE.Vector3().fromArray(snap.pointA);
+        const b = new THREE.Vector3().fromArray(snap.pointB);
+        const line = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([a, b]),
+          new THREE.LineBasicMaterial({ color: SELECT_COLOR, toneMapped: false, depthTest: false })
+        );
+        line.renderOrder = 999;
+        group.add(line);
+
+        // Owner decision 7: the label always uses the MAIN product's
+        // calibration. World distance -> main model units divides out only
+        // the old whole-model Transform panel's uniform scale (the pivot
+        // groups above modelScene never scale, so they never enter here —
+        // the same reasoning as modelUnitBox above).
+        const worldDistance = a.distanceTo(b);
+        const modelUnitsDistance = transform.s > 0 ? worldDistance / transform.s : worldDistance;
+        const storage = typeof localStorage === "undefined" ? null : localStorage;
+        const calibration = measure.readCalibration(storage, product.id);
+        const label = makeLabelSprite(measure.formatDistance(modelUnitsDistance, calibration, snap.unit));
+        label.position.copy(a).add(b).multiplyScalar(0.5);
+        label.position.y += 0.03;
+        label.renderOrder = 999;
+        group.add(label);
+      }
+    };
+    rebuild();
+    const unsubscribe = measure.subscribe(rebuild);
+    return () => {
+      unsubscribe();
+      disposeChildren();
+      markerGeo.dispose();
+      markerMat.dispose();
+      scene.remove(group);
+    };
+  }, [scene, transform.s, product.id]);
+
   // The rail's part read-out, plus (Garage G4) the numeric-field read/commit
   // path. One registration, extended — never a second registerApi call.
   useEffect(
@@ -2151,7 +2296,7 @@ function StudioStage({
       garageMode.registerApi({
         describePart: (partId) => {
           const mesh = partIndex.ok ? partIndex.byId.get(partId) : undefined;
-          return mesh ? describeMesh(mesh, partId) : null;
+          return mesh ? describeMesh(mesh, partId, modelScene) : null;
         },
         // Garage G4 — the part's current effective transform (its recorded
         // base pose composed with any existing override), in the numeric
@@ -2282,6 +2427,21 @@ function StudioStage({
               };
             });
         },
+        // Garage M0 — an added object's size in "model units": its own local
+        // box (measured once, in makeObjectEntry, before the anchor/inner
+        // wrapper groups) times its own Garage scale (item.transform.s, the
+        // object's one uniform scale field) — the object equivalent of
+        // describeMesh's modelUnitBox, and same reasoning: excludes the
+        // pivot/turntable groups the object also hangs in (translation only).
+        getObjectModelSize: (itemId) => {
+          const layout = garageStore.getLayout();
+          const item = layout ? layout.items.find((i) => i.itemId === itemId && !i.primary) : null;
+          if (!item) return null;
+          const entry = objectPoolRef.current.get(`${item.itemId}|${item.assetId}`);
+          if (!entry) return null;
+          const s = item.transform.s;
+          return { x: entry.size[0] * s, y: entry.size[1] * s, z: entry.size[2] * s };
+        },
         // Showing a hidden object brings its triangles back, so the same limit
         // applies; hiding is always allowed. One garageStore command either way.
         setObjectHidden: (itemId, hidden) => {
@@ -2300,7 +2460,7 @@ function StudioStage({
           return r.ok ? { ok: true } : { ok: false, reason: r.reason, message: "The object could not be changed." };
         },
       }),
-    [partIndex, addObject, loadObjects, sceneTriangles]
+    [partIndex, modelScene, addObject, loadObjects, sceneTriangles]
   );
 
   // Garage G11 — the TransformControls gizmo. It exists only while exactly one
@@ -2584,6 +2744,42 @@ function StudioStage({
     };
   }, [onClear]);
 
+  // Garage M0 — Measure mode: Escape clears the current point pair without
+  // turning Measure off (Owner decision 7), independent of the Parts Escape
+  // listener above. Same export/preview and text-entry guards.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (animRunRef.current || exportRunRef.current) return;
+      const t = e.target;
+      const tag = t && t.nodeName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) {
+        return;
+      }
+      measure.clearPoints();
+    };
+    let on = false;
+    const sync = () => {
+      const next = measure.getSnapshot().active;
+      if (next === on) return;
+      on = next;
+      if (on) window.addEventListener("keydown", onKey);
+      else window.removeEventListener("keydown", onKey);
+    };
+    sync();
+    const unsubscribe = measure.subscribe(sync);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  // Garage M0 — the measure pair is cleared on a product switch (Owner
+  // decision 7); Measure mode itself is left as the owner set it.
+  useEffect(() => {
+    measure.clearPoints();
+  }, [product.modelPath]);
+
   // Click-to-select / click-empty-to-clear with drag guards.
   useEffect(() => {
     const el = gl.domElement;
@@ -2633,6 +2829,23 @@ function StudioStage({
         -((e.clientY - rect.top) / rect.height) * 2 + 1
       );
       raycaster.setFromCamera(ndc, camera);
+      // Garage M0 — Measure mode: a click picks a surface point on the main
+      // product OR any visible added object (regardless of Parts on/off) and
+      // never selects a part (Owner decision 7); a miss is simply ignored. A
+      // third pick starts a fresh pair (measure.pick's own rule).
+      if (measure.getSnapshot().active) {
+        objectsRootRef.current?.updateWorldMatrix(true, true);
+        const measureTargets = modelMeshes.filter((m) => m.visible);
+        for (const entry of objectPoolRef.current.values()) {
+          if (!entry.attached || !entry.anchor.visible) continue;
+          entry.scene.traverseVisible((m) => {
+            if (m.isMesh && m.geometry) measureTargets.push(m);
+          });
+        }
+        const measureHits = raycaster.intersectObjects(measureTargets, false);
+        if (measureHits.length > 0) measure.pick(measureHits[0].point.toArray());
+        return;
+      }
       // Garage G4: three.js's own Raycaster never checks `.visible` (confirmed
       // in this build's node_modules/three/src/core/Raycaster.js — neither
       // intersect() nor Mesh.raycast() looks at it), so a part hidden via a
