@@ -37,7 +37,7 @@ import {
   saveLogo,
   ensureLogoImage,
   invalidateLogoImage,
-  FONT_LOAD_SPECS,
+  ensurePosterFonts,
 } from "../poster/poster.js";
 
 const FORMAT_SELECT = '[data-testid="cap-format"]';
@@ -188,29 +188,25 @@ function PosterPreviewOverlay({ spec, aspectKey, logoVersion }) {
     const ctx = canvas.getContext("2d");
     let cancelled = false;
 
-    // Always await the logo image before drawing — never trust a
+    // Always await the logo image before drawing - never trust a
     // synchronously-read cache, which can still be mid-decode the first time
     // a kit's logo is used in a session. ensureLogoImage is cache-backed, so
-    // once decoded this resolves immediately on later redraws.
+    // once decoded this resolves immediately on later redraws. It also awaits
+    // the poster's font faces (ensurePosterFonts, poster/poster.js) - the very
+    // same awaited faces the PNG export uses - so the preview never draws in a
+    // fallback font. The preview alone asks for the dashed "Add logo" slot.
     const drawNow = async () => {
       const logoImage = await ensureLogoImage(spec.kit?.id);
       if (cancelled) return;
       ctx.clearRect(0, 0, bw, bh);
-      drawPoster(ctx, bw, bh, { ...spec, logoImage });
+      drawPoster(ctx, bw, bh, { ...spec, logoImage, logoPlaceholder: true });
     };
 
     // Owner click-test fix: a canvas fillText with an unloaded @font-face
-    // silently falls back to a system serif/sans instead of waiting, and
-    // nothing in the DOM renders text in Saira Stencil One / Oswald to make
-    // the browser treat them as "needed" — so document.fonts.ready alone can
-    // (and did) resolve before either face was actually fetched, leaving the
-    // preview stuck on the fallback font forever (it never redrew). Explicitly
-    // request every (family, weight) drawPoster uses via document.fonts.load
-    // before the first draw, and redraw again on every 'loadingdone' as a
-    // backstop in case a variant wasn't covered above.
-    Promise.all([document.fonts.ready, ...FONT_LOAD_SPECS.map((f) => document.fonts.load(f).catch(() => null))]).then(
-      drawNow
-    );
+    // silently falls back to a system font instead of waiting. The faces are
+    // requested explicitly (ensurePosterFonts) before the first draw, and the
+    // preview redraws on every 'loadingdone' as a backstop.
+    ensurePosterFonts().then(drawNow);
     const onLoadingDone = () => drawNow();
     document.fonts.addEventListener("loadingdone", onLoadingDone);
 

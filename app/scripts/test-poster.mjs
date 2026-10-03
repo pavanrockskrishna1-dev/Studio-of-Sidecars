@@ -194,7 +194,13 @@ check("readActiveKitId: a null storage defaults to bbq-ride", p.readActiveKitId(
     const drewLogoBadge = calls.some((c) => c[0] === "fill" && c[1] === "#FFFFFF");
     const drewCta = calls.some((c) => c[0] === "fill" && c[1] === kit.colors.accent);
     const drewHeadlineText = calls.some((c) => c[0] === "fillText" && c[1] === "COFFEE");
-    check(`drawPoster franchise-hero at ${key} (${size.width}x${size.height}): draws without throwing and hits every toggled-on element`, drewFooterBg && drewLogoBadge && drewCta && drewHeadlineText);
+    // Slice P1 (owner decision): with no logo loaded the export draws nothing in
+    // the logo slot, so no white badge fill is expected here.
+    check(`drawPoster franchise-hero at ${key} (${size.width}x${size.height}): draws without throwing, hits every toggled-on element, and leaves the logo slot empty with no logo`, drewFooterBg && !drewLogoBadge && drewCta && drewHeadlineText);
+    const withLogo = fakeCtx();
+    p.drawPoster(withLogo.ctx, size.width, size.height, { ...spec, logoImage: { width: 300, height: 100 } });
+    const drewBadgeWithLogo = withLogo.calls.some((c) => c[0] === "fill" && c[1] === "#FFFFFF");
+    check(`drawPoster franchise-hero at ${key} (${size.width}x${size.height}): with a logo loaded the white logo badge is still drawn`, drewBadgeWithLogo);
   }
 }
 

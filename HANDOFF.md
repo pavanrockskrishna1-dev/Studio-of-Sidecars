@@ -19,6 +19,10 @@
   3. Phase 15B (HDR lighting)
   4. Phase 16A / 16B (Camera Studio; Animation Studio and Reels), then Phase 17A audit findings (Creator Studio, read-only)
      and Phase 18 (Garage design and slices G1-G8 and G11), then Products and models (three built-in products, THE KOP MAIN)
+  4b. Slice U1 (the capsule + dock + nine sheets UI, commits `0d4c927`, `4e8a8ab`,
+      `04fa4b3`) and Slice P1 (Poster export fonts and the empty logo slot), just
+      before "Products and models". **Read U1 first: it replaced the old header,
+      sidebar and rail described in the older sections.**
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -1687,6 +1691,217 @@ repo):
   gizmo pivot at each part's centre instead of the part's origin (see G11, "Known quirk").
 - **M0 (real size and the measure tool) is done (`2a6cd74`).** See "M0" above.
 - **Next: G10** (virtual parts: the virtual-part split).
+
+## Slice U1 - floating capsule + dock + nine sheets (Stages A, B1, B2; commits `0d4c927`, `4e8a8ab`, `04fa4b3`)
+
+UI only. `StudioCanvas.jsx`, the 3D scene, camera maths, lights, export, poster
+drawing and video code, `materials/store.js` and every test script were not
+touched by U1. The canvas never changes size and the camera framing is
+unchanged: every export hash was identical to the previous commit at each stage
+(see "How U1 was verified").
+
+### What the app looks like now
+
+- **On launch** the only visible UI is a small top-centre **capsule**
+  ("Studio of Sidecars · <product name>", `ui/StudioCapsule.jsx`) and a slim
+  bottom-centre **dock** (`ui/StudioDock.jsx`). About 96% of 1366x768 is the 3D
+  view. No labels in the dock: a tooltip shows on hover or keyboard focus only.
+- **Dock icons, left to right:** Creator, Materials, Camera, Light, Garage,
+  Poster, Reel | Save, Capture (the brass, solid `#C9A45C` one). Each icon opens
+  its own floating **sheet** (`ui/Sheet.jsx`, bodies in `ui/SheetContents.jsx`).
+  Capture opens its sheet; it never captures by itself.
+- **The old UI never renders from any icon any more:** the left Asset Library
+  (`ui/CreatorSidebar.jsx`), the right inspector rail (`ui/InspectorRail.jsx`'s
+  default export), the top header (`ui/TopHeader.jsx`), the V1-V6 tabs
+  (`ui/VersionTabs.jsx`) and `ui/useFloatingPanelRect.js` are **still in the
+  repo but not rendered** (a later cleanup slice deletes them). The engine's
+  `components/StudioControls.jsx` panel stays **mounted but hidden**
+  (`[data-studio-controls] { display: none !important }` in `ui/ui-shell.css`)
+  because the engine's handlers live in it and the sheets portal its controls
+  out. `InspectorRail.jsx` is still imported for the card bodies it exports
+  (`LightingPanel`, `CameraFraming`, `CameraSliders`, `CameraLock`,
+  `GaragePanel`, `AnimatePanel`).
+
+### The nine sheets and what each holds
+
+| Sheet | Dock | Docks | Holds |
+|---|---|---|---|
+| Creator | cube | right edge, tall | Environment and Model pickers (portaled from StudioControls), Import (GLB / glTF / HDR / EXR drop zone and Browse files), the asset library (search, filters, sort, cards, favourites), and a collapsed "BBQ Bike - reference views" block (the Front 3/4 / Profile / Rear stills and the rest of the BBQ UI pack) |
+| Materials | palette | right edge, tall | `MaterialsManager` (material list, editor, preset library, favourites, Reset entire model) |
+| Camera | camera | above the dock | the 6 engine preset cards and Save Custom View (portaled), Framing chips, Distance and Height sliders, Lock focus on product |
+| Light | sun | above the dock | the 5 lighting presets and the engine's six Key / Fill / Rim / Ambient / Shadow / Exposure sliders (portaled via `ui/lightSlot.js`) |
+| Garage | frame | right edge, tall | Parts on/off, cm/in, Measure, add object, undo/redo, layouts, gizmo, part info (`GaragePanel` -> `GarageSection`) |
+| Poster | swatch | right edge, tall | the Poster controls only (templates, brand kits, logo upload, colours, text, element toggles, labels); see "Poster overlay" below |
+| Reel | film | above the dock | the Animate controls (Turntable preset, 4 / 8 / 12 s, Play, Export Reel MP4) |
+| Save | save | above the dock | editable project name, Save / Restore / Reset session (`ui/useSessionUi.js`, same `studioSession.js` calls the old header made) |
+| Capture | aperture | above the dock | Background, Resolution, Format (portaled export options) and the brass Capture Shot button |
+
+Deliberately left out (they duplicate something the sheets already do; reported
+to the owner): the rail's Render format chips and Export PNG (the Capture sheet's
+Format select and Capture Shot do the same thing), the rail's 5 Materials chips
+(the Materials sheet's preset library has those presets), the inert
+"Blender Cycles - Reserved" chip, and the rail / sidebar collapse buttons and
+accordion headers. The Lighting presets in the Light sheet are the rail's
+Lighting chips (same component), so there is only one set.
+
+### Moving controls without copying them: `ui/slots.js`
+
+Never two copies of a control in the DOM. A sheet registers a DOM node under a
+name (`slotRef(name)` returns a stable ref callback); `StudioControls.jsx` wraps
+each control group in `<Slotted name=...>` and renders it through a React portal
+into that node while a sheet has claimed the slot, otherwise in place inside the
+hidden panel. Names in use: `creator-pickers`, `camera`, `capture-options`,
+`capture-button`; `ui/lightSlot.js` is the older single-slot version for the
+Light sliders. Two consequences to remember:
+- `ui/useEngineSelection.js` (the asset library's bridge to the engine's own
+  Model / Environment chips) finds the pickers document-wide through
+  `data-sos-picker` and observes `document.body`, because the pickers may live in
+  a sheet.
+- `readActiveCameraCard` / `applyCameraPreset` in `InspectorRail.jsx` and the
+  Poster panel read the engine's Format select (`[data-testid="cap-format"]`)
+  document-wide for the same reason.
+
+### Sheet rules (owner-approved)
+
+- **One sheet at a time unless pinned.** Clicking an icon opens that tool as the
+  normal sheet and replaces the previous normal one. Clicking the open tool's
+  icon again closes it. The active icon shows the brass state (Capture, which is
+  already brass, gets a ring).
+- **Pin** (a button in every sheet header): a pinned sheet stays open when another
+  icon is clicked. At most two sheets are open: one pinned plus one normal.
+  Unpinning makes it the normal sheet (a different normal sheet closes); pinning
+  replaces any other pinned sheet.
+- **Placement** (`placeSheets` in `ui/StudioShell.jsx`): tall tools dock to the right
+  edge (x 970-1350), the rest sit above the dock (x 513-853). If the newer sheet
+  would land in the older one's column it moves to the other side (an edge sheet
+  to the opposite edge, x 16-396; a centre sheet to the right edge). Edge sheets
+  run from y 64 to y 656 and scroll inside; every sheet ends at y 656, above the
+  dock row (dock top y 686). Nothing overlaps the dock or the other sheet at
+  1366x768 and the canvas is never resized or pushed.
+- **Esc closes only the unpinned sheet.** It does nothing while a turntable
+  preview or export is running, or while the Garage has a part selected or a
+  measure pair set (the canvas handlers use that same Esc to stop the preview /
+  clear the selection / clear the pair; a second Esc then closes the sheet).
+- No `backdrop-filter` anywhere in a sheet. Text contrast is at least 4.5:1 for
+  every non-disabled pair (measured for every sheet; disabled text is reported
+  separately). Legacy components hosted in a sheet read `--sos-text-2/3`, which
+  `.sos2-sheet` overrides in `ui/ui-shell.css`.
+- Styling lives in the `sos2-` namespace at the end of `ui/ui-shell.css`: three
+  button styles (`.sos2-dock-btn` toggle, `.sos2-btn` outline,
+  `.sos2-btn-primary` / `.sos2-dock-capture` brass), CSS transitions 220 ms,
+  `prefers-reduced-motion` honoured, visible brass focus ring.
+
+### Idle fade (`ui/useIdleFade.js`)
+
+The capsule and dock fade to 25% opacity after 2 s idle. They never fade while the
+pointer is over the capsule, the dock or an open sheet, or while keyboard focus is
+inside them (so a visible tooltip always means full opacity); any pointermove,
+pointerdown, wheel, keydown or focusin wakes both to full opacity and restarts the
+timer (full opacity again in about 250 ms); the 2 s are not counted while the
+loading overlay is up. The owner chose to keep the plain 25% fade even over a
+bright poster.
+
+### Poster overlay mounted from the shell
+
+`PosterOverlayHost` (exported from `ui/PosterPanel.jsx`) is mounted once by
+`StudioShell`, always. It shows the live poster preview whenever Poster is On
+and the export Format is 4:5 or 1:1 (Instagram Portrait / Instagram Square),
+whether or not the Poster sheet is open. It is portaled to `document.body`,
+z-index 1 (below the shell's 8, so the capsule, dock and sheets stack above it),
+`pointer-events: none`, no `backdrop-filter` on any ancestor. `PosterPanel`
+keeps only the controls and tells the host (a `sos-poster-sync` window event)
+when a kit or the logo changes. The panel's hint when Poster is On but the
+Format is wrong now reads: "Poster needs 4:5 or 1:1 - in the Capture sheet, set
+Format to "Instagram Portrait" (4:5) or "Instagram Square" (1:1)."
+
+### Other U1 changes worth knowing
+
+- The cm/in toggle is one global setting (`sos-units-display`, `garage/measure.js`)
+  that survives a product switch.
+- `ui/useSessionUi.js` holds the Save sheet state (project name, can-restore flag,
+  the 2.5 s "Session saved / restored / reset" flash).
+- Asset cards: favourite and action buttons sit in a row under the card and the
+  status badge in the text block, never over a thumbnail; names wrap in full.
+- `AssetPreview` (the BBQ pack) is rendered inside the Creator sheet's disclosure.
+
+### How U1 was verified (harness notes; the harnesses are not in the repo)
+
+- UI checks ran in headless Edge on the real GPU with real CDP mouse events (no
+  pointer-move loops, which hide idle-fade bugs). Exports were compared in
+  headless Chromium on the software GL renderer, each against a fresh build of the
+  previous commit served from the scratchpad.
+- Export PNG sha256 (software GL) at the end of B2, identical to the previous
+  commit: current view, Poster off `92627c2c...612b`; portrait, Poster off
+  `4748ab2e...fcb6`; portrait, Poster on `0b74dfbd...30b0`. A Poster-on export
+  sometimes came out as `c5a38960...`; that is +-1 anti-aliased edge noise on the
+  poster shapes, not a font problem (see P1).
+- The 15 node test scripts (`scripts/test-*.mjs`) pass: backdrop 84, cleanup 109,
+  garage-color 60, garage-gizmo 102, garage-layouts-v2 119, garage-layouts 64,
+  garage-objects 84, garage-part-edit 65, garage-refit 55, garage-select 67,
+  garage-store 219, garage 161, measure 62, path 192, poster 91. `test-garage`
+  has a wall-clock check (a GLB split under 2 s) that fails if the machine is
+  busy; run the scripts on an idle machine.
+
+## Slice P1 - Poster export: awaited fonts and an empty logo slot (uncommitted at the time of writing)
+
+Files: `poster/poster.js` and `ui/PosterPanel.jsx` only. `components/StudioCanvas.jsx`
+(the Poster-on export path) was **not** edited: the export already awaits
+`ensureLogoImage(kitId)` before it calls `drawPoster`, so the font wait was put
+there.
+
+### 1. Fonts awaited before every poster draw
+
+- New `ensurePosterFonts()` in `poster/poster.js`: calls
+  `document.fonts.load(face, FONT_PRELOAD_TEXT)` for every face the poster draws
+  with, then awaits `document.fonts.ready`. Cached after the first call; a no-op
+  where there is no `document` (the node tests).
+- The faces (`FONT_LOAD_SPECS`, the exact (family, weight) pairs `drawPoster`
+  sets via `ctx.font`): `400 16px "Saira Stencil One"`, `400 16px "Oswald"`,
+  `500 16px "Oswald"`, `600 16px "Oswald"`. Size does not affect which face file
+  loads.
+- `FONT_PRELOAD_TEXT` (printable ASCII, Latin-1 supplement, Latin Extended-A and
+  the poster's punctuation) makes the browser fetch every unicode-range subset the
+  poster text can use; `document.fonts.load(face)` without text fetches only the
+  subset that covers a space.
+- `ensureLogoImage()` now awaits `ensurePosterFonts()` first. The PNG export
+  (`StudioCanvas.jsx`) and the live preview (`PosterPreviewOverlay` in
+  `PosterPanel.jsx`, which now calls `ensurePosterFonts()` instead of its own
+  inline list) therefore draw with the same awaited faces.
+
+### 2. Empty logo slot
+
+- With no logo loaded the **exported PNG draws nothing** in the logo slot (before
+  P1 it drew a white rounded square).
+- The **live preview only** draws a faint dashed rounded box with "Add logo" in
+  the slot (`drawPoster` spec flag `logoPlaceholder: true`, passed only by the
+  preview; the export never passes it).
+- With a logo loaded both draw the white badge and the fitted logo exactly as
+  before.
+
+### What P1 measured (software GL exports, fresh page load per run)
+
+- Logo loaded: HEAD and P1 export the same bytes (sha256 `b80c76a7...171c`).
+- Poster off (current view and portrait): unchanged from HEAD.
+- Poster on, no logo: the only change from HEAD is the logo slot (pixel diff
+  bounding box x 43-223, y 43-223 at 1080x1350).
+- **Repeated Poster-on exports are not byte-identical, and that is accepted
+  (owner decision).** The cause is +-1 anti-aliased edge noise on the poster
+  shapes: Chromium's 2D canvas rounds half-covered edge pixels of a filled shape
+  one colour level differently from run to run (seen on the CTA pill's top and
+  bottom rows, y 1147 and y 1235, and at HEAD also on the white logo badge's
+  edges). It was present at HEAD too: HEAD's alternate Poster-on hash
+  `c5a38960...` vs `0b74dfbd...` is this same noise. Earlier notes blamed font
+  loading for it; fonts were never the cause. Text pixels never differ. Forcing CPU raster on the
+  canvas (`willReadFrequently`, tried only in a test harness) did not remove it.
+  Not fixed by design: no change to `StudioCanvas.jsx` and no pixel snapping.
+- **Proof rule for any future slice that touches the poster:** repeated Poster-on
+  exports may differ only on shape edges, by at most 1 colour level per channel,
+  with zero changed pixels inside any text glyph box. Poster-off exports must stay
+  byte-identical.
+- `scripts/test-poster.mjs`: the two "drawPoster franchise-hero at 4:5 / 1:1"
+  checks now expect **no** white badge fill when there is no logo, and a new check
+  per size requires the white badge when a logo is loaded (owner-approved edit;
+  nothing else in any test script changed).
 
 ## Products and models
 

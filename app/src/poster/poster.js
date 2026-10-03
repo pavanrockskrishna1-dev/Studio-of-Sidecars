@@ -162,6 +162,10 @@ export function getCachedLogoImage(kitId) {
 }
 
 export async function ensureLogoImage(kitId) {
+  // Slice P1: every poster draw (the PNG export in components/StudioCanvas.jsx
+  // and the live preview) awaits this before drawing, so it is where the
+  // poster's font faces are guaranteed loaded (see ensurePosterFonts above).
+  await ensurePosterFonts();
   const existing = logoImageCache.get(kitId);
   if (existing !== undefined) return existing instanceof Promise ? existing : existing;
   const p = (async () => {
@@ -296,6 +300,41 @@ export const FONT_LOAD_SPECS = Object.freeze([
   `600 16px "${FONT_BODY}"`,
 ]);
 
+// Slice P1 (font race). The faces above are split into unicode-range subsets
+// (latin, latin-ext, cyrillic, ...), and document.fonts.load(font) with no text
+// only fetches the subset covering a space. Loading with this sample (printable
+// ASCII, Latin-1 supplement, Latin Extended-A and the poster's punctuation)
+// fetches every subset the poster text can use, so the awaited faces cover the
+// headline, subline, handles, hashtag and WhatsApp numbers.
+export const FONT_PRELOAD_TEXT = (() => {
+  let t = "";
+  for (let c = 0x20; c <= 0x7e; c += 1) t += String.fromCharCode(c);
+  for (let c = 0xa0; c <= 0x17f; c += 1) t += String.fromCharCode(c);
+  return t + "\u2013\u2014\u2018\u2019\u201c\u201d\u2022\u2026\u20b9\u20ac";
+})();
+
+let posterFontsPromise = null;
+
+// Resolves once every FONT_LOAD_SPECS face has been explicitly requested with
+// FONT_PRELOAD_TEXT and fetched, and document.fonts.ready has settled. Nothing
+// in the DOM renders these families, so document.fonts.ready alone can resolve
+// before either is fetched (the old race: the first Poster-on export drew in a
+// fallback font). Cached: later calls resolve immediately. A no-op where there
+// is no document (the node tests).
+export function ensurePosterFonts() {
+  if (typeof document === "undefined" || !document.fonts || typeof document.fonts.load !== "function") {
+    return Promise.resolve();
+  }
+  if (!posterFontsPromise) {
+    posterFontsPromise = Promise.all(
+      FONT_LOAD_SPECS.map((f) => document.fonts.load(f, FONT_PRELOAD_TEXT).catch(() => null))
+    )
+      .then(() => document.fonts.ready)
+      .then(() => undefined);
+  }
+  return posterFontsPromise;
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   const rad = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
@@ -316,15 +355,39 @@ const LOGO_BADGE_MARGIN_PCT = 4;
 const LOGO_BADGE_RADIUS_PCT = 1.4;
 const LOGO_BADGE_PAD_PCT = 1.2;
 
-function drawLogoBadge(ctx, w, h, kit, logoImage) {
+// Slice P1: with no logo loaded the slot is empty in the exported PNG (no white
+// square). The live preview alone passes `logoPlaceholder: true` and gets a
+// faint dashed rounded box with "Add logo" so the slot is still discoverable.
+// With a logo loaded both draw the white badge and the fitted logo as before.
+function drawLogoBadge(ctx, w, h, kit, logoImage, placeholder) {
   const size = pct(w, LOGO_BADGE_SIZE_PCT);
   const x = pct(w, LOGO_BADGE_MARGIN_PCT);
   const y = pct(w, LOGO_BADGE_MARGIN_PCT);
+  const radius = pct(w, LOGO_BADGE_RADIUS_PCT);
+  if (!logoImage) {
+    if (!placeholder) return;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.07)";
+    ctx.lineWidth = Math.max(1, pct(w, 0.25));
+    ctx.setLineDash([pct(w, 1.1), pct(w, 0.8)]);
+    roundRect(ctx, x, y, size, size, radius);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `500 ${pct(w, 1.6)}px "${FONT_BODY}"`;
+    ctx.fillText("Add logo", x + size / 2, y + size / 2);
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.fillStyle = "#FFFFFF";
-  roundRect(ctx, x, y, size, size, pct(w, LOGO_BADGE_RADIUS_PCT));
+  roundRect(ctx, x, y, size, size, radius);
   ctx.fill();
-  if (logoImage && logoImage.width > 0 && logoImage.height > 0) {
+  if (logoImage.width > 0 && logoImage.height > 0) {
     const pad = pct(w, LOGO_BADGE_PAD_PCT);
     const avail = size - pad * 2;
     const scale = Math.min(avail / logoImage.width, avail / logoImage.height);
@@ -490,7 +553,7 @@ function drawLabel(ctx, w, h, label, kit) {
 // The one draw function shared by the live preview and the PNG export.
 // `spec`:
 //   { templateId, kit, toggles, headline1, headline2, subline, labels,
-//     logoImage }
+//     logoImage, logoPlaceholder }   (logoPlaceholder: the live preview only)
 // Never throws: missing fields simply draw nothing for that element.
 export function drawPoster(ctx, w, h, spec) {
   if (!ctx || !(w > 0) || !(h > 0) || !spec) return;
@@ -499,7 +562,7 @@ export function drawPoster(ctx, w, h, spec) {
   const toggles = isObj(spec.toggles) ? spec.toggles : defaultToggles();
 
   if (templateId === "franchise-hero") {
-    if (toggles.logo !== false) drawLogoBadge(ctx, w, h, kit, spec.logoImage || null);
+    if (toggles.logo !== false) drawLogoBadge(ctx, w, h, kit, spec.logoImage || null, spec.logoPlaceholder === true);
     if (toggles.headline !== false || toggles.subline !== false) {
       drawHeadline(
         ctx,
@@ -514,7 +577,7 @@ export function drawPoster(ctx, w, h, spec) {
     if (toggles.cta !== false) drawCtaBar(ctx, w, h, kit);
     if (toggles.footer !== false) drawFooterBar(ctx, w, h, kit);
   } else {
-    if (toggles.logo !== false) drawLogoBadge(ctx, w, h, kit, spec.logoImage || null);
+    if (toggles.logo !== false) drawLogoBadge(ctx, w, h, kit, spec.logoImage || null, spec.logoPlaceholder === true);
     if (toggles.footer !== false) drawFooterBar(ctx, w, h, kit);
     const labels = Array.isArray(spec.labels) ? spec.labels.slice(0, MAX_LABELS) : [];
     for (const label of labels) drawLabel(ctx, w, h, label, kit);
