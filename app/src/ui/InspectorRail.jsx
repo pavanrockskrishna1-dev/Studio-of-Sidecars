@@ -250,6 +250,45 @@ function CameraSlider({ label, testId, value, min, max, disabled, onChange }) {
   );
 }
 
+// Slice U1 Stage B1 — the Distance / Height sliders, extracted so the dock's
+// Camera sheet and the rail's Camera card render the very same component (it
+// reads the camera store itself, so neither host owns a copy of any state).
+export function CameraSliders() {
+  const camState = useSyncExternalStore(
+    cameraStudio.subscribe,
+    cameraStudio.getSnapshot,
+    cameraStudio.getSnapshot
+  );
+  const animState = useSyncExternalStore(
+    animationStore.subscribe,
+    animationStore.getSnapshot,
+    animationStore.getSnapshot
+  );
+  const disabled = !camState.ready || animState.mode !== "idle";
+  return (
+    <div className="sos-fields">
+      <CameraSlider
+        label="Distance"
+        testId="ui-camera-distance"
+        value={camState.distancePct}
+        min={cameraStudio.DISTANCE_MIN}
+        max={cameraStudio.DISTANCE_MAX}
+        disabled={disabled}
+        onChange={cameraStudio.setDistancePct}
+      />
+      <CameraSlider
+        label="Height"
+        testId="ui-camera-height"
+        value={camState.heightPct}
+        min={cameraStudio.HEIGHT_MIN}
+        max={cameraStudio.HEIGHT_MAX}
+        disabled={disabled}
+        onChange={cameraStudio.setHeightPct}
+      />
+    </div>
+  );
+}
+
 function Hint({ children }) {
   return (
     <p className="sos-hint">
@@ -1703,26 +1742,7 @@ export default function InspectorRail({
                   disabled={animBusy}
                   isActive={(t) => !camState.live && activeCard === t}
                 />
-                <div className="sos-fields">
-                  <CameraSlider
-                    label="Distance"
-                    testId="ui-camera-distance"
-                    value={camState.distancePct}
-                    min={cameraStudio.DISTANCE_MIN}
-                    max={cameraStudio.DISTANCE_MAX}
-                    disabled={!camState.ready || animBusy}
-                    onChange={cameraStudio.setDistancePct}
-                  />
-                  <CameraSlider
-                    label="Height"
-                    testId="ui-camera-height"
-                    value={camState.heightPct}
-                    min={cameraStudio.HEIGHT_MIN}
-                    max={cameraStudio.HEIGHT_MAX}
-                    disabled={!camState.ready || animBusy}
-                    onChange={cameraStudio.setHeightPct}
-                  />
-                </div>
+                <CameraSliders />
                 <div className="sos-frow">
                   <button
                     type="button"

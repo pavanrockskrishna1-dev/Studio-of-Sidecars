@@ -5,10 +5,10 @@ import Icon from "./icons";
    --------------------------------------------------------------------------
    Bottom-centre icon strip, no labels (tooltip on hover/focus via the
    `data-tip` attribute — see ui-shell.css). Seven tools, a divider, then
-   Save and Capture. Stage A wires only Light to the new Sheet; the other
-   six still open their existing panel "the old way" (StudioShell decides
-   what to render for `active`) — this component only reports which id was
-   clicked and highlights whichever id is currently open.
+   Save and Capture. Stage B1: Creator, Materials, Camera, Light, Save and Capture each open
+   their own sheet; Garage, Poster and Reel still open the old panels (B2).
+   This component only reports which id was clicked and highlights whichever
+   id is currently open. Capture opens its sheet; it never captures by itself.
    ========================================================================== */
 
 // A mouse click leaves the button focused, and this CSS's tooltip shows on
@@ -28,7 +28,7 @@ const TOOLS = [
   { id: "reel", label: "Reel", icon: "film" },
 ];
 
-export default function StudioDock({ active, onSelect, onSave, onCapture, idle }) {
+export default function StudioDock({ active, onSelect, idle }) {
   return (
     <nav className="sos2-dock" data-idle={idle || undefined} aria-label="Studio tools">
       {TOOLS.map((t) => (
@@ -51,10 +51,12 @@ export default function StudioDock({ active, onSelect, onSave, onCapture, idle }
       <button
         type="button"
         className="sos2-dock-btn"
+        data-on={active === "save" || undefined}
+        aria-pressed={active === "save"}
         data-testid="ui2-dock-save"
         data-tip="Save"
-        aria-label="Save studio session"
-        onClick={onSave}
+        aria-label="Save"
+        onClick={() => onSelect("save")}
         onMouseUp={blurOnMouseUp}
       >
         <Icon name="save" size={18} />
@@ -62,10 +64,12 @@ export default function StudioDock({ active, onSelect, onSave, onCapture, idle }
       <button
         type="button"
         className="sos2-dock-btn sos2-dock-capture"
+        data-on={active === "capture" || undefined}
+        aria-pressed={active === "capture"}
         data-testid="ui2-dock-capture"
         data-tip="Capture"
-        aria-label="Capture PNG"
-        onClick={onCapture}
+        aria-label="Capture"
+        onClick={() => onSelect("capture")}
         onMouseUp={blurOnMouseUp}
       >
         <Icon name="aperture" size={18} />

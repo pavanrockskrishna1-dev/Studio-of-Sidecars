@@ -81,12 +81,13 @@ export function AssetCard({ item, active, onSelect, favorite, onToggleFav, actio
       >
         <span className="sos-asset-media">
           <CardPlate item={item} />
-          {inert ? <span className="sos-tag">{PLACEHOLDER_TAG}</span> : null}
-          {item.source === "imported" ? <span className="sos-tag sos-tag-imp">imported</span> : null}
         </span>
         <span className="sos-asset-txt">
           <span className="sos-row-name">{shown}</span>
           {!inert && item.category ? <span className="sos-row-sub">{item.category}</span> : null}
+          {/* B1: status tags sit in the text block, never over the thumbnail */}
+          {inert ? <span className="sos-tag sos-asset-badge">{PLACEHOLDER_TAG}</span> : null}
+          {item.source === "imported" ? <span className="sos-tag sos-tag-imp sos-asset-badge">imported</span> : null}
         </span>
         {active ? <span className="sos-asset-state" aria-hidden="true" /> : null}
       </button>

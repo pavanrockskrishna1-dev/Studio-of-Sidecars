@@ -6,13 +6,13 @@ import Icon from "./icons";
    --------------------------------------------------------------------------
    One tool's content, floated in a single panel anchored above the dock.
    Never resizes or pushes the canvas (fixed position, own stacking layer).
-   Stage A ships exactly one of these (Light) with a plain close button;
-   the pin feature is a Stage B item (see HANDOFF/the slice brief) and is not
-   built yet. Mounts with a short opacity/transform transition (CSS),
+   Stage A shipped one of these (Light); Stage B1 hosts five more. `side="right"`
+   docks a tall tool (Creator, Materials) to the right edge instead of above
+   the dock. The pin feature is a later Stage B item and is not built yet. Mounts with a short opacity/transform transition (CSS),
    honouring prefers-reduced-motion in ui-shell.css.
    ========================================================================== */
 
-export default function Sheet({ id, title, icon, onClose, children }) {
+export default function Sheet({ id, title, icon, side, onClose, children }) {
   const [shown, setShown] = useState(false);
   useEffect(() => {
     const raf = requestAnimationFrame(() => setShown(true));
@@ -23,6 +23,7 @@ export default function Sheet({ id, title, icon, onClose, children }) {
     <div
       className="sos2-sheet"
       data-shown={shown || undefined}
+      data-side={side || undefined}
       role="dialog"
       aria-label={title}
       data-testid={`ui2-sheet-${id}`}

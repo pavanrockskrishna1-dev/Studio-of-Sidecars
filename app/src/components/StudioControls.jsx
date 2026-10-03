@@ -7,6 +7,7 @@ import { EXPORT_PRESETS, EXPORT_SCALES } from "../capture/exportOptions";
 import { CAMERA_PRESETS } from "../camera/presets";
 import { LIGHTING_CONTROLS } from "../lighting/profiles";
 import { subscribe as subscribeLightSlot, getLightSlot } from "../ui/lightSlot";
+import { getSlot, subscribeSlots } from "../ui/slots";
 
 const GOLD = "#e8b54d";
 
@@ -15,7 +16,7 @@ const GOLD = "#e8b54d";
 // Placed top-right, small and translucent so it never obstructs the stage.
 function Row({ label, options, activeId, onSelect }) {
   return (
-    <div>
+    <div data-sos-picker={label}>
       <div
         style={{
           fontSize: 9,
@@ -367,6 +368,15 @@ function LightingSlot({ lighting, onLightingChange }) {
   return slot ? createPortal(row, slot) : row;
 }
 
+// Slice U1 Stage B1 — same move-not-copy pattern for the other control groups
+// the dock sheets host (pickers, camera, export options, capture button): one
+// instance, portaled into the sheet's named slot (ui/slots.js) while a sheet
+// has claimed it, otherwise rendered in place inside this (hidden) panel.
+function Slotted({ name, children }) {
+  const slot = useSyncExternalStore(subscribeSlots, () => getSlot(name), () => null);
+  return slot ? createPortal(children, slot) : children;
+}
+
 // Mission 10C (Presentation Studio) — compact export options beneath the
 // Capture Shot action: background, resolution and presentation framing.
 // Same visual language as the Lighting row (micro-uppercase label + inline
@@ -597,29 +607,37 @@ export default function StudioControls({
         overflowY: "auto",
       }}
     >
-      <Row
-        label="Environment"
-        options={ENVIRONMENTS}
-        activeId={environmentId}
-        onSelect={onEnvironmentSelect}
-      />
-      <Row
-        label="Model"
-        options={PRODUCTS}
-        activeId={productId}
-        onSelect={onProductSelect}
-      />
-      <CameraRow
-        activePresetId={activePresetId}
-        onPreset={onCameraPreset}
-        hasCustomView={hasCustomView}
-        onSaveCustomView={onSaveCustomView}
-      />
+      <Slotted name="creator-pickers">
+        <Row
+          label="Environment"
+          options={ENVIRONMENTS}
+          activeId={environmentId}
+          onSelect={onEnvironmentSelect}
+        />
+        <Row
+          label="Model"
+          options={PRODUCTS}
+          activeId={productId}
+          onSelect={onProductSelect}
+        />
+      </Slotted>
+      <Slotted name="camera">
+        <CameraRow
+          activePresetId={activePresetId}
+          onPreset={onCameraPreset}
+          hasCustomView={hasCustomView}
+          onSaveCustomView={onSaveCustomView}
+        />
+      </Slotted>
       <LightingSlot lighting={lighting} onLightingChange={onLightingChange} />
-      <CaptureRow onCapture={onCaptureShot} />
-      {exportOpts && onExportOptsChange ? (
-        <ExportOptions exportOpts={exportOpts} onChange={onExportOptsChange} />
-      ) : null}
+      <Slotted name="capture-options">
+        {exportOpts && onExportOptsChange ? (
+          <ExportOptions exportOpts={exportOpts} onChange={onExportOptsChange} />
+        ) : null}
+      </Slotted>
+      <Slotted name="capture-button">
+        <CaptureRow onCapture={onCaptureShot} />
+      </Slotted>
     </div>
   );
 }

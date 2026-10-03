@@ -1,37 +1,32 @@
 import { useEffect, useState } from "react";
 import "./ui-shell.css";
-import CreatorSidebar from "./CreatorSidebar";
 import InspectorRail, { LightingPanel } from "./InspectorRail";
 import StudioCapsule from "./StudioCapsule";
 import StudioDock from "./StudioDock";
 import Sheet from "./Sheet";
 import useIdleFade from "./useIdleFade";
+import useSessionUi from "./useSessionUi";
+import { CreatorBody, MaterialsBody, CameraBody, SaveBody, CaptureBody } from "./SheetContents";
 import useFloatingPanelRect from "./useFloatingPanelRect";
 import useEngineSelection from "./useEngineSelection";
-import { exportPng } from "./engineCapture";
 import { setLightSlot } from "./lightSlot";
 import { PRODUCTS } from "../products/registry";
-import { saveSession } from "../session/studioSession";
 
-// Slice U1 (Stage A) — which dock tools still fall back to the pre-existing
-// panel while only Light has a real dock sheet. Creator/Materials share the
-// old Asset Library sidebar (its own internal disclosure decides what's
-// open); Camera/Garage/Poster/Reel share the old Inspector Rail accordion.
-// Stage B moves each of these into its own dock sheet.
-const CREATOR_SIDE_TOOLS = new Set(["creator", "materials"]);
-const INSPECTOR_RAIL_TOOLS = new Set(["camera", "garage", "poster", "reel"]);
-// The old-way tools above still want the engine's own StudioControls panel
-// visible beside them (camera cards, capture, format...). Light does not —
-// its one real Sheet has the moved Lighting sliders instead. On first launch
-// (active === null) nothing from the old chrome shows at all.
-const SHOW_STUDIO_CONTROLS_FOR = new Set([
-  "creator",
-  "materials",
-  "camera",
-  "garage",
-  "poster",
-  "reel",
-]);
+// Slice U1 (Stage B1) — Creator, Materials, Camera, Light, Save and Capture
+// each open their own floating Sheet. Garage, Poster and Reel still fall back
+// to the pre-existing InspectorRail + the engine's StudioControls panel until
+// Stage B2 gives them sheets too. On first launch (active === null) and while
+// any sheet is open, none of the old chrome shows at all.
+const INSPECTOR_RAIL_TOOLS = new Set(["garage", "poster", "reel"]);
+// tall tools dock to the right edge; the rest float above the dock
+const SHEETS = {
+  creator: { title: "Creator", icon: "cube", side: "right" },
+  materials: { title: "Materials", icon: "palette", side: "right" },
+  camera: { title: "Camera", icon: "camera" },
+  light: { title: "Light", icon: "sun" },
+  save: { title: "Save", icon: "save" },
+  capture: { title: "Capture", icon: "aperture" },
+};
 
 /* ==========================================================================
    StudioShell — the creator UI (Agent #2 · UI ONLY)
@@ -89,35 +84,34 @@ export default function StudioShell() {
   // Everything else in a session is read from / written to the engine itself.
   const assetName = PRODUCTS.find((p) => p.id === assets.productId)?.name ?? "";
 
-  // Slice U1, Stage A — Save is re-housed onto the dock (still the same
-  // studioSession.saveSession call TopHeader used to make, with no project
-  // name override — the editable project name field has no home in this
-  // stage). Restore, Reset, Learn Studio, Help and Settings have no dock icon
-  // yet in the locked Stage A opening state (only Creator, Materials,
-  // Camera, Light, Garage, Poster, Reel, Save and Capture) — they are
-  // temporarily unreachable from the UI until Stage B moves every remaining
-  // tool into its own dock sheet. Nothing in session/studioSession.js changed.
-  const handleSave = () => {
-    saveSession(null);
-  };
+  // Slice U1, Stage B1 — the editable project name and Save / Restore / Reset
+  // live in the Save sheet; the same studioSession.js calls the header made.
+  const session = useSessionUi(assetName);
 
-  // Slice U1, Stage A — no panel is open on first launch; which tool (if
-  // any) is open is remembered only for this session (plain component state,
-  // not persisted). Only "light" gets the new, polished Sheet; every other
-  // id still opens its existing panel "the old way" (see the two Sets above)
-  // until Stage B gives it a dock sheet of its own.
+  // Slice U1 — no panel is open on first launch; which tool (if any) is open
+  // is remembered only for this session (plain component state). Clicking the
+  // open tool's icon again, or pressing Esc, closes it.
   const [active, setActive] = useState(null);
   const handleDockSelect = (id) => setActive((prev) => (prev === id ? null : id));
-  const closeLight = () => setActive((prev) => (prev === "light" ? null : prev));
   const idle = useIdleFade();
+  const sheet = SHEETS[active];
+
+  useEffect(() => {
+    if (!sheet) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape" && !e.defaultPrevented) setActive(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sheet]);
 
   // Slice U1 — the engine's own StudioControls panel (data-studio-controls,
   // App.jsx) is hidden by CSS (ui-shell.css) unless this body attribute says
-  // an old-way tool that still wants it beside it is open; on launch and
-  // while the Light sheet is open it stays hidden. StudioControls.jsx itself
-  // is untouched by this — it never learns it was hidden.
+  // one of the three still-old tools is open. StudioControls.jsx itself
+  // never learns it was hidden; the controls the sheets host are portaled out
+  // of it (ui/slots.js, ui/lightSlot.js), never copied.
   useEffect(() => {
-    if (SHOW_STUDIO_CONTROLS_FOR.has(active)) {
+    if (INSPECTOR_RAIL_TOOLS.has(active)) {
       document.body.dataset.sosOldPanel = "1";
     } else {
       delete document.body.dataset.sosOldPanel;
@@ -136,7 +130,6 @@ export default function StudioShell() {
   const selection = useFloatingPanelRect("selection-inspector");
   const narrow = useNarrow();
   // undefined = follow the layout, boolean = user override
-  const [sideMin, setSideMin] = useState();
   const [railMin, setRailMin] = useState();
 
   // Room left in each chrome column after the engine panel it dodges. A panel
@@ -145,7 +138,7 @@ export default function StudioShell() {
   // answer is to step down to the icon strip and give the engine the column.
   const railRoom = shoot ? shoot.vh - shoot.bottom - COLUMN_GAP : Infinity;
   const sideRoom = selection ? selection.vh - selection.bottom - DODGE_GAP : Infinity;
-  const sideCollapsed = sideMin ?? (narrow || sideRoom < SIDE_MIN_ROOM);
+  const sideCollapsed = narrow || sideRoom < SIDE_MIN_ROOM;
   const railShift = railRoom < RAIL_MIN_ROOM;
   const railCollapsed = railMin ?? (narrow || railShift);
 
@@ -170,35 +163,36 @@ export default function StudioShell() {
           dock -> open sheet. The old TopHeader and VersionTabs are not
           rendered (their files are untouched, just unreferenced here). */}
       <StudioCapsule productName={assetName} idle={idle} />
-      <StudioDock
-        active={active}
-        onSelect={handleDockSelect}
-        onSave={handleSave}
-        onCapture={exportPng}
-        idle={idle}
-      />
-      {active === "light" ? (
-        <Sheet id="light" title="Light" icon="sun" onClose={closeLight}>
-          <LightingPanel />
-          <div className="sos2-sheet-divider" aria-hidden="true" />
-          <span className="sos2-sheet-subhead">Fine-tune</span>
-          {/* the engine's real Key/Fill/Rim/Ambient/Shadow/Exposure sliders,
-              portaled here from StudioControls — moved, not duplicated */}
-          <div ref={lightSlotCallback} data-testid="ui2-light-slot" />
+      <StudioDock active={active} onSelect={handleDockSelect} idle={idle} />
+      {sheet ? (
+        <Sheet
+          key={active}
+          id={active}
+          title={sheet.title}
+          icon={sheet.icon}
+          side={sheet.side}
+          onClose={() => setActive(null)}
+        >
+          {active === "light" ? (
+            <>
+              <LightingPanel />
+              <div className="sos2-sheet-divider" aria-hidden="true" />
+              <span className="sos2-sheet-subhead">Fine-tune</span>
+              {/* the engine's real Key/Fill/Rim/Ambient/Shadow/Exposure sliders,
+                  portaled here from StudioControls — moved, not duplicated */}
+              <div ref={lightSlotCallback} data-testid="ui2-light-slot" />
+            </>
+          ) : null}
+          {active === "creator" ? <CreatorBody selection={assets} onSelect={assets.select} /> : null}
+          {active === "materials" ? <MaterialsBody productId={assets.productId} /> : null}
+          {active === "camera" ? <CameraBody /> : null}
+          {active === "save" ? <SaveBody session={session} /> : null}
+          {active === "capture" ? <CaptureBody /> : null}
         </Sheet>
       ) : null}
 
-      {/* Stage A fallback: every other tool still opens the pre-existing
-          panel "the old way" until Stage B gives it a dock sheet. */}
-      {CREATOR_SIDE_TOOLS.has(active) ? (
-        <CreatorSidebar
-          dodgeBelow={selection ? selection.bottom + DODGE_GAP : 0}
-          collapsed={sideCollapsed}
-          onCollapse={() => setSideMin(!sideCollapsed)}
-          selection={assets}
-          onSelect={assets.select}
-        />
-      ) : null}
+      {/* Stage B1 fallback: Garage, Poster and Reel still open the
+          pre-existing inspector rail until B2. */}
       {INSPECTOR_RAIL_TOOLS.has(active) ? (
         <InspectorRail
           dodgeBelow={shoot ? shoot.bottom + DODGE_GAP : 0}

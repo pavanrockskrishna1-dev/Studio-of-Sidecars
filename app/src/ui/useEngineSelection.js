@@ -21,7 +21,6 @@ import { ENVIRONMENTS } from "../environments/registry";
    the UI never claims a state the engine does not have.
    ========================================================================== */
 
-const SEED = '[data-testid="capture-shot"]';
 const LIST = { product: PRODUCTS, environment: ENVIRONMENTS };
 // StudioControls paints the active chip with this inline background; it is the
 // engine's own signal, read (never written) by the shell.
@@ -31,24 +30,18 @@ const SECTION = { product: "Model", environment: "Environment" };
 
 const norm = (s) => (s || "").replace(/\s+/g, "");
 
-/** The engine's Studio Controls panel (the fixed ancestor of its own anchor). */
+/** The engine's Studio Controls panel (always mounted, possibly hidden). */
 export function enginePanel() {
-  const seed = document.querySelector(SEED);
-  let el = seed ? seed.parentElement : null;
-  while (el && getComputedStyle(el).position !== "fixed") el = el.parentElement;
-  return el && el.matches("[data-sos-shell], [data-sos-shell] *") ? null : el;
+  return document.querySelector("[data-studio-controls]");
 }
 
-/** Section root of the engine panel whose heading reads `Model` / `Environment`. */
+/** The picker whose heading reads `Model` / `Environment`. StudioControls tags
+    each with data-sos-picker, and a dock sheet may have moved it out of the
+    panel (ui/slots.js), so it is looked up document-wide, not by panel child. */
 function sectionRoot(panel, kind) {
   const label = SECTION[kind];
   if (!panel || !label) return null;
-  for (const child of panel.children) {
-    if (child.firstElementChild && child.firstElementChild.textContent.trim() === label) {
-      return child;
-    }
-  }
-  return null;
+  return document.querySelector(`[data-sos-picker="${label}"]`);
 }
 
 function chipFor(panel, kind, name) {
@@ -120,7 +113,8 @@ export default function useEngineSelection() {
         clearTimeout(timer);
         timer = setTimeout(() => publish(true), 16);
       });
-      observer.observe(panel, {
+      // the pickers can live in a dock sheet outside the panel, so watch the page
+      observer.observe(document.body, {
         attributes: true,
         attributeFilter: ["style"],
         childList: true,
