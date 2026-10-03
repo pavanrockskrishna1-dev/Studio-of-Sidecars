@@ -1,10 +1,12 @@
 import { useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { backdropGate, exportsAllowed, GATE_LABEL } from "../capture/exportGate";
 import { ENVIRONMENTS } from "../environments/registry";
 import { PRODUCTS } from "../products/registry";
 import { EXPORT_PRESETS, EXPORT_SCALES } from "../capture/exportOptions";
 import { CAMERA_PRESETS } from "../camera/presets";
 import { LIGHTING_CONTROLS } from "../lighting/profiles";
+import { subscribe as subscribeLightSlot, getLightSlot } from "../ui/lightSlot";
 
 const GOLD = "#e8b54d";
 
@@ -355,6 +357,16 @@ function LightingRow({ lighting, onLightingChange }) {
   );
 }
 
+// Slice U1 — the Light dock sheet asked for these sliders MOVED, not
+// duplicated: one LightingRow instance, portaled into the sheet's slot
+// (ui/lightSlot.js) while it's open, otherwise rendered right here exactly
+// as before. Never two copies of the same six inputs at once.
+function LightingSlot({ lighting, onLightingChange }) {
+  const slot = useSyncExternalStore(subscribeLightSlot, getLightSlot, () => null);
+  const row = <LightingRow lighting={lighting} onLightingChange={onLightingChange} />;
+  return slot ? createPortal(row, slot) : row;
+}
+
 // Mission 10C (Presentation Studio) — compact export options beneath the
 // Capture Shot action: background, resolution and presentation framing.
 // Same visual language as the Lighting row (micro-uppercase label + inline
@@ -603,7 +615,7 @@ export default function StudioControls({
         hasCustomView={hasCustomView}
         onSaveCustomView={onSaveCustomView}
       />
-      <LightingRow lighting={lighting} onLightingChange={onLightingChange} />
+      <LightingSlot lighting={lighting} onLightingChange={onLightingChange} />
       <CaptureRow onCapture={onCaptureShot} />
       {exportOpts && onExportOptsChange ? (
         <ExportOptions exportOpts={exportOpts} onChange={onExportOptsChange} />

@@ -1860,3 +1860,330 @@ body[data-anim] [data-studio-controls] [data-testid="capture-shot"] {
 body[data-anim="export"] canvas {
   visibility: hidden;
 }
+
+/* Slice U1 — the opening state must show ONLY the capsule and the dock
+   (owner-mandated). The engine's own StudioControls panel
+   ([data-studio-controls], components/StudioControls.jsx, untouched) is
+   hidden by default and only reappears while StudioShell has set
+   body[data-sos-old-panel] — i.e. one of the six tools that still fall back
+   to "the old way" in Stage A is open. On launch, and while the Light sheet
+   is open (its Lighting sliders are portaled into the sheet instead — see
+   ui/lightSlot.js), nothing from the old chrome is visible. */
+[data-studio-controls] {
+  display: none !important;
+}
+body[data-sos-old-panel] [data-studio-controls] {
+  display: flex !important;
+}
+
+/* ==========================================================================
+   Slice U1, Stage A — the new dock shell (capsule / dock / sheet)
+   --------------------------------------------------------------------------
+   A separate namespace (`sos2-`) on purpose: the legacy `sos-` panels
+   (CreatorSidebar, InspectorRail) stay visually exactly as they were for
+   their Stage A "old way" fallback, and this new luxury-studio skin only
+   ever touches the capsule, the dock and the Light sheet. No backdrop-filter
+   here (the owner's blur rule needs an FPS measurement to justify it; Stage A
+   simply doesn't use blur, so there is nothing to measure). Palette contrast,
+   measured against these exact background colours (WCAG relative luminance):
+     text-primary  #ECE9E4 on #17181B = 14.66:1
+     text-primary  #ECE9E4 on #202226 = 13.16:1
+     text-muted    #9C9A95 on #17181B =  6.31:1
+     text-muted    #9C9A95 on #202226 =  5.67:1
+     brass text    #C9A45C on #17181B =  7.56:1
+     ink on brass  #1B1305 on #C9A45C =  7.84:1
+   All comfortably clear the 4.5:1 small-text minimum.
+   ========================================================================== */
+
+:root {
+  --sos2-bg: #17181b;
+  --sos2-bg-2: #202226;
+  --sos2-text: #ece9e4;
+  --sos2-text-2: #9c9a95;
+  --sos2-brass: #c9a45c;
+  --sos2-brass-ink: #1b1305;
+  --sos2-line: rgba(255, 255, 255, 0.1);
+  --sos2-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  --sos2-motion: 220ms ease-out;
+}
+
+.sos2-capsule,
+.sos2-dock,
+.sos2-sheet,
+.sos2-dock-btn,
+.sos2-icon-btn,
+.sos2-dock-btn[data-tip]::after {
+  transition: opacity var(--sos2-motion), transform var(--sos2-motion),
+    color var(--sos2-motion), background var(--sos2-motion),
+    border-color var(--sos2-motion);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sos2-capsule,
+  .sos2-dock,
+  .sos2-sheet,
+  .sos2-dock-btn,
+  .sos2-icon-btn,
+  .sos2-dock-btn[data-tip]::after {
+    transition: none;
+  }
+}
+
+/* -- capsule --------------------------------------------------------------- */
+.sos2-capsule {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: var(--sos2-bg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--sos2-shadow);
+  pointer-events: auto;
+  opacity: 1;
+}
+.sos2-capsule[data-idle] {
+  opacity: 0.25;
+}
+.sos2-capsule-brand {
+  font-size: 12.5px;
+  letter-spacing: 0.03em;
+  color: var(--sos2-text);
+  white-space: nowrap;
+}
+.sos2-capsule-product {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--sos2-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+.sos2-capsule-dot {
+  color: var(--sos2-brass);
+}
+
+/* -- dock -------------------------------------------------------------------
+   Exactly 3 button styles across this new layer: .sos2-dock-btn is the
+   toggle/chip style, .sos2-icon-btn is secondary (outline), and
+   .sos2-dock-capture is primary (brass-filled). */
+.sos2-dock {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 999px;
+  background: var(--sos2-bg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--sos2-shadow);
+  pointer-events: auto;
+  opacity: 1;
+}
+.sos2-dock[data-idle] {
+  opacity: 0.25;
+}
+.sos2-dock-divider {
+  width: 1px;
+  height: 26px;
+  background: var(--sos2-line);
+}
+.sos2-dock-btn {
+  /* App.css carries a scaffold-wide `button { padding: 16px 34px }` (see the
+     other warnings of this in this file) — reset it or a border-box button
+     this small renders with its icon squeezed to nothing. */
+  padding: 0;
+  margin: 0;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--sos2-text-2);
+  cursor: pointer;
+  position: relative;
+}
+.sos2-dock-btn:hover {
+  color: var(--sos2-text);
+  background: var(--sos2-bg-2);
+}
+.sos2-dock-btn[data-on] {
+  color: var(--sos2-brass);
+  background: var(--sos2-bg-2);
+}
+.sos2-dock-capture {
+  background: var(--sos2-brass);
+  color: var(--sos2-brass-ink);
+}
+.sos2-dock-capture:hover {
+  background: var(--sos2-brass);
+  color: var(--sos2-brass-ink);
+  transform: translateY(-1px);
+}
+
+/* Tooltip on hover/focus (no labels in the dock itself). */
+.sos2-dock-btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px);
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--sos2-bg-2);
+  color: var(--sos2-text);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+}
+.sos2-dock-btn[data-tip]:hover::after,
+.sos2-dock-btn[data-tip]:focus-visible::after {
+  opacity: 1;
+}
+
+/* -- sheet ------------------------------------------------------------------
+   Floats OVER the view, anchored above the dock; never resizes or pushes the
+   canvas. Falls back toward the right edge on very short viewports so it
+   never runs off the top of the screen. */
+.sos2-sheet {
+  position: fixed;
+  bottom: 82px;
+  left: 50%;
+  z-index: 26;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(64vh, 520px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--sos2-bg);
+  box-shadow: var(--sos2-shadow);
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: auto;
+}
+.sos2-sheet[data-shown] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+@media (max-height: 560px) {
+  .sos2-sheet {
+    left: auto;
+    right: 18px;
+    bottom: 82px;
+    transform: translateY(8px);
+  }
+  .sos2-sheet[data-shown] {
+    transform: translateY(0);
+  }
+}
+.sos2-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  background: var(--sos2-bg-2);
+  flex: none;
+}
+.sos2-sheet-tile {
+  display: flex;
+  color: var(--sos2-brass);
+}
+.sos2-sheet-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sos2-text-2);
+}
+.sos2-sheet-body {
+  padding: 14px;
+  overflow-y: auto;
+  color: var(--sos2-text);
+}
+/* the sheet reuses the legacy .sos-frow / .sos-pchip chip markup for its
+   content (LightingPanel), so give those chips the graphite/brass skin only
+   inside a sos2 sheet — the old rail's own chips are untouched. */
+.sos2-sheet-body .sos-pchip {
+  color: var(--sos2-text);
+  border-color: var(--sos2-line);
+}
+.sos2-sheet-body .sos-pchip[data-on] {
+  color: var(--sos2-brass-ink);
+  background: var(--sos2-brass);
+  border-color: var(--sos2-brass);
+}
+.sos2-sheet-body .sos-hint {
+  color: var(--sos2-text-2);
+}
+.sos2-sheet-divider {
+  height: 1px;
+  background: var(--sos2-line);
+  margin: 12px 0;
+}
+.sos2-sheet-subhead {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sos2-text-2);
+  margin-bottom: 6px;
+}
+
+/* -- secondary (outline) button, e.g. the sheet's close control -- */
+.sos2-icon-btn {
+  /* Same App.css `button { padding: 16px 34px }` reset as .sos2-dock-btn —
+     without this the button measured 70x34 with its content squeezed into a
+     sliver (found live via getComputedStyle while chasing an empty-looking
+     close button: padding computed to "16px 34px", width/height to 70px/34px,
+     not the 28x28 this rule declares). */
+  padding: 0;
+  margin: 0;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 8px;
+  border: 1px solid var(--sos2-line);
+  background: transparent;
+  color: var(--sos2-text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.sos2-icon-btn:hover {
+  color: var(--sos2-text);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+/* -- shared utilities -- */
+.sos2-mono {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+/* Visible keyboard focus ring on every new control (LOOK rule). */
+.sos2-dock-btn:focus-visible,
+.sos2-icon-btn:focus-visible,
+.sos2-capsule:focus-visible {
+  outline: 2px solid var(--sos2-brass);
+  outline-offset: 2px;
+}

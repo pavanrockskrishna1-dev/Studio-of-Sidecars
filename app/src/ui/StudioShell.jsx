@@ -1,19 +1,37 @@
 import { useEffect, useState } from "react";
 import "./ui-shell.css";
-import TopHeader from "./TopHeader";
-import VersionTabs from "./VersionTabs";
 import CreatorSidebar from "./CreatorSidebar";
-import InspectorRail from "./InspectorRail";
+import InspectorRail, { LightingPanel } from "./InspectorRail";
+import StudioCapsule from "./StudioCapsule";
+import StudioDock from "./StudioDock";
+import Sheet from "./Sheet";
+import useIdleFade from "./useIdleFade";
 import useFloatingPanelRect from "./useFloatingPanelRect";
 import useEngineSelection from "./useEngineSelection";
-import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "../environments/registry";
+import { exportPng } from "./engineCapture";
+import { setLightSlot } from "./lightSlot";
 import { PRODUCTS } from "../products/registry";
-import {
-  readSavedSession,
-  resetSession,
-  restoreSession,
-  saveSession,
-} from "../session/studioSession";
+import { saveSession } from "../session/studioSession";
+
+// Slice U1 (Stage A) — which dock tools still fall back to the pre-existing
+// panel while only Light has a real dock sheet. Creator/Materials share the
+// old Asset Library sidebar (its own internal disclosure decides what's
+// open); Camera/Garage/Poster/Reel share the old Inspector Rail accordion.
+// Stage B moves each of these into its own dock sheet.
+const CREATOR_SIDE_TOOLS = new Set(["creator", "materials"]);
+const INSPECTOR_RAIL_TOOLS = new Set(["camera", "garage", "poster", "reel"]);
+// The old-way tools above still want the engine's own StudioControls panel
+// visible beside them (camera cards, capture, format...). Light does not —
+// its one real Sheet has the moved Lighting sliders instead. On first launch
+// (active === null) nothing from the old chrome shows at all.
+const SHOW_STUDIO_CONTROLS_FOR = new Set([
+  "creator",
+  "materials",
+  "camera",
+  "garage",
+  "poster",
+  "reel",
+]);
 
 /* ==========================================================================
    StudioShell — the creator UI (Agent #2 · UI ONLY)
@@ -60,50 +78,59 @@ function useNarrow() {
   return narrow;
 }
 
-// Phase 15A — how long a session button shows its "Saved / Restored / Reset" flash
-const FLASH_MS = 1800;
-
 export default function StudioShell() {
   // The engine owns asset state. The shell reads and drives it through the
-  // engine's own picker (useEngineSelection), so neither the header nor the
-  // library keeps a private copy: the environment title is the live one, and
-  // falls back to the locked hero default only until the engine is mounted.
+  // engine's own picker (useEngineSelection), so neither the capsule nor the
+  // library keeps a private copy.
   const assets = useEngineSelection();
-  const environment = getEnvironment(assets.environmentId ?? DEFAULT_ENVIRONMENT_ID);
 
   // Phase 15A — Studio Session. The project name follows the loaded asset until
   // the user edits it (null = follow); it is saved and restored with the session.
   // Everything else in a session is read from / written to the engine itself.
   const assetName = PRODUCTS.find((p) => p.id === assets.productId)?.name ?? "";
-  const [nameOverride, setNameOverride] = useState(null);
-  const [canRestore, setCanRestore] = useState(() => readSavedSession() !== null);
-  const [flash, setFlash] = useState(null);
-  useEffect(() => {
-    if (!flash) return undefined;
-    const t = setTimeout(() => setFlash(null), FLASH_MS);
-    return () => clearTimeout(t);
-  }, [flash]);
 
+  // Slice U1, Stage A — Save is re-housed onto the dock (still the same
+  // studioSession.saveSession call TopHeader used to make, with no project
+  // name override — the editable project name field has no home in this
+  // stage). Restore, Reset, Learn Studio, Help and Settings have no dock icon
+  // yet in the locked Stage A opening state (only Creator, Materials,
+  // Camera, Light, Garage, Poster, Reel, Save and Capture) — they are
+  // temporarily unreachable from the UI until Stage B moves every remaining
+  // tool into its own dock sheet. Nothing in session/studioSession.js changed.
   const handleSave = () => {
-    const res = saveSession(nameOverride);
-    if (res.ok) {
-      setCanRestore(true);
-      setFlash("saved");
+    saveSession(null);
+  };
+
+  // Slice U1, Stage A — no panel is open on first launch; which tool (if
+  // any) is open is remembered only for this session (plain component state,
+  // not persisted). Only "light" gets the new, polished Sheet; every other
+  // id still opens its existing panel "the old way" (see the two Sets above)
+  // until Stage B gives it a dock sheet of its own.
+  const [active, setActive] = useState(null);
+  const handleDockSelect = (id) => setActive((prev) => (prev === id ? null : id));
+  const closeLight = () => setActive((prev) => (prev === "light" ? null : prev));
+  const idle = useIdleFade();
+
+  // Slice U1 — the engine's own StudioControls panel (data-studio-controls,
+  // App.jsx) is hidden by CSS (ui-shell.css) unless this body attribute says
+  // an old-way tool that still wants it beside it is open; on launch and
+  // while the Light sheet is open it stays hidden. StudioControls.jsx itself
+  // is untouched by this — it never learns it was hidden.
+  useEffect(() => {
+    if (SHOW_STUDIO_CONTROLS_FOR.has(active)) {
+      document.body.dataset.sosOldPanel = "1";
+    } else {
+      delete document.body.dataset.sosOldPanel;
     }
-  };
-  const handleRestore = () => {
-    const snap = restoreSession();
-    if (!snap) return;
-    setNameOverride(snap.projectName ?? null);
-    setFlash("restored");
-  };
-  const handleReset = () => {
-    if (!window.confirm("Reset the entire studio session? Camera, lighting, environment, materials, transforms and viewer controls return to their defaults.")) return;
-    if (resetSession()) {
-      setNameOverride(null);
-      setFlash("reset");
-    }
-  };
+    return () => {
+      delete document.body.dataset.sosOldPanel;
+    };
+  }, [active]);
+
+  // Slice U1 — the Light sheet's slot for the engine's real Lighting sliders
+  // (see ui/lightSlot.js): registered while the sheet is mounted, cleared on
+  // close, so StudioControls' LightingRow portals here instead of a copy.
+  const lightSlotCallback = (el) => setLightSlot(el || null);
 
   const shoot = useFloatingPanelRect("shoot-controls");
   const selection = useFloatingPanelRect("selection-inspector");
@@ -139,28 +166,46 @@ export default function StudioShell() {
       data-rail-shift={railShift || undefined}
       style={style}
     >
-      <TopHeader
-        environment={environment}
-        projectName={nameOverride ?? assetName}
-        onProjectNameChange={setNameOverride}
-        onProjectNameBlur={() => {
-          if (nameOverride !== null && !nameOverride.trim()) setNameOverride(null);
-        }}
-        session={{ canRestore, flash, onSave: handleSave, onRestore: handleRestore, onReset: handleReset }}
+      {/* Slice U1 — the opening state: capsule + dock, tab order capsule ->
+          dock -> open sheet. The old TopHeader and VersionTabs are not
+          rendered (their files are untouched, just unreferenced here). */}
+      <StudioCapsule productName={assetName} idle={idle} />
+      <StudioDock
+        active={active}
+        onSelect={handleDockSelect}
+        onSave={handleSave}
+        onCapture={exportPng}
+        idle={idle}
       />
-      <VersionTabs />
-      <CreatorSidebar
-        dodgeBelow={selection ? selection.bottom + DODGE_GAP : 0}
-        collapsed={sideCollapsed}
-        onCollapse={() => setSideMin(!sideCollapsed)}
-        selection={assets}
-        onSelect={assets.select}
-      />
-      <InspectorRail
-        dodgeBelow={shoot ? shoot.bottom + DODGE_GAP : 0}
-        collapsed={railCollapsed}
-        onCollapse={() => setRailMin(!railCollapsed)}
-      />
+      {active === "light" ? (
+        <Sheet id="light" title="Light" icon="sun" onClose={closeLight}>
+          <LightingPanel />
+          <div className="sos2-sheet-divider" aria-hidden="true" />
+          <span className="sos2-sheet-subhead">Fine-tune</span>
+          {/* the engine's real Key/Fill/Rim/Ambient/Shadow/Exposure sliders,
+              portaled here from StudioControls — moved, not duplicated */}
+          <div ref={lightSlotCallback} data-testid="ui2-light-slot" />
+        </Sheet>
+      ) : null}
+
+      {/* Stage A fallback: every other tool still opens the pre-existing
+          panel "the old way" until Stage B gives it a dock sheet. */}
+      {CREATOR_SIDE_TOOLS.has(active) ? (
+        <CreatorSidebar
+          dodgeBelow={selection ? selection.bottom + DODGE_GAP : 0}
+          collapsed={sideCollapsed}
+          onCollapse={() => setSideMin(!sideCollapsed)}
+          selection={assets}
+          onSelect={assets.select}
+        />
+      ) : null}
+      {INSPECTOR_RAIL_TOOLS.has(active) ? (
+        <InspectorRail
+          dodgeBelow={shoot ? shoot.bottom + DODGE_GAP : 0}
+          collapsed={railCollapsed}
+          onCollapse={() => setRailMin(!railCollapsed)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1475,6 +1475,54 @@ function GarageLayoutSection({ productId, busy }) {
   );
 }
 
+// Slice U1 — the Lighting section's content, extracted out of the big
+// accordion's inline JSX so it can mount either inside this rail (the "old
+// way", Stage A fallback for every other tool) or inside the new dock's
+// Light sheet, with the mood bridge logic living in exactly one place. It
+// only ever mounts while its host (a RailCard section or a Sheet) is
+// visible, so a plain mount-time read is the right way to seed the
+// highlight — the old code did the same read from an "on open" callback.
+export function LightingPanel() {
+  const [activeMoodId, setActiveMoodId] = useState(() => {
+    const match = findActiveMoodPreset(readLiveLighting());
+    return match ? match.id : null;
+  });
+  const refreshActiveMood = useCallback(() => {
+    const match = findActiveMoodPreset(readLiveLighting());
+    setActiveMoodId(match ? match.id : null);
+  }, []);
+  // Follow the engine sliders' own input events (they bubble to document) so
+  // a manual slider move un-highlights the chip while this panel is mounted.
+  useEffect(() => {
+    const onLightInput = (e) => {
+      const t = e.target;
+      if (t && t.dataset && String(t.dataset.testid || "").startsWith("light-")) {
+        refreshActiveMood();
+      }
+    };
+    document.addEventListener("input", onLightInput, true);
+    return () => document.removeEventListener("input", onLightInput, true);
+  }, [refreshActiveMood]);
+  const handleMoodSelect = useCallback((label) => {
+    const preset = moodPresetForLabel(label);
+    if (!preset) return; // label with no preset — stay inert
+    if (applyMoodPreset(preset.values)) setActiveMoodId(preset.id);
+  }, []);
+  return (
+    <>
+      <Chips
+        items={INSPECTOR_PLACEHOLDERS.lighting}
+        onSelect={handleMoodSelect}
+        activeMoodId={activeMoodId}
+      />
+      <Hint>
+        One-click presets — drives the live rig; the panel's sliders stay in
+        sync.
+      </Hint>
+    </>
+  );
+}
+
 export default function InspectorRail({
   dodgeBelow = 0,
   collapsed = false,
@@ -1585,53 +1633,16 @@ export default function InspectorRail({
     if (id) materialStore.applyPreset(id);
   }, []);
 
-  // Mission 13C — which mood preset (if any) matches the rig's live values.
-  // null = no chip highlighted (the default and every manually adjusted state).
-  const [activeMoodId, setActiveMoodId] = useState(null);
-  const refreshActiveMood = useCallback(() => {
-    const match = findActiveMoodPreset(readLiveLighting());
-    setActiveMoodId(match ? match.id : null);
-  }, []);
-
-  // The highlight is maintained from event handlers only (never from an
-  // effect body): recompute when the Lighting card opens, clear it whenever
-  // the card closes or another section takes the accordion, and recompute on
-  // every change of any engine lighting slider (see the listener below), so a
-  // manual slider move un-highlights the chip.
-  const openSection = (id) => {
-    const next = openId === id ? null : id;
-    setOpenId(next);
-    if (next === "lighting") refreshActiveMood();
-    else if (openId === "lighting") setActiveMoodId(null);
-  };
+  // Slice U1 — the Lighting card's own mood-highlight state moved into
+  // LightingPanel (above), which mounts fresh each time this section (or the
+  // new Light sheet) opens, so the accordion here no longer needs to special
+  // case it on open/close.
+  const openSection = (id) => setOpenId(openId === id ? null : id);
   // From the collapsed strip: bring the rail back with that section open.
   const openFromStrip = (id) => {
     setOpenId(id);
-    if (id === "lighting") refreshActiveMood();
-    else if (openId === "lighting") setActiveMoodId(null);
     onCollapse?.();
   };
-
-  const handleMoodSelect = useCallback((label) => {
-    const preset = moodPresetForLabel(label);
-    if (!preset) return; // label with no preset — stay inert
-    if (applyMoodPreset(preset.values)) setActiveMoodId(preset.id);
-  }, []);
-
-  // While the Lighting card is open, listen for the engine sliders' own input
-  // events (they bubble to document) and keep the highlight in sync with the
-  // rig's real values.
-  useEffect(() => {
-    if (openId !== "lighting") return;
-    const onLightInput = (e) => {
-      const t = e.target;
-      if (t && t.dataset && String(t.dataset.testid || "").startsWith("light-")) {
-        refreshActiveMood();
-      }
-    };
-    document.addEventListener("input", onLightInput, true);
-    return () => document.removeEventListener("input", onLightInput, true);
-  }, [openId, refreshActiveMood]);
 
   return (
     <aside
@@ -1738,17 +1749,7 @@ export default function InspectorRail({
                 </Hint>
               </>
             ) : section.id === "lighting" ? (
-              <>
-                <Chips
-                  items={INSPECTOR_PLACEHOLDERS.lighting}
-                  onSelect={handleMoodSelect}
-                  activeMoodId={activeMoodId}
-                />
-                <Hint>
-                  One-click presets — drives the live rig; the panel's sliders
-                  stay in sync.
-                </Hint>
-              </>
+              <LightingPanel />
             ) : section.id === "materials" ? (
               <>
                 <Chips

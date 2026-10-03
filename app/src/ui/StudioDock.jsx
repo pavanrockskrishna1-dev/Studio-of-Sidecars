@@ -1,0 +1,75 @@
+import Icon from "./icons";
+
+/* ==========================================================================
+   Slice U1 — floating tool dock (new file, UI ONLY)
+   --------------------------------------------------------------------------
+   Bottom-centre icon strip, no labels (tooltip on hover/focus via the
+   `data-tip` attribute — see ui-shell.css). Seven tools, a divider, then
+   Save and Capture. Stage A wires only Light to the new Sheet; the other
+   six still open their existing panel "the old way" (StudioShell decides
+   what to render for `active`) — this component only reports which id was
+   clicked and highlights whichever id is currently open.
+   ========================================================================== */
+
+// A mouse click leaves the button focused, and this CSS's tooltip shows on
+// :focus-visible as well as :hover (needed for real keyboard use) — so a
+// button clicked with the mouse would otherwise keep showing its tooltip
+// indefinitely with the pointer long gone. Blur on mouseup only (never fires
+// for a keyboard-driven click), so Tab navigation still shows the tooltip.
+const blurOnMouseUp = (e) => e.currentTarget.blur();
+
+const TOOLS = [
+  { id: "creator", label: "Creator", icon: "cube" },
+  { id: "materials", label: "Materials", icon: "palette" },
+  { id: "camera", label: "Camera", icon: "camera" },
+  { id: "light", label: "Light", icon: "sun" },
+  { id: "garage", label: "Garage", icon: "frame" },
+  { id: "poster", label: "Poster", icon: "swatch" },
+  { id: "reel", label: "Reel", icon: "film" },
+];
+
+export default function StudioDock({ active, onSelect, onSave, onCapture, idle }) {
+  return (
+    <nav className="sos2-dock" data-idle={idle || undefined} aria-label="Studio tools">
+      {TOOLS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          className="sos2-dock-btn"
+          data-on={active === t.id || undefined}
+          aria-pressed={active === t.id}
+          data-testid={`ui2-dock-${t.id}`}
+          data-tip={t.label}
+          aria-label={t.label}
+          onClick={() => onSelect(t.id)}
+          onMouseUp={blurOnMouseUp}
+        >
+          <Icon name={t.icon} size={18} />
+        </button>
+      ))}
+      <span className="sos2-dock-divider" aria-hidden="true" />
+      <button
+        type="button"
+        className="sos2-dock-btn"
+        data-testid="ui2-dock-save"
+        data-tip="Save"
+        aria-label="Save studio session"
+        onClick={onSave}
+        onMouseUp={blurOnMouseUp}
+      >
+        <Icon name="save" size={18} />
+      </button>
+      <button
+        type="button"
+        className="sos2-dock-btn sos2-dock-capture"
+        data-testid="ui2-dock-capture"
+        data-tip="Capture"
+        aria-label="Capture PNG"
+        onClick={onCapture}
+        onMouseUp={blurOnMouseUp}
+      >
+        <Icon name="aperture" size={18} />
+      </button>
+    </nav>
+  );
+}
