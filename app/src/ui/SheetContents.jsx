@@ -1,15 +1,25 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Icon from "./icons";
 import { buildLibraryGroups } from "./content";
 import ImportPanel from "./ImportPanel";
 import AssetGrid from "./AssetLibrary";
 import MaterialsManager from "./MaterialsManager";
-import { CameraSliders } from "./InspectorRail";
+import AssetPreview from "./AssetPreview";
+import PosterPanel from "./PosterPanel";
+import {
+  AnimatePanel,
+  CameraFraming,
+  CameraLock,
+  CameraSliders,
+  GaragePanel,
+  LightingPanel,
+} from "./InspectorRail";
+import { setLightSlot } from "./lightSlot";
 import { hydrateRuntimeAssets, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { slotRef } from "./slots";
 
 /* ==========================================================================
-   Slice U1, Stage B1 — the bodies of the five dock sheets (new file, UI ONLY)
+   Slice U1, Stage B — the bodies of the dock sheets (new file, UI ONLY)
    --------------------------------------------------------------------------
    Each body hosts real controls that already exist: the library, importer and
    Materials Manager are rendered here directly (their old home, the creator
@@ -17,6 +27,29 @@ import { slotRef } from "./slots";
    live inside the engine's StudioControls panel are moved in through named
    slots (ui/slots.js) so there is never a second copy.
    ========================================================================== */
+
+// The BBQ Bike card is an announced, inert product; its reference stills (the
+// Front 3/4 / Profile / Rear views and the rest of the UI pack) live in this
+// disclosure directly under the product cards, where the old sidebar's BBQ
+// Bike section used to sit.
+function BbqReference() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="sos2-bbq" data-testid="ui2-bbq-reference">
+      <button
+        type="button"
+        className="sos2-disclosure"
+        aria-expanded={open}
+        data-testid="ui2-bbq-toggle"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>BBQ Bike · reference views</span>
+        <span aria-hidden="true">{open ? "−" : "+"}</span>
+      </button>
+      {open ? <AssetPreview collapsed={false} /> : null}
+    </div>
+  );
+}
 
 export function CreatorBody({ selection, onSelect }) {
   const runtimeVersion = useRuntimeAssets();
@@ -45,6 +78,7 @@ export function CreatorBody({ selection, onSelect }) {
             activeId={group.kind === "product" ? selection.productId : selection.environmentId}
             onSelect={(id) => onSelect?.(group.kind, id)}
           />
+          {group.kind === "product" ? <BbqReference /> : null}
         </section>
       ))}
     </>
@@ -60,8 +94,11 @@ export function CameraBody() {
     <>
       <div className="sos2-slot" ref={slotRef("camera")} data-testid="ui2-slot-camera" />
       <div className="sos2-sheet-divider" aria-hidden="true" />
+      <CameraFraming />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
       <span className="sos2-sheet-subhead">Distance and height</span>
       <CameraSliders />
+      <CameraLock />
     </>
   );
 }
@@ -132,4 +169,33 @@ export function CaptureBody() {
       <div className="sos2-slot sos2-slot-gap" ref={slotRef("capture-button")} data-testid="ui2-slot-capture-button" />
     </>
   );
+}
+
+// the engine's real Key/Fill/Rim/Ambient/Shadow/Exposure sliders are portaled in
+// from StudioControls (ui/lightSlot.js) - moved, not duplicated
+const lightSlotRef = (el) => setLightSlot(el || null);
+
+export function LightBody() {
+  return (
+    <>
+      <LightingPanel />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Fine-tune</span>
+      <div ref={lightSlotRef} data-testid="ui2-light-slot" />
+    </>
+  );
+}
+
+export function GarageBody() {
+  return <GaragePanel />;
+}
+
+// PosterPanel's live preview overlay is already portaled to document.body (see
+// PosterPanel.jsx), so nothing here - and no sheet ancestor - can contain it.
+export function PosterBody() {
+  return <PosterPanel />;
+}
+
+export function ReelBody() {
+  return <AnimatePanel />;
 }

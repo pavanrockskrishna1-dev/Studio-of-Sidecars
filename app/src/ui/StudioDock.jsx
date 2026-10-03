@@ -5,10 +5,10 @@ import Icon from "./icons";
    --------------------------------------------------------------------------
    Bottom-centre icon strip, no labels (tooltip on hover/focus via the
    `data-tip` attribute — see ui-shell.css). Seven tools, a divider, then
-   Save and Capture. Stage B1: Creator, Materials, Camera, Light, Save and Capture each open
-   their own sheet; Garage, Poster and Reel still open the old panels (B2).
-   This component only reports which id was clicked and highlights whichever
-   id is currently open. Capture opens its sheet; it never captures by itself.
+   Save and Capture. Every icon opens its own sheet (Stage B2: Garage, Poster
+   and Reel included). This component only reports which id was clicked and
+   highlights every id whose sheet is open (up to two: one pinned, one not).
+   Capture opens its sheet; it never captures by itself.
    ========================================================================== */
 
 // A mouse click leaves the button focused, and this CSS's tooltip shows on
@@ -28,7 +28,7 @@ const TOOLS = [
   { id: "reel", label: "Reel", icon: "film" },
 ];
 
-export default function StudioDock({ active, onSelect, idle }) {
+export default function StudioDock({ openIds = [], onSelect, idle }) {
   return (
     <nav className="sos2-dock" data-idle={idle || undefined} aria-label="Studio tools">
       {TOOLS.map((t) => (
@@ -36,8 +36,8 @@ export default function StudioDock({ active, onSelect, idle }) {
           key={t.id}
           type="button"
           className="sos2-dock-btn"
-          data-on={active === t.id || undefined}
-          aria-pressed={active === t.id}
+          data-on={openIds.includes(t.id) || undefined}
+          aria-pressed={openIds.includes(t.id)}
           data-testid={`ui2-dock-${t.id}`}
           data-tip={t.label}
           aria-label={t.label}
@@ -51,8 +51,8 @@ export default function StudioDock({ active, onSelect, idle }) {
       <button
         type="button"
         className="sos2-dock-btn"
-        data-on={active === "save" || undefined}
-        aria-pressed={active === "save"}
+        data-on={openIds.includes("save") || undefined}
+        aria-pressed={openIds.includes("save")}
         data-testid="ui2-dock-save"
         data-tip="Save"
         aria-label="Save"
@@ -64,8 +64,8 @@ export default function StudioDock({ active, onSelect, idle }) {
       <button
         type="button"
         className="sos2-dock-btn sos2-dock-capture"
-        data-on={active === "capture" || undefined}
-        aria-pressed={active === "capture"}
+        data-on={openIds.includes("capture") || undefined}
+        aria-pressed={openIds.includes("capture")}
         data-testid="ui2-dock-capture"
         data-tip="Capture"
         aria-label="Capture"

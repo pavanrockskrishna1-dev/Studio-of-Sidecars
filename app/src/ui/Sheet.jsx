@@ -2,17 +2,19 @@ import { useEffect, useState } from "react";
 import Icon from "./icons";
 
 /* ==========================================================================
-   Slice U1, Stage A — floating tool sheet (new file, UI ONLY)
+   Slice U1, Stage A/B — floating tool sheet (new file, UI ONLY)
    --------------------------------------------------------------------------
-   One tool's content, floated in a single panel anchored above the dock.
-   Never resizes or pushes the canvas (fixed position, own stacking layer).
-   Stage A shipped one of these (Light); Stage B1 hosts five more. `side="right"`
-   docks a tall tool (Creator, Materials) to the right edge instead of above
-   the dock. The pin feature is a later Stage B item and is not built yet. Mounts with a short opacity/transform transition (CSS),
+   One tool's content, floated in a single panel. Never resizes or pushes the
+   canvas (fixed position, own stacking layer). `side` is where it docks
+   ("center" above the dock, or the "left" / "right" edge); `tall` stretches
+   an edge sheet from below the capsule to just above the dock row. The header
+   carries the pin button (Stage B2): a pinned sheet stays open while another
+   icon is clicked. StudioShell owns that rule and the placement; this only
+   reports the click. Mounts with a short opacity/transform transition (CSS),
    honouring prefers-reduced-motion in ui-shell.css.
    ========================================================================== */
 
-export default function Sheet({ id, title, icon, side, onClose, children }) {
+export default function Sheet({ id, title, icon, side = "center", tall, pinned, onPin, onClose, children }) {
   const [shown, setShown] = useState(false);
   useEffect(() => {
     const raf = requestAnimationFrame(() => setShown(true));
@@ -23,7 +25,9 @@ export default function Sheet({ id, title, icon, side, onClose, children }) {
     <div
       className="sos2-sheet"
       data-shown={shown || undefined}
-      data-side={side || undefined}
+      data-side={side}
+      data-tall={tall || undefined}
+      data-pinned={pinned || undefined}
       role="dialog"
       aria-label={title}
       data-testid={`ui2-sheet-${id}`}
@@ -33,6 +37,19 @@ export default function Sheet({ id, title, icon, side, onClose, children }) {
           {icon ? <Icon name={icon} size={15} /> : null}
         </span>
         <span className="sos2-sheet-title">{title}</span>
+        <button
+          type="button"
+          className="sos2-icon-btn sos2-pin-btn"
+          data-on={pinned || undefined}
+          aria-pressed={Boolean(pinned)}
+          data-testid={`ui2-sheet-${id}-pin`}
+          title={pinned ? "Unpin: this sheet closes with Esc or its icon again" : "Pin: keep this sheet open while you open another"}
+          aria-label={pinned ? `Unpin ${title}` : `Pin ${title}`}
+          onClick={onPin}
+          onMouseUp={(e) => e.currentTarget.blur()}
+        >
+          <Icon name="pin" size={13} />
+        </button>
         <button
           type="button"
           className="sos2-icon-btn"

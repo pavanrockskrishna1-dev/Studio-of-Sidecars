@@ -131,14 +131,14 @@ function readLiveLighting() {
 // The engine's cards carry data-active (true while that preset is the active,
 // not-live view). Chip highlight follows them; null when none / no panel.
 function readActiveCameraCard() {
-  const el = document.querySelector('[data-studio-controls] button[data-active="true"]');
+  // document-wide: the Camera dock sheet may have moved the cards out of
+  // [data-studio-controls] (ui/slots.js)
+  const el = document.querySelector('button[data-active="true"][title$=" shot"]');
   return el ? el.title.replace(/ shot$/, "") : null;
 }
 
 function applyCameraPreset(name) {
-  const el = document.querySelector(
-    `[data-studio-controls] button[title="${name} shot"]`
-  );
+  const el = document.querySelector(`button[title="${name} shot"]`);
   if (!el) return false;
   el.click();
   return true;
@@ -1555,8 +1555,237 @@ export function LightingPanel() {
         activeMoodId={activeMoodId}
       />
       <Hint>
-        One-click presets — drives the live rig; the panel's sliders stay in
-        sync.
+        One-click presets — drives the live rig; the Fine-tune sliders below
+        stay in sync.
+      </Hint>
+    </>
+  );
+}
+
+// Slice U1 Stage B2 - the rail's Camera / Animate / Garage card bodies, exported
+// so the dock's Camera, Reel and Garage sheets render the very same components
+// (each reads its own stores, so no host owns a copy of any state).
+export function CameraFraming() {
+  const camState = useSyncExternalStore(
+    cameraStudio.subscribe,
+    cameraStudio.getSnapshot,
+    cameraStudio.getSnapshot
+  );
+  const animState = useSyncExternalStore(
+    animationStore.subscribe,
+    animationStore.getSnapshot,
+    animationStore.getSnapshot
+  );
+  // the engine cards carry data-active; the chips follow them (document-wide:
+  // a dock sheet may host the cards)
+  const [activeCard, setActiveCard] = useState(null);
+  useEffect(() => {
+    const sync = () => setActiveCard(readActiveCameraCard());
+    const t = setTimeout(sync, 0);
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-active"],
+    });
+    return () => {
+      clearTimeout(t);
+      observer.disconnect();
+    };
+  }, []);
+  return (
+    <>
+      <div className="sos-field-top">
+        <span className="sos-label">Framing</span>
+        {camState.live ? (
+          <span className="sos-pchip-badge" data-testid="ui-camera-live-tag">
+            Custom (unsaved)
+          </span>
+        ) : null}
+      </div>
+      <Chips
+        items={CAMERA_FRAMINGS}
+        onSelect={applyCameraPreset}
+        disabled={animState.mode !== "idle"}
+        isActive={(t) => !camState.live && activeCard === t}
+      />
+    </>
+  );
+}
+
+export function CameraLock() {
+  const camState = useSyncExternalStore(
+    cameraStudio.subscribe,
+    cameraStudio.getSnapshot,
+    cameraStudio.getSnapshot
+  );
+  const animState = useSyncExternalStore(
+    animationStore.subscribe,
+    animationStore.getSnapshot,
+    animationStore.getSnapshot
+  );
+  return (
+    <>
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-pchip"
+          data-testid="ui-camera-lock"
+          data-on={camState.lock || undefined}
+          aria-pressed={camState.lock}
+          disabled={!camState.ready || animState.mode !== "idle"}
+          title={
+            camState.lock
+              ? "Lock focus is ON: the view stays centred on the model. Click to turn OFF."
+              : "Lock focus is OFF. Click to centre the view on the model and lock it."
+          }
+          onClick={() => cameraStudio.setLock(!camState.lock)}
+        >
+          Lock focus on product
+        </button>
+      </div>
+      <Hint>
+        One-tap framing. Distance is % of the shot's distance; Height tilts the
+        view. Moving the camera makes it Custom (unsaved). Lock ON keeps the
+        view centred on the model and disables right-drag pan.
+      </Hint>
+    </>
+  );
+}
+
+export function GaragePanel() {
+  const garageModeState = useSyncExternalStore(
+    garageMode.subscribe,
+    garageMode.getSnapshot,
+    garageMode.getSnapshot
+  );
+  const garageState = useSyncExternalStore(
+    garageStore.subscribe,
+    garageStore.getSnapshot,
+    garageStore.getSnapshot
+  );
+  const animState = useSyncExternalStore(
+    animationStore.subscribe,
+    animationStore.getSnapshot,
+    animationStore.getSnapshot
+  );
+  return (
+    <GarageSection
+      pickMode={garageModeState.pickMode}
+      garageState={garageState}
+      busy={animState.mode !== "idle" || garageState.locked}
+    />
+  );
+}
+
+export function AnimatePanel() {
+  const animState = useSyncExternalStore(
+    animationStore.subscribe,
+    animationStore.getSnapshot,
+    animationStore.getSnapshot
+  );
+  const animPreviewing = animState.mode === "previewing";
+  const animExporting = animState.mode === "exporting";
+  // Whether this browser can export an MP4 at all (checked once, on mount;
+  // null = still checking). The result is ignored if the panel unmounted.
+  const [exportSupport, setExportSupport] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    checkExportSupport().then((r) => {
+      if (alive) setExportSupport(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  // Cleanup slice: the export button waits for the backdrop ("failed" never
+  // blocks), and a Reel export holds the Garage lock until it ends, however
+  // it ends (finished, cancelled or stopped).
+  const gate = useSyncExternalStore(backdropGate.subscribe, backdropGate.getSnapshot, backdropGate.getSnapshot);
+  const gateBlocked = !exportsAllowed(gate);
+  const animBusy = animState.mode !== "idle";
+  const handleExportClick = useCallback(async () => {
+    const r = await withExportLock(garageStore, () => exportReel());
+    if (r.ok) saveBlob(r.blob, r.filename);
+  }, []);
+  return (
+    <>
+      <span className="sos-label">Preset</span>
+      <div className="sos-frow">
+        <span className="sos-pchip" data-on data-testid="ui-anim-turntable">
+          Turntable
+        </span>
+      </div>
+      <span className="sos-label">Duration</span>
+      <div className="sos-frow">
+        {animationStore.DURATIONS.map((n) => (
+          <button
+            key={n}
+            type="button"
+            className="sos-pchip"
+            data-testid={`ui-anim-duration-${n}`}
+            data-on={animState.durationS === n || undefined}
+            aria-pressed={animState.durationS === n}
+            disabled={animBusy}
+            onClick={() => animationStore.setDurationS(n)}
+          >
+            {n} s
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="sos-btn sos-btn-ghost sos-rail-export"
+        data-testid="ui-anim-play"
+        disabled={animExporting || (!animState.ready && !animPreviewing)}
+        title={
+          animPreviewing
+            ? "Stop the turntable preview"
+            : "Play the turntable preview: the model turns about its own centre (loops)"
+        }
+        onClick={() => (animPreviewing ? animationStore.stop() : animationStore.play())}
+      >
+        {animPreviewing ? "Stop" : "Play"}
+      </button>
+      <Hint>
+        {animPreviewing
+          ? "Playing. Click the model or press Esc to stop."
+          : animState.ready
+            ? "Spins the model about its own centre; the camera stays put. Loops."
+            : "Loading model"}
+      </Hint>
+      <span className="sos-label">Reel export</span>
+      <button
+        type="button"
+        className="sos-btn sos-btn-ghost sos-rail-export"
+        data-testid="ui-anim-export"
+        disabled={
+          animExporting
+            ? false
+            : gateBlocked || !(animState.ready && animState.mode === "idle" && exportSupport?.ok)
+        }
+        title={
+          animExporting
+            ? "Cancel the running export"
+            : gateBlocked
+              ? "Waiting for the environment backdrop to load"
+              : "Render the turntable at 1080x1920 and save it as an MP4"
+        }
+        onClick={animExporting ? animationStore.cancelExport : handleExportClick}
+      >
+        {animExporting ? "Cancel export" : gateBlocked ? GATE_LABEL : "Export Reel (MP4)"}
+      </button>
+      <Hint>
+        {animExporting
+          ? `Exporting ${animState.progress}% - keep this tab visible.`
+          : exportSupport === null
+            ? "Checking MP4 support..."
+            : !exportSupport.ok
+              ? `${exportSupport.reason} MP4 export needs a current Edge or Chrome on localhost or https.`
+              : animState.message
+                ? animState.message
+                : "1080x1920 - 30 fps - silent. On this PC an export can take a while: keep this tab visible."}
       </Hint>
     </>
   );
@@ -1587,14 +1816,6 @@ export default function InspectorRail({
     };
   }, [openId]);
 
-  // Camera: sliders and the Custom (unsaved) tag read the camera store (a
-  // read-only snapshot of the live camera); the framing chips highlight from
-  // the engine cards' data-active, which App clears while the view is live.
-  const camState = useSyncExternalStore(
-    cameraStudio.subscribe,
-    cameraStudio.getSnapshot,
-    cameraStudio.getSnapshot
-  );
   // Animate (Phase 16B Slice B): the Turntable preview's snapshot. While it
   // previews, the controls that would fight it are disabled here (the shell CSS
   // shield, body[data-anim], covers the header and the engine panel).
@@ -1603,61 +1824,13 @@ export default function InspectorRail({
     animationStore.getSnapshot,
     animationStore.getSnapshot
   );
-  // Garage G3: the Parts switch and the part selection (both external stores).
-  const garageModeState = useSyncExternalStore(
-    garageMode.subscribe,
-    garageMode.getSnapshot,
-    garageMode.getSnapshot
-  );
-  const garageState = useSyncExternalStore(
-    garageStore.subscribe,
-    garageStore.getSnapshot,
-    garageStore.getSnapshot
-  );
-  const animPreviewing = animState.mode === "previewing";
-  const animExporting = animState.mode === "exporting";
   // Any non-idle mode disables the controls that would fight the animation.
   const animBusy = animState.mode !== "idle";
-  // Whether this browser can export an MP4 at all (checked once, on mount;
-  // null = still checking). The result is ignored if the rail unmounted.
-  const [exportSupport, setExportSupport] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    checkExportSupport().then((r) => {
-      if (alive) setExportSupport(r);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
   // Cleanup slice: the export buttons wait for the backdrop ("failed" never
   // blocks), and a Reel export holds the Garage lock until it ends, however
   // it ends (finished, cancelled or stopped).
   const gate = useSyncExternalStore(backdropGate.subscribe, backdropGate.getSnapshot, backdropGate.getSnapshot);
   const gateBlocked = !exportsAllowed(gate);
-  const handleExportClick = useCallback(async () => {
-    const r = await withExportLock(garageStore, () => exportReel());
-    if (r.ok) saveBlob(r.blob, r.filename);
-  }, []);
-  const [activeCard, setActiveCard] = useState(null);
-  useEffect(() => {
-    const root = document.querySelector("[data-studio-controls]");
-    if (!root) return undefined;
-    const sync = () => setActiveCard(readActiveCameraCard());
-    const t = setTimeout(sync, 0);
-    const observer = new MutationObserver(sync);
-    observer.observe(root, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ["data-active"],
-    });
-    return () => {
-      clearTimeout(t);
-      observer.disconnect();
-    };
-  }, []);
-
   // Materials chips read the live materials store (the one MaterialsManager
   // subscribes to): they enable once a model's materials are ready and
   // highlight the preset currently applied to the focused material.
@@ -1728,45 +1901,9 @@ export default function InspectorRail({
           >
             {section.id === "camera" ? (
               <>
-                <div className="sos-field-top">
-                  <span className="sos-label">Framing</span>
-                  {camState.live ? (
-                    <span className="sos-pchip-badge" data-testid="ui-camera-live-tag">
-                      Custom (unsaved)
-                    </span>
-                  ) : null}
-                </div>
-                <Chips
-                  items={CAMERA_FRAMINGS}
-                  onSelect={applyCameraPreset}
-                  disabled={animBusy}
-                  isActive={(t) => !camState.live && activeCard === t}
-                />
+                <CameraFraming />
                 <CameraSliders />
-                <div className="sos-frow">
-                  <button
-                    type="button"
-                    className="sos-pchip"
-                    data-testid="ui-camera-lock"
-                    data-on={camState.lock || undefined}
-                    aria-pressed={camState.lock}
-                    disabled={!camState.ready || animBusy}
-                    title={
-                      camState.lock
-                        ? "Lock focus is ON: the view stays centred on the model. Click to turn OFF."
-                        : "Lock focus is OFF. Click to centre the view on the model and lock it."
-                    }
-                    onClick={() => cameraStudio.setLock(!camState.lock)}
-                  >
-                    Lock focus on product
-                  </button>
-                </div>
-                <Hint>
-                  One-tap framing. Distance is % of the shot's distance; Height
-                  tilts the view. Moving the camera makes it Custom (unsaved).
-                  Lock ON keeps the view centred on the model and disables
-                  right-drag pan.
-                </Hint>
+                <CameraLock />
               </>
             ) : section.id === "lighting" ? (
               <LightingPanel />
@@ -1782,94 +1919,13 @@ export default function InspectorRail({
                 />
                 <Hint>
                   Applies to the selected material — full editor in the
-                  Materials panel.
+                  Materials sheet.
                 </Hint>
               </>
             ) : section.id === "animate" ? (
-              <>
-                <span className="sos-label">Preset</span>
-                <div className="sos-frow">
-                  <span className="sos-pchip" data-on data-testid="ui-anim-turntable">
-                    Turntable
-                  </span>
-                </div>
-                <span className="sos-label">Duration</span>
-                <div className="sos-frow">
-                  {animationStore.DURATIONS.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      className="sos-pchip"
-                      data-testid={`ui-anim-duration-${n}`}
-                      data-on={animState.durationS === n || undefined}
-                      aria-pressed={animState.durationS === n}
-                      disabled={animBusy}
-                      onClick={() => animationStore.setDurationS(n)}
-                    >
-                      {n} s
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="sos-btn sos-btn-ghost sos-rail-export"
-                  data-testid="ui-anim-play"
-                  disabled={animExporting || (!animState.ready && !animPreviewing)}
-                  title={
-                    animPreviewing
-                      ? "Stop the turntable preview"
-                      : "Play the turntable preview: the model turns about its own centre (loops)"
-                  }
-                  onClick={() => (animPreviewing ? animationStore.stop() : animationStore.play())}
-                >
-                  {animPreviewing ? "Stop" : "Play"}
-                </button>
-                <Hint>
-                  {animPreviewing
-                    ? "Playing. Click the model or press Esc to stop."
-                    : animState.ready
-                      ? "Spins the model about its own centre; the camera stays put. Loops."
-                      : "Loading model"}
-                </Hint>
-                <span className="sos-label">Reel export</span>
-                <button
-                  type="button"
-                  className="sos-btn sos-btn-ghost sos-rail-export"
-                  data-testid="ui-anim-export"
-                  disabled={
-                    animExporting
-                      ? false
-                      : gateBlocked || !(animState.ready && animState.mode === "idle" && exportSupport?.ok)
-                  }
-                  title={
-                    animExporting
-                      ? "Cancel the running export"
-                      : gateBlocked
-                        ? "Waiting for the environment backdrop to load"
-                        : "Render the turntable at 1080x1920 and save it as an MP4"
-                  }
-                  onClick={animExporting ? animationStore.cancelExport : handleExportClick}
-                >
-                  {animExporting ? "Cancel export" : gateBlocked ? GATE_LABEL : "Export Reel (MP4)"}
-                </button>
-                <Hint>
-                  {animExporting
-                    ? `Exporting ${animState.progress}% - keep this tab visible.`
-                    : exportSupport === null
-                      ? "Checking MP4 support..."
-                      : !exportSupport.ok
-                        ? `${exportSupport.reason} MP4 export needs a current Edge or Chrome on localhost or https.`
-                        : animState.message
-                          ? animState.message
-                          : "1080x1920 - 30 fps - silent. On this PC an export can take a while: keep this tab visible."}
-                </Hint>
-              </>
+              <AnimatePanel />
             ) : section.id === "garage" ? (
-              <GarageSection
-                pickMode={garageModeState.pickMode}
-                garageState={garageState}
-                busy={animState.mode !== "idle" || garageState.locked}
-              />
+              <GaragePanel />
             ) : section.id === "poster" ? (
               <PosterPanel />
             ) : (

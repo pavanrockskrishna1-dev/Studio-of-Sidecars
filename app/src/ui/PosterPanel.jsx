@@ -6,9 +6,15 @@
    never touches the 3D scene, camera, lights or Garage.
 
    Bundles the two offline fonts (decision 5) so the CSS import happens
-   wherever the panel first mounts; both the live preview below and the PNG
+   wherever this module is first imported; both the live preview and the PNG
    export (components/StudioCanvas.jsx) wait for document.fonts.ready before
-   calling drawPoster. */
+   calling drawPoster.
+
+   Slice U1 Stage B2: the live preview overlay is no longer mounted by the
+   panel (so it vanished whenever the Poster sheet was closed). The shell
+   always mounts <PosterOverlayHost/> (below), which shows the overlay whenever
+   Poster is On and the export Format is 4:5 or 1:1; the panel keeps only the
+   controls and tells the host when the kit or logo changed (notifyPoster). */
 import "@fontsource/saira-stencil-one/400.css";
 import "@fontsource/oswald/400.css";
 import "@fontsource/oswald/500.css";
@@ -244,6 +250,56 @@ function PosterPreviewOverlay({ spec, aspectKey, logoVersion }) {
   );
 }
 
+// The panel edits the brand kits in its own state (persisted to localStorage)
+// and the logo in the poster module's storage; the overlay host lives elsewhere,
+// so the panel pings it on every kit / logo change.
+const POSTER_SYNC_EVENT = "sos-poster-sync";
+function notifyPoster() {
+  window.dispatchEvent(new Event(POSTER_SYNC_EVENT));
+}
+
+// Mounted once by StudioShell, always: owns everything the overlay needs (the
+// poster store, the export Format, the saved kits) so the preview stays on the
+// stage while Poster is On, whether or not the Poster sheet is open.
+export function PosterOverlayHost() {
+  const s = useSyncExternalStore(posterState.subscribe, posterState.getSnapshot, posterState.getSnapshot);
+  // bumped when the export Format select changes or the panel changes a kit /
+  // logo; the values themselves are re-read from the live DOM select and from
+  // storage, never copied
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setTick((t) => t + 1);
+    const onChange = (e) => {
+      if (e.target && e.target.dataset && e.target.dataset.testid === "cap-format") bump();
+    };
+    document.addEventListener("change", onChange, true);
+    window.addEventListener(POSTER_SYNC_EVENT, bump);
+    return () => {
+      document.removeEventListener("change", onChange, true);
+      window.removeEventListener(POSTER_SYNC_EVENT, bump);
+    };
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const aspectKey = useMemo(() => currentAspectKey(), [tick]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const kits = useMemo(() => readKits(), [tick]);
+  const kit = kits[s.kitId] || kits["bbq-ride"];
+  const spec = useMemo(
+    () => ({
+      templateId: s.templateId,
+      kit,
+      toggles: s.toggles,
+      headline1: s.headline1,
+      headline2: s.headline2,
+      subline: s.subline,
+      labels: s.labels,
+    }),
+    [s.templateId, kit, s.toggles, s.headline1, s.headline2, s.subline, s.labels]
+  );
+  if (!s.enabled) return null;
+  return <PosterPreviewOverlay spec={spec} aspectKey={aspectKey} logoVersion={tick} />;
+}
+
 export default function PosterPanel() {
   const s = useSyncExternalStore(posterState.subscribe, posterState.getSnapshot, posterState.getSnapshot);
   const garageState = useSyncExternalStore(garageStore.subscribe, garageStore.getSnapshot, garageStore.getSnapshot);
@@ -251,7 +307,6 @@ export default function PosterPanel() {
 
   const [kits, setKits] = useState(() => readKits());
   const [formatTick, setFormatTick] = useState(0);
-  const [logoVersion, setLogoVersion] = useState(0);
   const [logoBusy, setLogoBusy] = useState(false);
 
   // The Render Format chips dispatch a real "change" event on the engine's
@@ -275,26 +330,10 @@ export default function PosterPanel() {
 
   const kit = kits[s.kitId] || kits["bbq-ride"];
 
-  // logoImage is intentionally absent here: PosterPreviewOverlay always
-  // awaits ensureLogoImage(kit.id) itself right before drawing (never a
-  // synchronously-read, possibly-still-decoding cache), the same rule the
-  // export path follows in components/StudioCanvas.jsx.
-  const spec = useMemo(
-    () => ({
-      templateId: s.templateId,
-      kit,
-      toggles: s.toggles,
-      headline1: s.headline1,
-      headline2: s.headline2,
-      subline: s.subline,
-      labels: s.labels,
-    }),
-    [s.templateId, kit, s.toggles, s.headline1, s.headline2, s.subline, s.labels]
-  );
-
   const commitKits = useCallback((next) => {
     setKits(next);
     writeKits(undefined, next);
+    notifyPoster();
   }, []);
 
   const patchKit = useCallback(
@@ -324,7 +363,7 @@ export default function PosterPanel() {
         await saveLogo(kit.id, dataUrl);
         invalidateLogoImage(kit.id);
         await ensureLogoImage(kit.id);
-        setLogoVersion((v) => v + 1);
+        notifyPoster();
       } catch (err) {
         console.error("Poster logo upload failed:", err);
       } finally {
@@ -350,12 +389,8 @@ export default function PosterPanel() {
       {s.enabled && !aspectKey ? (
         <p className="sos-hint" role="alert" data-testid="ui-poster-aspect-warning">
           <Icon name="info" size={12} stroke={1.8} />
-          <span>{POSTER_ASPECT_MESSAGE} — pick Post &middot;1:1 or Hero &middot;4:5 in Render above.</span>
+          <span>{POSTER_ASPECT_MESSAGE} — in the Capture sheet, set Format to &ldquo;Instagram Portrait&rdquo; (4:5) or &ldquo;Instagram Square&rdquo; (1:1).</span>
         </p>
-      ) : null}
-
-      {s.enabled ? (
-        <PosterPreviewOverlay spec={spec} aspectKey={aspectKey} logoVersion={logoVersion} />
       ) : null}
 
       {!s.enabled ? (

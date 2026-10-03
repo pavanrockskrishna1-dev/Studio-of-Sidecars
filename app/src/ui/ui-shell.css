@@ -2065,7 +2065,7 @@ body[data-sos-old-panel] [data-studio-controls] {
    never runs off the top of the screen. */
 .sos2-sheet {
   position: fixed;
-  bottom: 94px;
+  bottom: 112px;
   left: 50%;
   z-index: 26;
   width: min(340px, calc(100vw - 32px));
@@ -2088,7 +2088,7 @@ body[data-sos-old-panel] [data-studio-controls] {
   .sos2-sheet {
     left: auto;
     right: 18px;
-    bottom: 94px;
+    bottom: 112px;
     transform: translateY(8px);
   }
   .sos2-sheet[data-shown] {
@@ -2198,19 +2198,57 @@ body[data-sos-old-panel] [data-studio-controls] {
    (.sos2-mono, applied to the sliders' value readouts below).
    ========================================================================== */
 
-/* tall tools dock to the right edge; they scroll inside, and stop short of the
-   dock's row (bottom: 94px) so nothing slides under it */
+/* Placement (Stage B2). data-side is where the sheet docks: "center" above the
+   dock, or the "right" / "left" edge; data-tall stretches an edge sheet from
+   below the capsule down to just above the dock row (bottom: 112px), so it
+   scrolls inside and nothing slides under the dock. StudioShell picks the sides
+   so two open sheets never share a column: at 1366x768 the left (16-396),
+   centre (513-853) and right (970-1350) columns never overlap each other or
+   the dock (440-927). */
 .sos2-sheet[data-side="right"] {
   left: auto;
   right: 16px;
-  top: 64px;
-  bottom: 94px;
-  width: min(380px, calc(100vw - 32px));
-  max-height: none;
   transform: translateX(10px);
 }
-.sos2-sheet[data-side="right"][data-shown] {
+.sos2-sheet[data-side="left"] {
+  left: 16px;
+  right: auto;
+  transform: translateX(-10px);
+}
+.sos2-sheet[data-side="right"][data-shown],
+.sos2-sheet[data-side="left"][data-shown] {
   transform: translateX(0);
+}
+.sos2-sheet[data-tall] {
+  top: 64px;
+  width: min(380px, calc(100vw - 32px));
+  max-height: none;
+}
+.sos2-pin-btn[data-on] {
+  color: var(--sos2-brass);
+  border-color: var(--sos2-brass);
+  background: rgba(201, 164, 92, 0.12);
+}
+.sos2-bbq {
+  margin-top: 10px;
+}
+.sos2-disclosure {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  margin: 0;
+  border-radius: 8px;
+  border: 1px solid var(--sos2-line);
+  background: transparent;
+  color: var(--sos2-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sos2-disclosure:hover {
+  background: var(--sos2-bg-2);
 }
 .sos2-sheet-body {
   flex: 1 1 auto;
@@ -2492,4 +2530,13 @@ asset cards) read the shell text tokens; give them the sheet palette here. */
 .sos2-sheet input::placeholder {
   color: var(--sos2-text-2);
   opacity: 1;
+}
+
+/* B2: field labels in the Garage / Poster sheets use the legacy 45% white on
+the sheet; lift them to the sheet text colour (>= 4.5:1). */
+.sos2-sheet .sos-field > em {
+  color: var(--sos2-text-2);
+}
+.sos2-sheet-body .sos-fields + .sos-frow {
+  margin-top: 12px;
 }
