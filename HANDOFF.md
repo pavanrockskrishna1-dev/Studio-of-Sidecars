@@ -23,6 +23,8 @@
       `04fa4b3`) and Slice P1 (Poster export fonts and the empty logo slot), just
       before "Products and models". **Read U1 first: it replaced the old header,
       sidebar and rail described in the older sections.**
+  4c. Slice C2a (Reel camera moves: Orbit, Push-in, Pull-back, Slide, Crane; platform
+      ground anchor and Instagram safe area for exports), right after P1.
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -1902,6 +1904,86 @@ there.
   checks now expect **no** white badge fill when there is no logo, and a new check
   per size requires the white badge when a logo is loaded (owner-approved edit;
   nothing else in any test script changed).
+
+## Slice C2a - Reel camera moves, one shot (uncommitted at the time of writing)
+
+Files: `animation/path.js` (the shot maths), `animation/animationStore.js` (preset /
+start view state), `ui/InspectorRail.jsx` (`AnimatePanel`, the Reel sheet) and an
+owner-approved change to `components/StudioCanvas.jsx` that lives only inside branches
+that run when the animation is a camera shot (`run.anim.shot`). The Turntable code
+paths, the PNG export paths and the MP4 encoding code (`animation/exporter.js`,
+`animation/mp4.js`) are unchanged: Turntable MP4 frames and all PNG exports stayed
+pixel / byte identical to the previous commit.
+
+### What the Reel sheet does
+
+- **Preset:** Turntable (unchanged, the model spins, loops) or one of 5 camera moves.
+- **A shot = start view + move + duration.** Start view: Front, Side, 3/4, Rear, Top,
+  Low Hero, or Custom (enabled only once a custom view is saved in the Camera sheet).
+  Duration 4 / 8 / 12 s. Play and Export first put the camera on the start view by
+  clicking the engine's own preset card, then run.
+- **Easing:** every move eases in and out with `smoothstep`, ported from MotionLab
+  v0.19.0 `curves-core.js` ("Smooth" curve); the comment in `path.js` says so. No
+  MotionLab file is in the repo and no package was added.
+- **Preview vs export framing:** the preview runs on the landscape stage from the live
+  start view (`shotPose`): Stop, Esc or the end of the shot calls the existing
+  `stopPreview()`, which puts the camera back exactly on the start view (position and
+  target equal, verified). The MP4 export (`stepExport`, 1080x1920, 30 fps, the
+  existing Reel export path) uses the anchored plan below, so preview and export
+  frame differently, exactly as Turntable already does.
+
+### Export framing: platform ground anchor + Instagram safe area (owner rules)
+
+- **Safe area:** Instagram covers about the top 220 px and bottom 420 px of a Reel, so
+  the whole product bounding box (8 corners) must stay inside x 60-1020, y 220-1500 at
+  1080x1920 on every exported frame (`REEL_SAFE_AREA`).
+- **Ground anchor:** the product's ground contact point (bottom-centre of its bounding
+  box) is pinned to one screen point on the platform painted in the backdrop: the
+  point where the existing 9:16 Reel framing (`computeReelView`, platform pose) already
+  puts it. For Pistons Loft that is (538.8, 1395.5). It stays there on every frame
+  (measured error about 1e-11 px with three.js's own projection).
+- **Moves pivot on the ground point; the aim (yaw and pitch, no roll) is turned every
+  frame so the point stays on the anchor** (`planAnchoredShot`, `anchoredShotPoseAt`,
+  `aimTarget`):
+
+| Move | What the camera does | Final amount (from 3/4 and Low Hero) |
+|---|---|---|
+| Orbit | circles the vertical axis through the ground point | 360 degrees |
+| Push-in | moves along the line toward the ground point | to 60% of the start distance (the closest distance that still fits; never closer than 60%) |
+| Pull-back reveal | moves along the line away from it | to 160% of the start distance |
+| Slide across | moves sideways (to its right) | 35% of the start distance |
+| Crane up | rises on an arc at constant distance | at most +12 degrees of elevation and never above 25 degrees in total; product width never below 85% of frame 0. 3/4: +10.87 degrees (8.0 -> 18.9 degrees, shrunk so the box bottom stays at y 1500); Low Hero: +12.0 degrees (8.0 -> 20.0 degrees) |
+
+- **Start distance:** the box fills 60% of the closest distance at which it still fits
+  the safe area. For moves other than Crane the plan may add distance (down to a 45%
+  fill) and then shrink the move; Crane never raises the start distance, only its rise.
+  None of the other moves needed shrinking.
+- The plan is computed once per export from the product's live box (`liveFitRef`) and
+  the Reel framing of the start view, then sampled per frame.
+
+### Contact-shadow edge fix
+
+The ground shadow catcher (a shadow-only disc at floor level, always on with a photo
+backdrop) shows as a thin horizontal line when the camera is level with the floor
+(seen edge-on), and is invisible from below. An earlier C2a attempt that panned the
+camera down produced exactly that line. The anchored plan keeps every shot camera at
+least 3 degrees above the floor as seen from the ground point (measured minimum 7.5
+degrees, Slide), so the line never appears. Turntable and PNG framing are unaffected.
+
+### Diagnostics and accepted limits
+
+- **`<body data-sos-shot>`:** the export plan is written there ONLY when
+  `import.meta.env.DEV` is true (the production build contains none of it). Verification
+  harnesses that need the per-frame poses run exports on the Vite dev server.
+- **One frame short (accepted):** like Turntable, the exporter renders frames at
+  0, 1/30, ... (N-1)/30, so the exact final pose of a shot is never a frame. Fixing it
+  would need the encoding code, which is off limits.
+- **Orbit / backdrop limitation:** every camera move happens in front of a fixed 2D
+  backdrop photo. The photo never changes perspective, so an Orbit reads like the
+  product turning in front of the room (only its lighting and reflections change), and
+  a steep camera angle reads as a toy against the eye-level photo (hence the Crane
+  limits). MP4 file hashes can differ between identical exports even when every decoded
+  frame is identical; compare decoded frames, not file hashes.
 
 ## Products and models
 

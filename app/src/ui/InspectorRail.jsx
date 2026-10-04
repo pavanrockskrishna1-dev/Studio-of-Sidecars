@@ -1679,6 +1679,28 @@ export function GaragePanel() {
   );
 }
 
+// Slice C2a: the Reel presets and camera-move start views.
+const REEL_PRESET_LABELS = {
+  turntable: "Turntable",
+  orbit: "Orbit",
+  "push-in": "Push-in",
+  "pull-back": "Pull-back reveal",
+  slide: "Slide across",
+  crane: "Crane up",
+};
+const startViewLabel = (v) => (v === "custom" ? "Custom" : v);
+
+// Puts the camera on the shot's start view through the engine's own card (the
+// same click a user makes), then gives the stage a moment to apply it.
+async function applyStartView(view) {
+  const sel = view === "custom" ? '[data-testid="custom-view-card"]' : `button[title="${view} shot"]`;
+  const el = document.querySelector(sel);
+  if (!el) return false;
+  el.click();
+  await new Promise((r) => setTimeout(r, 250));
+  return true;
+}
+
 export function AnimatePanel() {
   const animState = useSyncExternalStore(
     animationStore.subscribe,
@@ -1709,14 +1731,70 @@ export function AnimatePanel() {
     const r = await withExportLock(garageStore, () => exportReel());
     if (r.ok) saveBlob(r.blob, r.filename);
   }, []);
+  // Slice C2a: a camera move first goes to its start view, for Play and Export.
+  const isShot = animState.preset !== "turntable";
+  const shotName = REEL_PRESET_LABELS[animState.preset];
+  const [hasCustomView, setHasCustomView] = useState(false);
+  useEffect(() => {
+    const sync = () => setHasCustomView(!!document.querySelector('[data-testid="custom-view-card"]'));
+    const t = setTimeout(sync, 0);
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, { subtree: true, childList: true });
+    return () => {
+      clearTimeout(t);
+      observer.disconnect();
+    };
+  }, []);
+  const handlePlay = async () => {
+    if (animPreviewing) return animationStore.stop();
+    if (isShot && !(await applyStartView(animState.startView))) return false;
+    return animationStore.play();
+  };
+  const handleExport = async () => {
+    if (isShot && !(await applyStartView(animState.startView))) return;
+    await handleExportClick();
+  };
   return (
     <>
       <span className="sos-label">Preset</span>
       <div className="sos-frow">
-        <span className="sos-pchip" data-on data-testid="ui-anim-turntable">
-          Turntable
-        </span>
+        {animationStore.PRESETS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            className="sos-pchip"
+            data-testid={id === "turntable" ? "ui-anim-turntable" : `ui-anim-preset-${id}`}
+            data-on={animState.preset === id || undefined}
+            aria-pressed={animState.preset === id}
+            disabled={animBusy}
+            onClick={() => animationStore.setPreset(id)}
+          >
+            {REEL_PRESET_LABELS[id]}
+          </button>
+        ))}
       </div>
+      {isShot ? (
+        <>
+          <span className="sos-label">Start view</span>
+          <div className="sos-frow">
+            {animationStore.START_VIEWS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="sos-pchip"
+                data-testid={`ui-anim-start-${v === "3/4" ? "34" : v.toLowerCase().replace(/\s+/g, "-")}`}
+                data-on={animState.startView === v || undefined}
+                aria-pressed={animState.startView === v}
+                disabled={animBusy || (v === "custom" && !hasCustomView)}
+                title={v === "custom" && !hasCustomView ? "Save a custom view in the Camera sheet first" : `Start the shot from the ${startViewLabel(v)} view`}
+                onClick={() => animationStore.setStartView(v)}
+              >
+                {startViewLabel(v)}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
       <span className="sos-label">Duration</span>
       <div className="sos-frow">
         {animationStore.DURATIONS.map((n) => (
@@ -1740,20 +1818,30 @@ export function AnimatePanel() {
         data-testid="ui-anim-play"
         disabled={animExporting || (!animState.ready && !animPreviewing)}
         title={
-          animPreviewing
-            ? "Stop the turntable preview"
-            : "Play the turntable preview: the model turns about its own centre (loops)"
+          isShot
+            ? animPreviewing
+              ? "Stop the shot: the camera returns to the start view"
+              : `Play the ${shotName} shot from the ${startViewLabel(animState.startView)} view`
+            : animPreviewing
+              ? "Stop the turntable preview"
+              : "Play the turntable preview: the model turns about its own centre (loops)"
         }
-        onClick={() => (animPreviewing ? animationStore.stop() : animationStore.play())}
+        onClick={handlePlay}
       >
         {animPreviewing ? "Stop" : "Play"}
       </button>
       <Hint>
-        {animPreviewing
-          ? "Playing. Click the model or press Esc to stop."
-          : animState.ready
-            ? "Spins the model about its own centre; the camera stays put. Loops."
-            : "Loading model"}
+        {isShot
+          ? animPreviewing
+            ? "Playing the shot. Stop, Esc or the end of the shot returns the camera to the start view."
+            : animState.ready
+              ? `${shotName} from ${startViewLabel(animState.startView)}, ${animState.durationS} s, easing in and out. The camera returns to the start view afterwards.`
+              : "Loading model"
+          : animPreviewing
+            ? "Playing. Click the model or press Esc to stop."
+            : animState.ready
+              ? "Spins the model about its own centre; the camera stays put. Loops."
+              : "Loading model"}
       </Hint>
       <span className="sos-label">Reel export</span>
       <button
@@ -1770,9 +1858,11 @@ export function AnimatePanel() {
             ? "Cancel the running export"
             : gateBlocked
               ? "Waiting for the environment backdrop to load"
-              : "Render the turntable at 1080x1920 and save it as an MP4"
+              : isShot
+                ? `Render the ${shotName} shot at 1080x1920 and save it as an MP4`
+                : "Render the turntable at 1080x1920 and save it as an MP4"
         }
-        onClick={animExporting ? animationStore.cancelExport : handleExportClick}
+        onClick={animExporting ? animationStore.cancelExport : handleExport}
       >
         {animExporting ? "Cancel export" : gateBlocked ? GATE_LABEL : "Export Reel (MP4)"}
       </button>

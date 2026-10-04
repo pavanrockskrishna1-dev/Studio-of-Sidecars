@@ -5,7 +5,8 @@
    commands in. The Inspector Rail reads the snapshot with useSyncExternalStore
    and calls play / stop / setDurationS, which go through the stage.
 
-   The snapshot is { mode, ready, durationS, progress, message }; mode is
+   The snapshot is { mode, ready, durationS, progress, message, preset,
+   startView } (preset / startView: Slice C2a camera moves); mode is
    "idle" | "previewing" | "exporting" (Slice C: deterministic frame stepping,
    see beginExport below), progress is an integer 0-100 and message a string
    (both written by the MP4 exporter through setStatus, throttled by it). It
@@ -18,10 +19,16 @@
    and "export" while exporting (removed on idle), so the shell CSS can shield
    the controls that would fight the animation. */
 
-import { makeTurntable, validateAnimation } from "./path";
+import { makeShot, makeTurntable, validateAnimation, SHOT_MOVES } from "./path";
 
 export const DURATIONS = [4, 8, 12];
 const DEFAULT_DURATION_S = 8;
+
+// Slice C2a: the Reel preset is the Turntable (unchanged) or one of the camera
+// moves; a camera move starts from one of the 6 camera presets or the saved
+// custom view (the Reel sheet applies that view before Play / Export).
+export const PRESETS = Object.freeze(["turntable", ...SHOT_MOVES]);
+export const START_VIEWS = Object.freeze(["Front", "Side", "3/4", "Rear", "Top", "Low Hero", "custom"]);
 
 let snapshot = Object.freeze({
   mode: "idle",
@@ -29,6 +36,8 @@ let snapshot = Object.freeze({
   durationS: DEFAULT_DURATION_S,
   progress: 0,
   message: "",
+  preset: "turntable",
+  startView: "3/4",
 });
 // Set by cancelExport(), read by the exporter between frames.
 let cancelRequested = false;
@@ -49,7 +58,9 @@ function replace(patch) {
     next.ready === snapshot.ready &&
     next.durationS === snapshot.durationS &&
     next.progress === snapshot.progress &&
-    next.message === snapshot.message
+    next.message === snapshot.message &&
+    next.preset === snapshot.preset &&
+    next.startView === snapshot.startView
   ) {
     return;
   }
@@ -85,11 +96,19 @@ export function reportStopped() {
   replace({ mode: "idle" });
 }
 
+// The animation Play and Export run: the Turntable exactly as before, or (Slice
+// C2a) the selected camera move over the selected duration.
+function buildAnim() {
+  if (snapshot.preset === "turntable") return makeTurntable({ durationS: snapshot.durationS });
+  return makeShot({ move: snapshot.preset, durationS: snapshot.durationS });
+}
+
 // Null-safe commands: false when no stage is registered.
 export function play() {
   const api = apiRef.current;
   if (!api || snapshot.mode !== "idle") return false;
-  const anim = makeTurntable({ durationS: snapshot.durationS });
+  const anim = buildAnim();
+  if (!anim) return false;
   if (!validateAnimation(anim).ok) return false;
   if (!api.play(anim)) return false;
   replace({ mode: "previewing" });
@@ -112,6 +131,19 @@ export function setDurationS(n) {
   return true;
 }
 
+// Slice C2a: only while idle.
+export function setPreset(id) {
+  if (snapshot.mode !== "idle" || !PRESETS.includes(id)) return false;
+  replace({ preset: id });
+  return true;
+}
+
+export function setStartView(id) {
+  if (snapshot.mode !== "idle" || !START_VIEWS.includes(id)) return false;
+  replace({ startView: id });
+  return true;
+}
+
 /* ---- Slice C: deterministic frame stepping ------------------------------- */
 
 // Prepares the stage to render the Turntable one exact frame at a time at
@@ -121,7 +153,8 @@ export function setDurationS(n) {
 export function beginExport(opts = {}) {
   const api = apiRef.current;
   if (!api || !api.beginExport || snapshot.mode !== "idle") return false;
-  const anim = makeTurntable({ durationS: snapshot.durationS });
+  const anim = buildAnim();
+  if (!anim) return false;
   if (!validateAnimation(anim).ok) return false;
   cancelRequested = false;
   if (!api.beginExport({ ...opts, anim })) return false;

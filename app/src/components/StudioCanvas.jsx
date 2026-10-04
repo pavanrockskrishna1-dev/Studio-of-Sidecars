@@ -22,7 +22,7 @@ import { computeCameraShot, fitDistance, getBaseline, getCameraPreset } from "..
 import * as cameraStudio from "../camera/cameraStudio";
 import { DEFAULT_LIGHTING } from "../lighting/profiles";
 import { computeExportSize, REEL_EXPORT, usesReelFraming } from "../capture/exportOptions";
-import { platformReelPose, reelPose, sampleAt } from "../animation/path";
+import { anchoredShotPoseAt, planAnchoredShot, platformReelPose, reelPose, sampleAt, shotPoseAt } from "../animation/path";
 import * as animation from "../animation/animationStore";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
@@ -1371,6 +1371,22 @@ function StudioStage({
           controls.target.fromArray(view.target);
         });
         pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
+        if (run.anim.shot) {
+          // Slice C2a camera shot: the product's ground point stays on the
+          // platform anchor of the Reel framing above while the move pivots on
+          // it, fitted once to the Instagram safe area (path.js planAnchoredShot).
+          const lf = liveFitRef.current;
+          if (run.shotPlan === undefined) {
+            run.shotPlan = planAnchoredShot({ anim: run.anim, center: lf.center.toArray(), size: lf.size.toArray(), reelPosition: view.position, reelTarget: view.target, fovDeg: REEL_EXPORT.fovDeg, width: run.width, height: run.height });
+            if (import.meta.env.DEV) document.body.dataset.sosShot = JSON.stringify(run.shotPlan);
+          }
+          const p = run.shotPlan ? anchoredShotPoseAt(run.shotPlan, run.anim.durationS, t) : shotPoseAt(run.anim, view, t);
+          if (run.shotPlan) setCameraProjection(camera, { far: Math.max(view.far, run.shotPlan.d0 * 4 + 10) });
+          moveGuarded(() => {
+            camera.position.fromArray(p.position);
+            controls.target.fromArray(p.target);
+          });
+        }
         invalidateShadowMap(gl);
         // Slice C2: cover-cropped backdrop for portrait / square frames, restored
         // in the same synchronous call (nothing to undo on abort or unmount).
@@ -1753,6 +1769,19 @@ function StudioStage({
   useFrame(() => {
     const run = animRunRef.current;
     if (!run) return;
+    if (run.anim.shot) {
+      // Slice C2a camera shot: move the camera from the saved start view; at
+      // the end, stopPreview() puts the start view back exactly (as Stop does).
+      const ts = (performance.now() - run.start) / 1000;
+      if (ts >= run.anim.durationS) return void stopPreview();
+      const start = { position: run.preView.position.toArray(), target: run.preView.target.toArray() };
+      const p = shotPoseAt(run.anim, start, ts);
+      moveGuarded(() => {
+        camera.position.fromArray(p.position);
+        controlsRef.current?.target.fromArray(p.target);
+      });
+      return;
+    }
     const t = ((performance.now() - run.start) / 1000) % run.anim.durationS;
     pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
     invalidateShadowMap(gl);
