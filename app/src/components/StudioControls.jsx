@@ -2,7 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { backdropGate, exportsAllowed, GATE_LABEL } from "../capture/exportGate";
 import { ENVIRONMENTS } from "../environments/registry";
-import { PRODUCTS } from "../products/registry";
+import { PRODUCTS, getProduct, presetLabel } from "../products/registry";
 import { EXPORT_PRESETS, EXPORT_SCALES } from "../capture/exportOptions";
 import { CAMERA_PRESETS } from "../camera/presets";
 import { LIGHTING_CONTROLS } from "../lighting/profiles";
@@ -125,7 +125,10 @@ function PresetThumb({ thumb }) {
 // Mission 7.2 (Save Custom View): once a view is saved, one extra "Custom"
 // card appears beside the built-ins (same card language, bookmark glyph);
 // the ghost pill below snapshots the current camera as that Custom view.
+// Slice C2c: each card shows the product's display label for the preset; the
+// preset name stays on data-preset-name for the shell chips that mirror it.
 function CameraRow({
+  product,
   activePresetId,
   onPreset,
   hasCustomView,
@@ -156,10 +159,12 @@ function CameraRow({
       >
         {CAMERA_PRESETS.map((p) => {
           const active = p.id === activePresetId;
+          const label = presetLabel(product, p);
           return (
             <button
               key={p.id}
-              title={`${p.name} shot`}
+              title={`${label} shot`}
+              data-preset-name={p.name}
               data-active={active ? "true" : "false"}
               onClick={() => onPreset(p.id)}
               style={{
@@ -186,7 +191,7 @@ function CameraRow({
                   lineHeight: 1.1,
                 }}
               >
-                {p.name}
+                {label}
               </span>
             </button>
           );
@@ -623,6 +628,7 @@ export default function StudioControls({
       </Slotted>
       <Slotted name="camera">
         <CameraRow
+          product={getProduct(productId)}
           activePresetId={activePresetId}
           onPreset={onCameraPreset}
           hasCustomView={hasCustomView}

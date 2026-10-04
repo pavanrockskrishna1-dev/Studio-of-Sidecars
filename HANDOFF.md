@@ -27,6 +27,7 @@
       ground anchor and Instagram safe area for exports), right after P1.
   4d. Slice C2b (multi-shot Reels: shot list, hard cuts, pre-Play view restore), right
       after C2a.
+  4e. Slice C2c (camera preset display labels per product), right after C2b.
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -2085,6 +2086,41 @@ touched.
 - One early new-build Push-in run differed from HEAD by at most 3 levels in a small strip at
   the top-right edge of the backdrop (x 1071-1079, y 48-114, no model pixels); it was never
   reproduced in 10 later fresh-launch runs (5 HEAD, 5 new) and its cause is unknown.
+
+## Slice C2c - camera preset labels per product (uncommitted at the time of writing)
+
+**Why:** a preset is an azimuth relative to the product's `frontAz` (`camera/presets.js`).
+The two coffee bikes (Coffee Bike `frontAz -90`, THE KOP MAIN `frontAz 90`) have their
+`frontAz` pointed at the cart's branding side (THE KOP), not at the motorcycle's headlight,
+so the generic names were wrong for them: "Front" showed the branding broadside, "Side"
+the rear, "Rear" the motorcycle's side. The Top preset ignores `frontAz` (its camera
+azimuth is 0 on every product), so Top's orientation differs between products. The Cessna
+(`frontAz 0`, nose on +Z) matched its names and is unchanged.
+
+**What changed (display only):** `products/registry.js` gives each product an optional
+`presetLabels` map keyed by preset id, and `presetLabel(product, preset)` returns the label
+(or the preset name when there is no map). Both coffee bikes use:
+
+| Preset id | Name (stored, unchanged) | Shown on the coffee bikes |
+|---|---|---|
+| `front` | Front | Branding side |
+| `side` | Side | Rear |
+| `three-quarter` | 3/4 | Rear 3/4 |
+| `rear` | Rear | Bike side |
+| `top` | Top | Top |
+| `low-hero` | Low Hero | Low branding side |
+
+- Preset ids, preset names, the camera maths, sessions, layouts, Reel shots (they store the
+  preset NAME as `startView`, e.g. "3/4"), custom views and every export are unchanged.
+- Where the label shows: the Camera sheet cards (`StudioControls` `CameraRow`; the card's
+  `title` is now "<label> shot" and the preset name moved to `data-preset-name`, which the
+  Framing chips use to read and click the cards), the Framing chips, the Reel start-view
+  chips and their tooltips, and the shot-list rows. The capsule never shows a view name.
+- UI outside App's prop tree reads the product id from `products/currentProduct.js` (App
+  writes it on every product change). Imported products have no map and show the names.
+- Harness note: the card selector `button[title="3/4 shot"]` only works on products
+  without labels; use `button[data-preset-name="3/4"]`.
+- A motorcycle head-on / front 3/4 preset for the coffee bikes is a later slice (owner).
 
 ## Products and models
 

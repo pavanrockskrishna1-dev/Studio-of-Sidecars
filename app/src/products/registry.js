@@ -5,6 +5,23 @@
 //   2. one entry in this list
 // No component changes. Camera fit, floor, and lighting are all derived
 // from whatever model is loaded.
+
+// Slice C2c: optional DISPLAY labels for the camera presets, per product,
+// keyed by preset id. Only what the user reads changes: preset ids and names,
+// the camera maths, sessions, layouts, Reel shots and custom views keep using
+// the preset ids / names. The two coffee bikes need them because their frontAz
+// points at the cart's branding side (not the motorcycle's headlight), so the
+// generic names do not match what the camera shows; the Top preset ignores
+// frontAz anyway. Products without a map show the preset names.
+const COFFEE_BIKE_PRESET_LABELS = Object.freeze({
+  front: "Branding side",
+  side: "Rear",
+  "three-quarter": "Rear 3/4",
+  rear: "Bike side",
+  top: "Top",
+  "low-hero": "Low branding side",
+});
+
 export const PRODUCTS = [
   {
     id: "coffee-bike",
@@ -15,6 +32,7 @@ export const PRODUCTS = [
     // are defined relative to this so "Front" always shows the front. The
     // coffee cart/branding faces -X in this asset.
     frontAz: -90,
+    presetLabels: COFFEE_BIKE_PRESET_LABELS,
   },
   {
     // Source: the owner's Tripo account (generated model). Terms of use for
@@ -53,9 +71,13 @@ export const PRODUCTS = [
     // itself runs along z). Azimuth 90 = the camera on the +X side, so "Front"
     // shows the sign side.
     frontAz: 90,
+    presetLabels: COFFEE_BIKE_PRESET_LABELS,
   },
 ];
 
 export function getProduct(id) {
   return PRODUCTS.find((p) => p.id === id) ?? PRODUCTS[0];
 }
+
+// Slice C2c: the label a camera preset ({ id, name }) shows for a product.
+export const presetLabel = (product, preset) => product?.presetLabels?.[preset.id] ?? preset.name;

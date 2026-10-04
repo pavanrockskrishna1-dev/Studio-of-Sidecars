@@ -21,7 +21,9 @@ import * as layoutLibrary from "../garage/layoutLibrary";
 import * as sceneObjects from "../garage/sceneObjects";
 import * as gizmo from "../garage/gizmo";
 import * as measure from "../garage/measure";
-import { PRODUCTS } from "../products/registry";
+import { PRODUCTS, getProduct, presetLabel } from "../products/registry";
+import * as currentProduct from "../products/currentProduct";
+import { CAMERA_PRESETS } from "../camera/presets";
 import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
@@ -124,7 +126,8 @@ function readLiveLighting() {
 /* --------------------------------------------------------------------------
    Camera chips — same bridge idea as the lighting one: the rail is a sibling
    of <App/>, so it drives the engine's OWN Camera cards in StudioControls
-   (title="<Name> shot") with a real click. That runs App's existing
+   (data-preset-name="<Name>", Slice C2c; the visible text and title carry the
+   product's display label) with a real click. That runs App's existing
    handleCameraPreset, so there is no second camera state. An absent panel or
    an unknown name is a graceful no-op.
    -------------------------------------------------------------------------- */
@@ -134,12 +137,12 @@ function readLiveLighting() {
 function readActiveCameraCard() {
   // document-wide: the Camera dock sheet may have moved the cards out of
   // [data-studio-controls] (ui/slots.js)
-  const el = document.querySelector('button[data-active="true"][title$=" shot"]');
-  return el ? el.title.replace(/ shot$/, "") : null;
+  const el = document.querySelector('button[data-active="true"][data-preset-name]');
+  return el ? el.dataset.presetName : null;
 }
 
 function applyCameraPreset(name) {
-  const el = document.querySelector(`button[title="${name} shot"]`);
+  const el = [...document.querySelectorAll("button[data-preset-name]")].find((b) => b.dataset.presetName === name);
   if (!el) return false;
   el.click();
   return true;
@@ -195,7 +198,9 @@ function applyExportFormat(label) {
   return true;
 }
 
-function Chips({ items, onSelect, activeMoodId, isActive, disabled }) {
+// labelOf (Slice C2c, optional): the text shown for an item; the item itself
+// is still what onSelect / isActive receive.
+function Chips({ items, onSelect, activeMoodId, isActive, disabled, labelOf = (t) => t }) {
   return (
     <div className="sos-frow">
       {items.map((text) => {
@@ -208,14 +213,14 @@ function Chips({ items, onSelect, activeMoodId, isActive, disabled }) {
             data-on={on || undefined}
             aria-pressed={on}
             disabled={disabled}
-            title={`Apply the ${text} preset`}
+            title={`Apply the ${labelOf(text)} preset`}
             onClick={() => onSelect(text)}
           >
-            {text}
+            {labelOf(text)}
           </button>
         ) : (
           <span key={text} className="sos-pchip">
-            {text}
+            {labelOf(text)}
           </span>
         );
       })}
@@ -1572,6 +1577,13 @@ export function CameraFraming() {
     cameraStudio.getSnapshot,
     cameraStudio.getSnapshot
   );
+  // Slice C2c: chips show the current product's display labels
+  const productId = useSyncExternalStore(currentProduct.subscribe, currentProduct.getSnapshot, currentProduct.getSnapshot);
+  const product = getProduct(productId);
+  const framingLabel = (name) => {
+    const p = presetByName(name);
+    return p ? presetLabel(product, p) : name;
+  };
   const animState = useSyncExternalStore(
     animationStore.subscribe,
     animationStore.getSnapshot,
@@ -1607,6 +1619,7 @@ export function CameraFraming() {
       </div>
       <Chips
         items={CAMERA_FRAMINGS}
+        labelOf={framingLabel}
         onSelect={applyCameraPreset}
         disabled={animState.mode !== "idle"}
         isActive={(t) => !camState.live && activeCard === t}
@@ -1689,9 +1702,16 @@ const REEL_PRESET_LABELS = {
   slide: "Slide across",
   crane: "Crane up",
 };
-const startViewLabel = (v) => (v === "custom" ? "Custom" : v);
+// Slice C2c: a stored start view (a preset name, or "custom") as the current
+// product shows it (registry.presetLabel); the stored value never changes.
+const presetByName = (name) => CAMERA_PRESETS.find((p) => p.name === name) ?? null;
+const startViewLabelFor = (product, v) => {
+  if (v === "custom") return "Custom";
+  const p = presetByName(v);
+  return p ? presetLabel(product, p) : v;
+};
 const startViewTestId = (v) => `ui-anim-start-${v === "3/4" ? "34" : v.toLowerCase().replace(/\s+/g, "-")}`;
-const shotSummary = (s) => `${REEL_PRESET_LABELS[s.move]} · ${startViewLabel(s.startView)} · ${s.durationS} s`;
+const shotSummary = (s, viewLabel) => `${REEL_PRESET_LABELS[s.move]} · ${viewLabel(s.startView)} · ${s.durationS} s`;
 
 // Slice C2b: the Reel sheet is a shot list (1 to 5 shots, at most 30 s, hard
 // cuts between shots). Every edit goes through the animation store, which
@@ -1705,6 +1725,9 @@ export function AnimatePanel() {
     animationStore.getSnapshot,
     animationStore.getSnapshot
   );
+  // Slice C2c: start views show the current product's display labels
+  const productId = useSyncExternalStore(currentProduct.subscribe, currentProduct.getSnapshot, currentProduct.getSnapshot);
+  const startViewLabel = (v) => startViewLabelFor(getProduct(productId), v);
   const animPreviewing = animState.mode === "previewing";
   const animExporting = animState.mode === "exporting";
   // Whether this browser can export an MP4 at all (checked once, on mount;
@@ -1800,7 +1823,7 @@ export function AnimatePanel() {
               onClick={() => setSelected(i)}
             >
               <span className="sos-reel-num">{i + 1}</span>
-              <span className="sos-reel-sum">{shotSummary(s)}</span>
+              <span className="sos-reel-sum">{shotSummary(s, startViewLabel)}</span>
               {animPreviewing && animState.shot === i ? <span className="sos-reel-live">playing</span> : null}
             </button>
             <button

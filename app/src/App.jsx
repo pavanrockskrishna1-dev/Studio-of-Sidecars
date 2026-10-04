@@ -7,6 +7,7 @@ import LoadingScreen from "./components/LoadingScreen";
 import { registerEngine } from "./session/studioSession";
 import { apiRef as cameraStudioApiRef } from "./camera/cameraStudio";
 import { getProduct } from "./products/registry";
+import { setCurrentProductId } from "./products/currentProduct";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "./environments/registry";
 import { getLightingProfile } from "./lighting/profiles";
 import { DEFAULT_EXPORT_OPTS, exportFilename } from "./capture/exportOptions";
@@ -82,6 +83,12 @@ export default function App() {
 
   const product = getProduct(productId);
   const environment = getEnvironment(environmentId);
+
+  // Slice C2c: UI outside this prop tree (Reel sheet, Framing chips) reads the
+  // product id for the camera preset display labels.
+  useEffect(() => {
+    setCurrentProductId(productId);
+  }, [productId]);
 
   // Reset the camera request in the same render pass as a product switch so the
   // incoming model gets its default hero framing (no camera-state leakage).
