@@ -8,9 +8,12 @@
 
    A session is local only (localStorage). It is not an export: no GLB, no
    image. Materials are captured only while a model's materials are attached
-   (the Materials panel mounts them); otherwise that part is skipped. */
+   (the Materials panel mounts them); otherwise that part is skipped.
+   Slice C2b: the Reel shot list (animationStore) is saved as `reel`, restored
+   when the saved session has one, and Reset puts back the default single shot. */
 
 import * as materials from "../materials/store";
+import * as animationStore from "../animation/animationStore";
 
 const KEY = "sos-studio-session-v1";
 const VERSION = 1;
@@ -43,6 +46,7 @@ export function saveSession(projectName) {
     projectName,
     engine: engine.snapshot(),
     materials: materials.snapshotOverrides(),
+    reel: animationStore.sequenceForSession(),
   };
   try {
     localStorage.setItem(KEY, JSON.stringify(snap));
@@ -78,6 +82,7 @@ export function restoreSession() {
   const snap = readSavedSession();
   if (!snap || !engine) return null;
   engine.apply(snap.engine);
+  if (snap.reel) animationStore.restoreSequence(snap.reel);
   if (snap.materials) {
     whenMaterialsReady(snap.materials.modelKey, () => materials.restoreOverrides(snap.materials));
   }
@@ -88,5 +93,6 @@ export function resetSession() {
   if (!engine) return false;
   engine.reset();
   materials.resetModel();
+  animationStore.resetSequence();
   return true;
 }

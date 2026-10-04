@@ -3,15 +3,20 @@
    Same pattern as camera/cameraStudio.js: a module singleton holding a
    read-only snapshot plus the module-level apiRef the stage registers its
    commands in. The Inspector Rail reads the snapshot with useSyncExternalStore
-   and calls play / stop / setDurationS, which go through the stage.
+   and calls play / stop and the shot-list edits; play and the export go
+   through the stage.
 
-   The snapshot is { mode, ready, durationS, progress, message, preset,
-   startView } (preset / startView: Slice C2a camera moves); mode is
-   "idle" | "previewing" | "exporting" (Slice C: deterministic frame stepping,
-   see beginExport below), progress is an integer 0-100 and message a string
-   (both written by the MP4 exporter through setStatus, throttled by it). It
-   changes on Play, Stop, a duration chip, an export status update and when the
-   stage registers or goes away, and NEVER per frame:
+   The snapshot is { mode, ready, durationS, progress, message, sequence,
+   shot }; mode is "idle" | "previewing" | "exporting" (Slice C:
+   deterministic frame stepping, see beginExport below), progress is an integer
+   0-100 and message a string (both written by the MP4 exporter through
+   setStatus, throttled by it). Slice C2b: `sequence` is the Reel shot list
+   (reelSequence.js: 1 to 5 shots { move, startView, durationS }, at most 30 s)
+   and durationS is always its total (the MP4 exporter reads durationS for its
+   frame count); `shot` is the index of the shot the stage is playing (-1 when
+   not previewing), reported by the stage once per shot change. The snapshot
+   changes on Play, Stop, a shot-list edit, a shot change, an export status
+   update and when the stage registers or goes away, and NEVER per frame:
    the spin angle lives in a ref inside the stage and is applied straight to the
    pivot group. The store holds no camera and no model state.
 
@@ -19,25 +24,25 @@
    and "export" while exporting (removed on idle), so the shell CSS can shield
    the controls that would fight the animation. */
 
-import { makeShot, makeTurntable, validateAnimation, SHOT_MOVES } from "./path";
+import { validateAnimation } from "./path.js";
+import * as reel from "./reelSequence.js";
 
-export const DURATIONS = [4, 8, 12];
-const DEFAULT_DURATION_S = 8;
+export const DURATIONS = reel.SHOT_DURATIONS;
 
-// Slice C2a: the Reel preset is the Turntable (unchanged) or one of the camera
-// moves; a camera move starts from one of the 6 camera presets or the saved
-// custom view (the Reel sheet applies that view before Play / Export).
-export const PRESETS = Object.freeze(["turntable", ...SHOT_MOVES]);
-export const START_VIEWS = Object.freeze(["Front", "Side", "3/4", "Rear", "Top", "Low Hero", "custom"]);
+// Slice C2a / C2b: a shot is the Turntable (the model spins) or a camera move;
+// every shot starts from one of the 6 camera presets or the saved custom view.
+export const PRESETS = reel.REEL_MOVES;
+export const START_VIEWS = reel.REEL_START_VIEWS;
 
+const initialSequence = reel.defaultSequence();
 let snapshot = Object.freeze({
   mode: "idle",
   ready: false,
-  durationS: DEFAULT_DURATION_S,
+  durationS: reel.totalDuration(initialSequence),
   progress: 0,
   message: "",
-  preset: "turntable",
-  startView: "3/4",
+  sequence: initialSequence,
+  shot: -1,
 });
 // Set by cancelExport(), read by the exporter between frames.
 let cancelRequested = false;
@@ -59,8 +64,8 @@ function replace(patch) {
     next.durationS === snapshot.durationS &&
     next.progress === snapshot.progress &&
     next.message === snapshot.message &&
-    next.preset === snapshot.preset &&
-    next.startView === snapshot.startView
+    next.sequence === snapshot.sequence &&
+    next.shot === snapshot.shot
   ) {
     return;
   }
@@ -93,15 +98,19 @@ export function registerApi(api) {
 // Stage only: the preview ended on its own side (canvas click, Escape, a
 // camera / transform / session change, or the stage unmounting).
 export function reportStopped() {
-  replace({ mode: "idle" });
+  replace({ mode: "idle", shot: -1 });
 }
 
-// The animation Play and Export run: the Turntable exactly as before, or (Slice
-// C2a) the selected camera move over the selected duration.
-function buildAnim() {
-  if (snapshot.preset === "turntable") return makeTurntable({ durationS: snapshot.durationS });
-  return makeShot({ move: snapshot.preset, durationS: snapshot.durationS });
+// Stage only (Slice C2b): the preview moved on to shot `index` (0-based).
+export function reportShot(index) {
+  if (snapshot.mode !== "previewing" || !Number.isInteger(index)) return;
+  replace({ shot: index });
 }
+
+// The animation Play and Export run (reelSequence.buildReelAnim): one
+// Turntable shot is exactly the pre-C2b Turntable, one camera move exactly the
+// C2a shot, more shots a sequence joined by hard cuts.
+const buildAnim = () => reel.buildReelAnim(snapshot.sequence, 30);
 
 // Null-safe commands: false when no stage is registered.
 export function play() {
@@ -111,7 +120,7 @@ export function play() {
   if (!anim) return false;
   if (!validateAnimation(anim).ok) return false;
   if (!api.play(anim)) return false;
-  replace({ mode: "previewing" });
+  replace({ mode: "previewing", shot: anim.reel ? 0 : -1 });
   return true;
 }
 
@@ -120,36 +129,53 @@ export function stop() {
   const api = apiRef.current;
   if (!api || snapshot.mode !== "previewing") return false;
   const stopped = api.stop();
-  replace({ mode: "idle" });
+  replace({ mode: "idle", shot: -1 });
   return stopped;
 }
 
-// Only while idle, and only 4, 8 or 12 seconds.
-export function setDurationS(n) {
-  if (snapshot.mode !== "idle" || !DURATIONS.includes(n)) return false;
-  replace({ durationS: n });
+/* ---- Slice C2b: the shot list ------------------------------------------- */
+
+// Every edit goes through reelSequence (the 5-shot and 30 s rules) and only
+// while idle. Returns { ok, reason }: reason is the sentence the Reel sheet
+// shows when an edit is refused.
+function edit(result) {
+  if (snapshot.mode !== "idle") return { ok: false, reason: "Stop the preview or export first." };
+  if (result.ok) replace({ sequence: result.seq, durationS: reel.totalDuration(result.seq) });
+  return { ok: result.ok, reason: result.reason };
+}
+
+export const getSequence = () => snapshot.sequence;
+export const addShot = () => edit(reel.addShot(snapshot.sequence));
+export const deleteShot = (i) => edit(reel.deleteShot(snapshot.sequence, i));
+export const moveShot = (i, dir) => edit(reel.moveShot(snapshot.sequence, i, dir));
+export const setShot = (i, patch) => edit(reel.setShot(snapshot.sequence, i, patch));
+
+// Session (Save / Restore / Reset): the plain form saved, a sanitized restore
+// (false when the saved data holds no usable shot) and the default list (one
+// Orbit shot from 3/4, 8 s). A running preview is stopped first; an export
+// refuses.
+export const sequenceForSession = () => reel.sequenceToSession(snapshot.sequence);
+
+function loadSequence(seq) {
+  if (snapshot.mode === "exporting") return false;
+  if (snapshot.mode === "previewing") stop();
+  replace({ sequence: seq, durationS: reel.totalDuration(seq) });
   return true;
 }
 
-// Slice C2a: only while idle.
-export function setPreset(id) {
-  if (snapshot.mode !== "idle" || !PRESETS.includes(id)) return false;
-  replace({ preset: id });
-  return true;
+export function restoreSequence(raw) {
+  const seq = reel.sequenceFromSession(raw);
+  return seq ? loadSequence(seq) : false;
 }
 
-export function setStartView(id) {
-  if (snapshot.mode !== "idle" || !START_VIEWS.includes(id)) return false;
-  replace({ startView: id });
-  return true;
-}
+export const resetSequence = () => loadSequence(reel.defaultSequence());
 
 /* ---- Slice C: deterministic frame stepping ------------------------------- */
 
-// Prepares the stage to render the Turntable one exact frame at a time at
+// Prepares the stage to render the Reel one exact frame at a time at
 // { width, height } (default 1080x1920), on the same visible canvas as the PNG
-// export. Only from idle, so a running preview refuses it. The turntable spec
-// (the current durationS) is fixed here and used for every step.
+// export. Only from idle, so a running preview refuses it. The anim (the
+// current shot list) is fixed here and used for every step.
 export function beginExport(opts = {}) {
   const api = apiRef.current;
   if (!api || !api.beginExport || snapshot.mode !== "idle") return false;

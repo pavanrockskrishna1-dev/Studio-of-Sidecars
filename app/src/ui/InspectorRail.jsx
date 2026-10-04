@@ -14,6 +14,7 @@ import {
 import * as materialStore from "../materials/store";
 import * as cameraStudio from "../camera/cameraStudio";
 import * as animationStore from "../animation/animationStore";
+import { canAdd, durationAllowed } from "../animation/reelSequence";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
 import * as layoutLibrary from "../garage/layoutLibrary";
@@ -1679,7 +1680,7 @@ export function GaragePanel() {
   );
 }
 
-// Slice C2a: the Reel presets and camera-move start views.
+// Slice C2a / C2b: the Reel shot moves and start views.
 const REEL_PRESET_LABELS = {
   turntable: "Turntable",
   orbit: "Orbit",
@@ -1689,18 +1690,15 @@ const REEL_PRESET_LABELS = {
   crane: "Crane up",
 };
 const startViewLabel = (v) => (v === "custom" ? "Custom" : v);
+const startViewTestId = (v) => `ui-anim-start-${v === "3/4" ? "34" : v.toLowerCase().replace(/\s+/g, "-")}`;
+const shotSummary = (s) => `${REEL_PRESET_LABELS[s.move]} · ${startViewLabel(s.startView)} · ${s.durationS} s`;
 
-// Puts the camera on the shot's start view through the engine's own card (the
-// same click a user makes), then gives the stage a moment to apply it.
-async function applyStartView(view) {
-  const sel = view === "custom" ? '[data-testid="custom-view-card"]' : `button[title="${view} shot"]`;
-  const el = document.querySelector(sel);
-  if (!el) return false;
-  el.click();
-  await new Promise((r) => setTimeout(r, 250));
-  return true;
-}
-
+// Slice C2b: the Reel sheet is a shot list (1 to 5 shots, at most 30 s, hard
+// cuts between shots). Every edit goes through the animation store, which
+// enforces the limits; a blocked Add or duration chip is disabled and the
+// reason is written under it. The chip rows edit the selected shot and keep
+// the C2a test ids. Play / Export never move the camera first: the stage works
+// out each shot's start view itself, and the camera returns to the user's view.
 export function AnimatePanel() {
   const animState = useSyncExternalStore(
     animationStore.subscribe,
@@ -1731,9 +1729,6 @@ export function AnimatePanel() {
     const r = await withExportLock(garageStore, () => exportReel());
     if (r.ok) saveBlob(r.blob, r.filename);
   }, []);
-  // Slice C2a: a camera move first goes to its start view, for Play and Export.
-  const isShot = animState.preset !== "turntable";
-  const shotName = REEL_PRESET_LABELS[animState.preset];
   const [hasCustomView, setHasCustomView] = useState(false);
   useEffect(() => {
     const sync = () => setHasCustomView(!!document.querySelector('[data-testid="custom-view-card"]'));
@@ -1745,18 +1740,122 @@ export function AnimatePanel() {
       observer.disconnect();
     };
   }, []);
-  const handlePlay = async () => {
+
+  const seq = animState.sequence;
+  const total = animState.durationS;
+  const [selectedRaw, setSelected] = useState(0);
+  const selected = Math.min(selectedRaw, seq.length - 1);
+  const shot = seq[selected];
+  // The last refused edit's reason (shown until the next successful edit).
+  const [notice, setNotice] = useState("");
+  const run = (result) => {
+    setNotice(result.ok ? "" : result.reason);
+    return result.ok;
+  };
+  const addCheck = canAdd(seq);
+  const durationCheck = (n) => durationAllowed(seq, selected, n);
+  const blockedDurations = animationStore.DURATIONS.filter((n) => !durationCheck(n).ok);
+  const loneTurntable = seq.length === 1 && shot.move === "turntable";
+  const missingCustom = hasCustomView ? -1 : seq.findIndex((s) => s.startView === "custom" && !(seq.length === 1 && s.move === "turntable"));
+  const blockedReason =
+    missingCustom >= 0 ? `Shot ${missingCustom + 1} starts from Custom: save a custom view in the Camera sheet first.` : "";
+
+  const handlePlay = () => {
     if (animPreviewing) return animationStore.stop();
-    if (isShot && !(await applyStartView(animState.startView))) return false;
+    if (blockedReason) return false;
     return animationStore.play();
   };
   const handleExport = async () => {
-    if (isShot && !(await applyStartView(animState.startView))) return;
+    if (blockedReason) return;
     await handleExportClick();
   };
+  const handleAdd = () => {
+    if (run(animationStore.addShot())) setSelected(animationStore.getSequence().length - 1);
+  };
+  const handleMove = (i, dir) => {
+    if (run(animationStore.moveShot(i, dir)) && selected === i) setSelected(i + dir);
+  };
+  const handleDelete = (i) => {
+    if (run(animationStore.deleteShot(i)) && selected >= i && selected > 0) setSelected(selected - 1);
+  };
+
   return (
-    <>
-      <span className="sos-label">Preset</span>
+    <div className="sos-reel">
+      <div className="sos-reel-head">
+        <span className="sos-label">Shots</span>
+        <span className="sos-reel-total" data-testid="ui-reel-total">
+          {seq.length} of 5 · {total} s of 30 s
+        </span>
+      </div>
+      <ol className="sos-reel-list" data-testid="ui-reel-shots">
+        {seq.map((s, i) => (
+          <li key={i} className="sos-reel-row" data-on={i === selected || undefined}>
+            <button
+              type="button"
+              className="sos-reel-pick"
+              data-testid={`ui-shot-${i + 1}`}
+              aria-pressed={i === selected}
+              disabled={animBusy}
+              title={`Edit shot ${i + 1}`}
+              onClick={() => setSelected(i)}
+            >
+              <span className="sos-reel-num">{i + 1}</span>
+              <span className="sos-reel-sum">{shotSummary(s)}</span>
+              {animPreviewing && animState.shot === i ? <span className="sos-reel-live">playing</span> : null}
+            </button>
+            <button
+              type="button"
+              className="sos-reel-tool"
+              data-testid={`ui-shot-${i + 1}-up`}
+              aria-label={`Move shot ${i + 1} up`}
+              title={i === 0 ? "Already the first shot." : `Move shot ${i + 1} up`}
+              disabled={animBusy || i === 0}
+              onClick={() => handleMove(i, -1)}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className="sos-reel-tool"
+              data-testid={`ui-shot-${i + 1}-down`}
+              aria-label={`Move shot ${i + 1} down`}
+              title={i === seq.length - 1 ? "Already the last shot." : `Move shot ${i + 1} down`}
+              disabled={animBusy || i === seq.length - 1}
+              onClick={() => handleMove(i, 1)}
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              className="sos-reel-tool"
+              data-testid={`ui-shot-${i + 1}-delete`}
+              aria-label={`Delete shot ${i + 1}`}
+              title={seq.length === 1 ? "A Reel needs at least one shot." : `Delete shot ${i + 1}`}
+              disabled={animBusy || seq.length === 1}
+              onClick={() => handleDelete(i)}
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ol>
+      <button
+        type="button"
+        className="sos-btn sos-btn-ghost sos-rail-export"
+        data-testid="ui-shot-add"
+        disabled={animBusy || !addCheck.ok}
+        title={addCheck.ok ? "Add a shot at the end" : addCheck.reason}
+        onClick={handleAdd}
+      >
+        Add shot
+      </button>
+      {!addCheck.ok ? (
+        <p className="sos-reel-why" data-testid="ui-shot-add-why">
+          {addCheck.reason}
+        </p>
+      ) : null}
+
+      <span className="sos-label">Shot {selected + 1}: move</span>
       <div className="sos-frow">
         {animationStore.PRESETS.map((id) => (
           <button
@@ -1764,84 +1863,102 @@ export function AnimatePanel() {
             type="button"
             className="sos-pchip"
             data-testid={id === "turntable" ? "ui-anim-turntable" : `ui-anim-preset-${id}`}
-            data-on={animState.preset === id || undefined}
-            aria-pressed={animState.preset === id}
+            data-on={shot.move === id || undefined}
+            aria-pressed={shot.move === id}
             disabled={animBusy}
-            onClick={() => animationStore.setPreset(id)}
+            onClick={() => run(animationStore.setShot(selected, { move: id }))}
           >
             {REEL_PRESET_LABELS[id]}
           </button>
         ))}
       </div>
-      {isShot ? (
-        <>
-          <span className="sos-label">Start view</span>
-          <div className="sos-frow">
-            {animationStore.START_VIEWS.map((v) => (
-              <button
-                key={v}
-                type="button"
-                className="sos-pchip"
-                data-testid={`ui-anim-start-${v === "3/4" ? "34" : v.toLowerCase().replace(/\s+/g, "-")}`}
-                data-on={animState.startView === v || undefined}
-                aria-pressed={animState.startView === v}
-                disabled={animBusy || (v === "custom" && !hasCustomView)}
-                title={v === "custom" && !hasCustomView ? "Save a custom view in the Camera sheet first" : `Start the shot from the ${startViewLabel(v)} view`}
-                onClick={() => animationStore.setStartView(v)}
-              >
-                {startViewLabel(v)}
-              </button>
-            ))}
-          </div>
-        </>
-      ) : null}
-      <span className="sos-label">Duration</span>
+      <span className="sos-label">Shot {selected + 1}: start view</span>
       <div className="sos-frow">
-        {animationStore.DURATIONS.map((n) => (
+        {animationStore.START_VIEWS.map((v) => (
           <button
-            key={n}
+            key={v}
             type="button"
             className="sos-pchip"
-            data-testid={`ui-anim-duration-${n}`}
-            data-on={animState.durationS === n || undefined}
-            aria-pressed={animState.durationS === n}
-            disabled={animBusy}
-            onClick={() => animationStore.setDurationS(n)}
+            data-testid={startViewTestId(v)}
+            data-on={(!loneTurntable && shot.startView === v) || undefined}
+            aria-pressed={!loneTurntable && shot.startView === v}
+            disabled={animBusy || loneTurntable || (v === "custom" && !hasCustomView)}
+            title={
+              loneTurntable
+                ? "A Turntable on its own spins from the current camera view"
+                : v === "custom" && !hasCustomView
+                  ? "Save a custom view in the Camera sheet first"
+                  : `Start shot ${selected + 1} from the ${startViewLabel(v)} view`
+            }
+            onClick={() => run(animationStore.setShot(selected, { startView: v }))}
           >
-            {n} s
+            {startViewLabel(v)}
           </button>
         ))}
       </div>
+      {loneTurntable ? (
+        <p className="sos-reel-why">
+          A Turntable on its own spins from the current camera view, as before. In a Reel with more shots it starts from its start view.
+        </p>
+      ) : null}
+      <span className="sos-label">Shot {selected + 1}: duration</span>
+      <div className="sos-frow">
+        {animationStore.DURATIONS.map((n) => {
+          const c = durationCheck(n);
+          return (
+            <button
+              key={n}
+              type="button"
+              className="sos-pchip"
+              data-testid={`ui-anim-duration-${n}`}
+              data-on={shot.durationS === n || undefined}
+              aria-pressed={shot.durationS === n}
+              disabled={animBusy || !c.ok}
+              title={c.ok ? `Shot ${selected + 1} lasts ${n} s` : c.reason}
+              onClick={() => run(animationStore.setShot(selected, { durationS: n }))}
+            >
+              {n} s
+            </button>
+          );
+        })}
+      </div>
+      {blockedDurations.length ? (
+        <p className="sos-reel-why" data-testid="ui-duration-why">
+          {durationCheck(blockedDurations[0]).reason}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="sos-reel-why" data-testid="ui-reel-notice">
+          {notice}
+        </p>
+      ) : null}
+
       <button
         type="button"
         className="sos-btn sos-btn-ghost sos-rail-export"
         data-testid="ui-anim-play"
-        disabled={animExporting || (!animState.ready && !animPreviewing)}
+        disabled={animExporting || (!animPreviewing && (!animState.ready || !!blockedReason))}
         title={
-          isShot
-            ? animPreviewing
-              ? "Stop the shot: the camera returns to the start view"
-              : `Play the ${shotName} shot from the ${startViewLabel(animState.startView)} view`
-            : animPreviewing
-              ? "Stop the turntable preview"
-              : "Play the turntable preview: the model turns about its own centre (loops)"
+          animPreviewing
+            ? "Stop: the camera returns to your view from before Play"
+            : `Play the Reel (${seq.length} ${seq.length === 1 ? "shot" : "shots"}, ${total} s)`
         }
         onClick={handlePlay}
       >
         {animPreviewing ? "Stop" : "Play"}
       </button>
       <Hint>
-        {isShot
-          ? animPreviewing
-            ? "Playing the shot. Stop, Esc or the end of the shot returns the camera to the start view."
-            : animState.ready
-              ? `${shotName} from ${startViewLabel(animState.startView)}, ${animState.durationS} s, easing in and out. The camera returns to the start view afterwards.`
-              : "Loading model"
+        {blockedReason
+          ? blockedReason
           : animPreviewing
-            ? "Playing. Click the model or press Esc to stop."
-            : animState.ready
-              ? "Spins the model about its own centre; the camera stays put. Loops."
-              : "Loading model"}
+            ? loneTurntable
+              ? "Playing. Click the model or press Esc to stop."
+              : `Playing shot ${Math.max(0, animState.shot) + 1} of ${seq.length}. Stop, Esc or the end returns the camera to your view.`
+            : !animState.ready
+              ? "Loading model"
+              : loneTurntable
+                ? "Spins the model about its own centre; the camera stays put. Loops."
+                : `${seq.length === 1 ? "One shot" : `${seq.length} shots with hard cuts`}, ${total} s, each easing in and out. The camera returns to your view afterwards.`}
       </Hint>
       <span className="sos-label">Reel export</span>
       <button
@@ -1851,16 +1968,14 @@ export function AnimatePanel() {
         disabled={
           animExporting
             ? false
-            : gateBlocked || !(animState.ready && animState.mode === "idle" && exportSupport?.ok)
+            : gateBlocked || !!blockedReason || !(animState.ready && animState.mode === "idle" && exportSupport?.ok)
         }
         title={
           animExporting
             ? "Cancel the running export"
             : gateBlocked
               ? "Waiting for the environment backdrop to load"
-              : isShot
-                ? `Render the ${shotName} shot at 1080x1920 and save it as an MP4`
-                : "Render the turntable at 1080x1920 and save it as an MP4"
+              : `Render the Reel (${total} s) at 1080x1920 and save it as one MP4`
         }
         onClick={animExporting ? animationStore.cancelExport : handleExport}
       >
@@ -1877,7 +1992,7 @@ export function AnimatePanel() {
                 ? animState.message
                 : "1080x1920 - 30 fps - silent. On this PC an export can take a while: keep this tab visible."}
       </Hint>
-    </>
+    </div>
   );
 }
 

@@ -25,6 +25,8 @@
       sidebar and rail described in the older sections.**
   4c. Slice C2a (Reel camera moves: Orbit, Push-in, Pull-back, Slide, Crane; platform
       ground anchor and Instagram safe area for exports), right after P1.
+  4d. Slice C2b (multi-shot Reels: shot list, hard cuts, pre-Play view restore), right
+      after C2a.
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -1984,6 +1986,105 @@ degrees, Slide), so the line never appears. Turntable and PNG framing are unaffe
   a steep camera angle reads as a toy against the eye-level photo (hence the Crane
   limits). MP4 file hashes can differ between identical exports even when every decoded
   frame is identical; compare decoded frames, not file hashes.
+
+## Slice C2b - multi-shot Reels (uncommitted at the time of writing)
+
+Files: `animation/reelSequence.js` (new: the shot-list rules, pure, no three.js or React),
+`animation/animationStore.js` (holds the shot list instead of C2a's preset / start view),
+`ui/InspectorRail.jsx` (`AnimatePanel`, the Reel sheet, rewritten as a shot list),
+`ui/StudioCapsule.jsx` (status line), `ui/ui-shell.css` (shot list styles),
+`session/studioSession.js` (saves the list), `ui/useSessionUi.js` (Reset confirmation text)
+and owner-approved changes to `components/StudioCanvas.jsx` that only act when the
+animation is a camera shot or a sequence (`anim.shot`). The MP4 encoding code
+(`animation/exporter.js`, `animation/mp4.js`), the poster drawing and `materials/store.js`
+are unchanged. Test: `app/scripts/test-reel.mjs` (new, plain node).
+
+**This replaces one C2a behaviour:** Play and Export no longer click the camera cards to
+reach a start view. The stage works out each shot's start pose itself (see "Pre-Play view"
+below), so the visible camera never jumps before Play and the Camera sheet's state is not
+touched.
+
+### Shot list rules (`reelSequence.js`)
+
+- A Reel is 1 to 5 shots. Each shot is { move, startView, durationS }: move is Turntable,
+  Orbit, Push-in, Pull-back reveal, Slide across or Crane up; start view one of the 6
+  camera presets or Custom (only when a custom view is saved); duration 4, 8 or 12 s.
+- The total may not pass 30 s. Because every duration is a multiple of 4, the
+  **practical maximum is 28 s** (owner-accepted). Add shot appends Orbit, 3/4, 8 s (4 s if
+  8 does not fit). Every refused edit returns a reason sentence; the Reel sheet disables the
+  Add button and the duration chips that would break a limit and writes the reason under
+  them ("A Reel can have at most 5 shots.", "The Reel is already 28 s; a new shot needs at
+  least 4 s and the limit is 30 s.", "8 s would make the Reel 32 s; the limit is 30 s.").
+- Shots can be deleted (never the last one) and moved up / down. The chip rows edit the
+  selected shot and keep the C2a test ids (`ui-anim-preset-*`, `ui-anim-start-*`,
+  `ui-anim-duration-*`); new ids: `ui-shot-N`, `ui-shot-N-up` / `-down` / `-delete`,
+  `ui-shot-add`, `ui-reel-total`, `ui-shot-add-why`, `ui-duration-why`.
+- The store's `durationS` is always the total; the MP4 exporter reads it for its frame
+  count (N = total x 30), which is why the exporter did not need to change.
+
+### Hard cuts and what each shot looks like in the export
+
+- `buildReelAnim`: one Turntable shot alone is exactly the old `makeTurntable` anim; one
+  camera move alone is exactly the C2a `makeShot` anim (plus `reel.shots`); 2 or more shots
+  make a sequence anim (no model spin of its own, `shot.move` = "sequence").
+- Shot k owns frames [f0, f1) at 30 fps; the cut is the first frame of each later shot
+  (3 x 4 s: cuts at frames 120 and 240). `reelShotAt` recovers the frame index from
+  t = i / 30 and uses local time (i - f0) / 30, so every shot's frames are exactly the frames
+  of that shot exported alone (C2a rules per shot: 9:16 Reel framing of its start view,
+  platform ground anchor, Instagram safe area, one plan per shot).
+- Verified: C2a single-shot exports (Push-in 3/4 4 s) and the Turntable 4 s export decode
+  pixel-identical to the C2a commit `fb6e0f1`; Push-in was re-run 5 times on each build from
+  fresh launches, all identical.
+
+### Turntable in a Reel (owner-accepted)
+
+- **A Turntable shot alone ignores its start view** and spins the model from the current
+  camera view, exactly as before C2b (so Turntable exports stay identical). Its start-view
+  chips are disabled with a note.
+- **A Turntable shot inside a Reel with more shots** starts from its start view: in the
+  export the camera holds the Reel framing of that view while the model turns one full turn
+  (linear) over the shot; in the preview the camera sits on the start view. The safe-area
+  plan applies to camera moves only, not to the turning model.
+
+### Pre-Play view restore (the C2a fix)
+
+- `StudioCanvas` `resolveReelStarts` works out each shot's start pose the way a camera card
+  click would (`computeCameraShot` from the live fit for a preset, the saved custom view's
+  exact pose for Custom, then OrbitControls' own update until it settles), plus the
+  camera.far and Distance % that click would leave. It runs synchronously inside the move
+  guard and puts the camera position, target and orientation back before returning, so
+  nothing is drawn from a start pose.
+- So the view saved when Play starts (`preView`) is the user's own view, and the existing
+  `stopPreview` puts it back on Stop, Esc or the end of the Reel. Exports restore the user's
+  view the same way. Verified exact (position and target equal) after Stop mid-Reel, after
+  the natural end, and for an Orbit from a saved Custom view (start pose equal to the saved
+  custom view).
+- The capsule shows "Shot N of M" during Play (the stage reports each shot change to the
+  store once, never per frame) and "Exporting NN%" during an export; the capsule does not
+  idle-fade while either runs.
+
+### Session
+
+- Save Session stores the list as `reel` (plain JSON) in the session; Restore loads it
+  (sanitized: bad shots dropped, at most 5 shots and 30 s); a session saved before C2b has
+  no `reel` and leaves the list as it is. Reset puts back one shot (Orbit, 3/4, 8 s); the
+  Reset confirmation now says so.
+
+### Tests and verification lessons
+
+- `node scripts/test-reel.mjs` (from `app/`): totals, frame ranges, cut frames, the 5-shot and
+  30 s limits, add / delete / reorder, `buildReelAnim` and the frame -> shot lookup, the
+  store's edits and the session save / Reset / restore round trip.
+- **Frame decoder lesson:** the old harness decoder (`video.currentTime = (f + 0.5) / 30`
+  then read on `seeked`) can silently land on the wrong frame and report a false
+  difference (it once showed a large "difference" on frame 60 between two files whose
+  encoded frames were byte-identical). Use a decoder that waits for
+  `requestVideoFrameCallback` and checks that `round(mediaTime x 30)` is the requested
+  frame, and also compare the files byte-wise: identical exports differ only in the 6 to
+  12 timestamp bytes of the MP4 header.
+- One early new-build Push-in run differed from HEAD by at most 3 levels in a small strip at
+  the top-right edge of the backdrop (x 1071-1079, y 48-114, no model pixels); it was never
+  reproduced in 10 later fresh-launch runs (5 HEAD, 5 new) and its cause is unknown.
 
 ## Products and models
 

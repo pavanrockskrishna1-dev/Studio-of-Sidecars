@@ -1968,6 +1968,13 @@ body[data-sos-old-panel] [data-studio-controls] {
 .sos2-capsule-dot {
   color: var(--sos2-brass);
 }
+.sos2-capsule-status {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  color: var(--sos2-text);
+  white-space: nowrap;
+}
 
 /* -- dock -------------------------------------------------------------------
    Exactly 3 button styles across this new layer: .sos2-dock-btn is the
@@ -2134,6 +2141,102 @@ body[data-sos-old-panel] [data-studio-controls] {
 }
 .sos2-sheet-body .sos-hint {
   color: var(--sos2-text-2);
+}
+/* Slice C2b - the Reel sheet's shot list */
+.sos-reel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sos-reel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.sos-reel-total {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sos2-text-2);
+}
+.sos-reel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sos-reel-row {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+}
+.sos-reel-pick,
+.sos-reel-tool {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--sos2-text);
+  background: rgba(10, 12, 16, 0.5);
+  border: 1px solid var(--sos2-line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sos-reel-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+}
+.sos-reel-row[data-on] .sos-reel-pick {
+  border-color: var(--sos2-brass);
+}
+.sos-reel-num {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--sos2-line);
+}
+.sos-reel-row[data-on] .sos-reel-num {
+  background: var(--sos2-brass);
+  color: var(--sos2-brass-ink);
+}
+.sos-reel-sum {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sos-reel-live {
+  margin-left: auto;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sos2-brass);
+}
+.sos-reel-tool {
+  flex: none;
+  width: 28px;
+  padding: 0;
+}
+.sos-reel .sos-pchip:disabled,
+.sos-reel-pick:disabled,
+.sos-reel-tool:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.sos-reel-why {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #e8b54d;
 }
 .sos2-sheet-divider {
   height: 1px;

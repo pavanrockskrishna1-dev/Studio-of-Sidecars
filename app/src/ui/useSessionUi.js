@@ -38,7 +38,7 @@ export default function useSessionUi(assetName) {
     setFlash("restored");
   };
   const onReset = () => {
-    if (!window.confirm("Reset the entire studio session? Camera, lighting, environment, materials, transforms and viewer controls return to their defaults.")) return;
+    if (!window.confirm("Reset the entire studio session? Camera, lighting, environment, materials, transforms and viewer controls return to their defaults, and the Reel shots go back to one Orbit shot (3/4, 8 s).")) return;
     if (resetSession()) {
       setNameOverride(null);
       setFlash("reset");

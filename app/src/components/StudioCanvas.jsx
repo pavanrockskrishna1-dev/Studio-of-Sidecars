@@ -18,11 +18,12 @@ import { TransformControls } from "three/examples/jsm/controls/TransformControls
 import { PRODUCTS } from "../products/registry";
 import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
-import { computeCameraShot, fitDistance, getBaseline, getCameraPreset } from "../camera/presets";
+import { CAMERA_PRESETS, computeCameraShot, fitDistance, getBaseline, getCameraPreset } from "../camera/presets";
 import * as cameraStudio from "../camera/cameraStudio";
 import { DEFAULT_LIGHTING } from "../lighting/profiles";
 import { computeExportSize, REEL_EXPORT, usesReelFraming } from "../capture/exportOptions";
-import { anchoredShotPoseAt, planAnchoredShot, platformReelPose, reelPose, sampleAt, shotPoseAt } from "../animation/path";
+import { anchoredShotPoseAt, makeShot, makeTurntable, planAnchoredShot, platformReelPose, reelPose, sampleAt, shotPose, shotPoseAt } from "../animation/path";
+import { reelShotAt, reelShotAtTime } from "../animation/reelSequence";
 import * as animation from "../animation/animationStore";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
@@ -943,6 +944,13 @@ function StudioStage({
   const liveFitRef = useRef(fit);
   const [liveFit, setLiveFit] = useState(fit);
 
+  // Slice C2b: what resolveReelStarts reads (camera shots only). A ref, so
+  // saving a custom view never re-registers the animation api.
+  const reelInputsRef = useRef({ fit, customView, frontAz: product.frontAz ?? 0 });
+  useEffect(() => {
+    reelInputsRef.current = { fit, customView, frontAz: product.frontAz ?? 0 };
+  }, [fit, customView, product.frontAz]);
+
   // Garage G5 — re-measures the model from the LIVE three.js scene graph, in
   // two passes over the same adapter (adaptObject3D + bounds.js's own
   // unionBounds/floorYFor — never a hand-rolled union). `world` is rooted at
@@ -1100,17 +1108,97 @@ function StudioStage({
     [camera, gl, moveGuarded, setOverlaysHidden]
   );
 
+  // Slice C2b (camera shots only): the start pose of every Reel shot, worked
+  // out exactly as a click on that view's camera card would place the camera
+  // (computeCameraShot from the live fit for a preset, the saved custom view's
+  // exact pose, then the controls' own update until it settles), together with
+  // the camera.far and Distance % that click would leave (both feed the Reel
+  // framing). Synchronous, inside the guard, and the live camera, its target
+  // and orientation are put back exactly before returning, so nothing is ever
+  // drawn from a start pose and the user's view is untouched. null when a
+  // start view cannot be resolved (e.g. Custom with no saved view).
+  const resolveReelStarts = useCallback(
+    (shots) => {
+      const controls = controlsRef.current;
+      if (!controls) return null;
+      const { fit: fitNow, customView: savedView, frontAz } = reelInputsRef.current;
+      // a Reel start view names a camera card ("3/4"), not a preset id; every
+      // start view must resolve before the camera is touched
+      const presetOf = (name) => CAMERA_PRESETS.find((p) => p.name === name) ?? null;
+      const ok = shots.every((shot) => (shot.startView === "custom" ? !!savedView : !!presetOf(shot.startView)));
+      if (!ok) return null;
+      const savedPosition = camera.position.clone();
+      const savedQuaternion = camera.quaternion.clone();
+      const savedTarget = controls.target.clone();
+      const aspect = gl.domElement.clientWidth / gl.domElement.clientHeight;
+      const starts = shots.map((shot) => {
+        let position;
+        let target;
+        let baseId;
+        let baseline;
+        let shotFit = fitNow;
+        if (shot.startView === "custom") {
+          position = new THREE.Vector3().fromArray(savedView.position);
+          target = new THREE.Vector3().fromArray(savedView.target);
+          baseId = savedView.baseId ?? "custom";
+          if (savedView.dist0 > 0) {
+            baseline = { baseId, dist0: savedView.dist0, elev0: savedView.elev0, offset: savedView.offset };
+          }
+        } else {
+          const preset = presetOf(shot.startView);
+          baseId = preset.id;
+          shotFit = liveFitRef.current ?? fitNow;
+          ({ position, target } = computeCameraShot(shotFit, preset, frontAz, aspect, FOV));
+        }
+        moveGuarded(() => {
+          camera.position.copy(position);
+          camera.lookAt(target);
+          controls.target.copy(target);
+        });
+        const b = baseline ?? getBaseline(camera.position.toArray(), controls.target.toArray(), baseId, shotFit.center);
+        const pct = cameraStudio.readMetrics(camera.position.toArray(), controls.target.toArray(), b).distancePct;
+        // the controls update every frame while enabled: settle the pose the
+        // way the frames after a card click do
+        for (let i = 0; i < 30; i += 1) {
+          const before = camera.position.toArray();
+          moveGuarded(() => {});
+          if (camera.position.toArray().every((v, j) => v === before[j])) break;
+        }
+        return {
+          position: camera.position.toArray(),
+          target: controls.target.toArray(),
+          far: shotFit.distance * 10 + 10,
+          pct,
+        };
+      });
+      moveGuarded(() => {
+        camera.position.copy(savedPosition);
+        controls.target.copy(savedTarget);
+      });
+      camera.position.copy(savedPosition);
+      camera.quaternion.copy(savedQuaternion);
+      return starts;
+    },
+    [camera, gl, moveGuarded]
+  );
+
   // Starts only from a user event (the rail's Play through the animation
-  // store), never from an effect. The camera does not move in this slice; its
-  // position and target are saved so Stop can put them back exactly.
+  // store), never from an effect. The camera's position and target are saved
+  // so Stop (or the end of a camera shot) puts them back exactly.
   const startPreview = useCallback(
     (anim) => {
       const controls = controlsRef.current;
       if (!controls || !pivotRef.current || animRunRef.current) return false;
+      // Slice C2b camera shots / sequences: each shot's start pose, resolved
+      // without moving the visible camera (preView stays the user's view).
+      const starts = anim.shot ? resolveReelStarts(anim.reel.shots) : null;
+      if (anim.shot && !starts) return false;
       animRunRef.current = {
         anim,
         start: performance.now(),
         preView: { position: camera.position.clone(), target: controls.target.clone() },
+        starts,
+        shotIndex: 0,
       };
       controls.enabled = false;
       setOverlaysHidden(true);
@@ -1121,7 +1209,7 @@ function StudioStage({
       window.addEventListener("keydown", onKey);
       return true;
     },
-    [camera, setOverlaysHidden, stopPreview]
+    [camera, setOverlaysHidden, stopPreview, resolveReelStarts]
   );
 
   // ---- Deterministic frame stepping (Phase 16B Slice C) ---------------------
@@ -1184,6 +1272,10 @@ function StudioStage({
       const controls = controlsRef.current;
       if (!controls || !pivotRef.current || !anim) return false;
       if (animRunRef.current || exportRunRef.current) return false;
+      // Slice C2b camera shots / sequences: each shot's start pose (see
+      // resolveReelStarts); the saved camera below stays the user's view.
+      const starts = anim.shot ? resolveReelStarts(anim.reel.shots) : null;
+      if (anim.shot && !starts) return false;
       const even = (n) => Math.max(2, Math.min(4096, Math.floor(Number(n) / 2) * 2));
       const w = even(width);
       const h = even(height);
@@ -1194,6 +1286,7 @@ function StudioStage({
         width: w,
         height: h,
         anim,
+        starts,
         // Distance % is read ONCE: the store is not published to during the
         // export, but reading it per step would also feed the Reel pose back.
         pct: cameraStudio.getSnapshot().distancePct,
@@ -1227,7 +1320,7 @@ function StudioStage({
       // exportOpts.background and never writes it.
       return true;
     },
-    [gl, camera, finishExport, setFrameloop, setOverlaysHidden]
+    [gl, camera, finishExport, setFrameloop, setOverlaysHidden, resolveReelStarts]
   );
 
   // The Reel framing (Slice E3: shared by stepExport and the portrait PNG export).
@@ -1372,20 +1465,51 @@ function StudioStage({
         });
         pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
         if (run.anim.shot) {
-          // Slice C2a camera shot: the product's ground point stays on the
-          // platform anchor of the Reel framing above while the move pivots on
-          // it, fitted once to the Instagram safe area (path.js planAnchoredShot).
+          // Slice C2a camera shot / C2b sequence: the shot that owns this frame
+          // (hard cuts on frame boundaries) is framed exactly as if it were
+          // exported alone: the Reel framing of its start view (with the
+          // camera.far its card click would leave), then for a camera move the
+          // product's ground point stays on the platform anchor of that framing
+          // while the move pivots on it, fitted once per shot to the Instagram
+          // safe area (path.js planAnchoredShot); a Turntable shot spins the
+          // model one turn under the static Reel framing.
           const lf = liveFitRef.current;
-          if (run.shotPlan === undefined) {
-            run.shotPlan = planAnchoredShot({ anim: run.anim, center: lf.center.toArray(), size: lf.size.toArray(), reelPosition: view.position, reelTarget: view.target, fovDeg: REEL_EXPORT.fovDeg, width: run.width, height: run.height });
-            if (import.meta.env.DEV) document.body.dataset.sosShot = JSON.stringify(run.shotPlan);
-          }
-          const p = run.shotPlan ? anchoredShotPoseAt(run.shotPlan, run.anim.durationS, t) : shotPoseAt(run.anim, view, t);
-          if (run.shotPlan) setCameraProjection(camera, { far: Math.max(view.far, run.shotPlan.d0 * 4 + 10) });
-          moveGuarded(() => {
-            camera.position.fromArray(p.position);
-            controls.target.fromArray(p.target);
+          const at = reelShotAt(run.anim, t);
+          const start = run.starts[at.index];
+          setCameraProjection(camera, { far: start.far });
+          const sv = computeReelView({
+            width: run.width,
+            height: run.height,
+            livePosition: start.position,
+            liveTarget: start.target,
+            pct: start.pct,
           });
+          if (!sv) throw new Error("Reel pose is not valid");
+          setCameraProjection(camera, { far: sv.far });
+          if (at.shot.move === "turntable") {
+            const spin = makeTurntable({ durationS: at.shot.durationS, fps: run.anim.fps });
+            pivotRef.current.rotation.y = sampleAt(spin, at.local).modelSpinRad;
+            moveGuarded(() => {
+              camera.position.fromArray(sv.position);
+              controls.target.fromArray(sv.target);
+            });
+          } else {
+            const shotAnim = makeShot({ move: at.shot.move, durationS: at.shot.durationS, fps: run.anim.fps });
+            if (!run.shotPlans) run.shotPlans = [];
+            if (run.shotPlans[at.index] === undefined) {
+              run.shotPlans[at.index] = planAnchoredShot({ anim: shotAnim, center: lf.center.toArray(), size: lf.size.toArray(), reelPosition: sv.position, reelTarget: sv.target, fovDeg: REEL_EXPORT.fovDeg, width: run.width, height: run.height });
+              if (import.meta.env.DEV) {
+                document.body.dataset.sosShot = JSON.stringify(run.starts.length === 1 ? run.shotPlans[0] : run.shotPlans);
+              }
+            }
+            const plan = run.shotPlans[at.index];
+            const p = plan ? anchoredShotPoseAt(plan, at.shot.durationS, at.local) : shotPoseAt(shotAnim, sv, at.local);
+            if (plan) setCameraProjection(camera, { far: Math.max(sv.far, plan.d0 * 4 + 10) });
+            moveGuarded(() => {
+              camera.position.fromArray(p.position);
+              controls.target.fromArray(p.target);
+            });
+          }
         }
         invalidateShadowMap(gl);
         // Slice C2: cover-cropped backdrop for portrait / square frames, restored
@@ -1770,12 +1894,37 @@ function StudioStage({
     const run = animRunRef.current;
     if (!run) return;
     if (run.anim.shot) {
-      // Slice C2a camera shot: move the camera from the saved start view; at
-      // the end, stopPreview() puts the start view back exactly (as Stop does).
+      // Slice C2a camera shot / C2b sequence: play the shot that owns this
+      // moment from its resolved start pose (hard cuts between shots); at the
+      // end, stopPreview() puts back the view the user had before Play (as
+      // Stop and Esc do).
       const ts = (performance.now() - run.start) / 1000;
-      if (ts >= run.anim.durationS) return void stopPreview();
-      const start = { position: run.preView.position.toArray(), target: run.preView.target.toArray() };
-      const p = shotPoseAt(run.anim, start, ts);
+      const at = reelShotAtTime(run.anim, ts);
+      if (!at) return void stopPreview();
+      const changed = at.index !== run.shotIndex;
+      if (changed) {
+        run.shotIndex = at.index;
+        animation.reportShot(at.index);
+      }
+      const start = run.starts[at.index];
+      if (at.shot.move === "turntable") {
+        if (changed || !run.placed) {
+          run.placed = true;
+          moveGuarded(() => {
+            camera.position.fromArray(start.position);
+            controlsRef.current?.target.fromArray(start.target);
+          });
+        }
+        pivotRef.current.rotation.y = (Math.PI * 2 * at.local) / at.shot.durationS;
+        invalidateShadowMap(gl);
+        return;
+      }
+      run.placed = false;
+      if (pivotRef.current.rotation.y !== 0) {
+        pivotRef.current.rotation.y = 0;
+        invalidateShadowMap(gl);
+      }
+      const p = shotPose(start, at.shot.move, at.local / at.shot.durationS);
       moveGuarded(() => {
         camera.position.fromArray(p.position);
         controlsRef.current?.target.fromArray(p.target);
