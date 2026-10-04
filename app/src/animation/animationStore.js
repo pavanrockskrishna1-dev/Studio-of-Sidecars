@@ -26,6 +26,7 @@
 
 import { validateAnimation } from "./path.js";
 import * as reel from "./reelSequence.js";
+import * as rkeys from "./reelKeys.js";
 
 export const DURATIONS = reel.SHOT_DURATIONS;
 
@@ -169,6 +170,46 @@ export function restoreSequence(raw) {
 }
 
 export const resetSequence = () => loadSequence(reel.defaultSequence());
+
+/* ---- Slice C3a: keys for whole objects, per shot ------------------------- */
+
+// Every key edit goes through reelKeys (the 8-key limit, frame snapping) and
+// only while idle; it replaces the shot's keys and returns { ok, reason }.
+function editKeys(i, fn) {
+  if (snapshot.mode !== "idle") return { ok: false, reason: "Stop the preview or export first." };
+  const shot = snapshot.sequence[i];
+  if (!shot) return { ok: false, reason: "No such shot." };
+  const r = fn(shot.keys ?? [], shot.durationS);
+  if (!r.ok) return { ok: false, reason: r.reason };
+  return edit(reel.setShotKeys(snapshot.sequence, i, r.keys));
+}
+
+// key = { t, target, assetId, transform, easing? }
+export const addKey = (i, key) => editKeys(i, (keys, d) => rkeys.addKey(keys, key, d));
+export const deleteKey = (i, k) => editKeys(i, (keys) => rkeys.deleteKey(keys, k));
+export const setKeyEasing = (i, k, easing) => editKeys(i, (keys) => rkeys.setKeyEasing(keys, k, easing));
+
+// The main product's pose is the whole-model Transform panel, owned by the
+// engine: App registers { read(), write(transform) } here (read returns
+// { x, y, z, rx, ry, rz, s }; write sets the panel values).
+export const poseApiRef = { current: null };
+export function registerPoseApi(api) {
+  poseApiRef.current = api;
+  return () => {
+    if (poseApiRef.current === api) poseApiRef.current = null;
+  };
+}
+export const readProductTransform = () => poseApiRef.current?.read?.() ?? null;
+export const writeProductTransform = (t) => (poseApiRef.current?.write ? (poseApiRef.current.write(t), true) : false);
+
+// The stage's check of the keyed Reel against the Instagram safe area and the
+// painted platform (first offending shot and time, or null). Never blocks.
+export function checkKeys() {
+  const api = apiRef.current;
+  if (!api || !api.checkKeys || snapshot.mode !== "idle") return null;
+  const anim = buildAnim();
+  return anim ? api.checkKeys(anim) : null;
+}
 
 /* ---- Slice C: deterministic frame stepping ------------------------------- */
 

@@ -15,6 +15,7 @@ import * as materialStore from "../materials/store";
 import * as cameraStudio from "../camera/cameraStudio";
 import * as animationStore from "../animation/animationStore";
 import { canAdd, durationAllowed } from "../animation/reelSequence";
+import * as reelKeys from "../animation/reelKeys";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
 import * as layoutLibrary from "../garage/layoutLibrary";
@@ -1713,6 +1714,209 @@ const startViewLabelFor = (product, v) => {
 const startViewTestId = (v) => `ui-anim-start-${v === "3/4" ? "34" : v.toLowerCase().replace(/\s+/g, "-")}`;
 const shotSummary = (s, viewLabel) => `${REEL_PRESET_LABELS[s.move]} · ${viewLabel(s.startView)} · ${s.durationS} s`;
 
+// Slice C3a: the selected shot's KEYS (whole objects). Pick the main product
+// (posed by the whole-model Transform panel) or an added Garage object (posed
+// by the G11 gizmo), set the time (whole frames at 30 fps), and Add key
+// captures that object's CURRENT transform. Go to puts the scrubber on the
+// key and sets the object's transform to the key's (a normal edit: the
+// Transform panel, or one Garage undo step), so it can be adjusted and keyed
+// again. The warning re-checks the whole Reel (stage checkKeys) after every
+// shot-list, key, Garage, product or Transform panel change; it never blocks
+// Play or Export.
+function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
+  const garageState = useSyncExternalStore(garageStore.subscribe, garageStore.getSnapshot, garageStore.getSnapshot);
+  const layout = garageStore.getLayout();
+  const added = layout ? layout.items.filter((i) => !i.primary) : [];
+  const shot = sequence[shotIndex];
+  const keys = shot.keys ?? [];
+  const frames = Math.round(shot.durationS * 30);
+  const [frameRaw, setFrame] = useState(0);
+  const frame = Math.max(0, Math.min(frameRaw, frames));
+  const [targetRaw, setTarget] = useState(reelKeys.PRODUCT_TARGET);
+  const target =
+    targetRaw === reelKeys.PRODUCT_TARGET || added.some((i) => i.itemId === targetRaw) ? targetRaw : reelKeys.PRODUCT_TARGET;
+  const scene = { productId, items: added.map((i) => ({ itemId: i.itemId, assetId: i.assetId })) };
+  const productName = (id) => PRODUCTS.find((p) => p.id === id)?.name ?? id;
+  const nameOf = (k) =>
+    k.target === reelKeys.PRODUCT_TARGET
+      ? `Main product (${productName(k.assetId)})`
+      : `${describeAsset(k.assetId)?.name ?? k.assetId} (${k.target})`;
+  const addCheck = reelKeys.canAddKey(keys, target, frame / 30);
+  const missing = keys.filter((k) => !reelKeys.isKeyLive(k, scene)).length;
+
+  const [warning, setWarning] = useState(null);
+  const [checkTick, setCheckTick] = useState(0);
+  // the Transform panel's values live in the engine: re-check when they change
+  const [poseRev, setPoseRev] = useState(0);
+  useEffect(() => {
+    let last = JSON.stringify(animationStore.readProductTransform());
+    const id = setInterval(() => {
+      const now = JSON.stringify(animationStore.readProductTransform());
+      if (now !== last) {
+        last = now;
+        setPoseRev((n) => n + 1);
+      }
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    if (busy) return undefined;
+    const id = setTimeout(() => setWarning(animationStore.checkKeys()), 300);
+    return () => clearTimeout(id);
+  }, [sequence, garageState.revision, productId, busy, checkTick, poseRev]);
+
+  const handleAddKey = () => {
+    const item = target === reelKeys.PRODUCT_TARGET ? null : added.find((i) => i.itemId === target);
+    const transform = target === reelKeys.PRODUCT_TARGET ? animationStore.readProductTransform() : item ? item.transform : null;
+    const assetId = target === reelKeys.PRODUCT_TARGET ? productId : item ? item.assetId : "";
+    if (!transform) return onResult({ ok: false, reason: "That object is not in the scene." });
+    return onResult(animationStore.addKey(shotIndex, { t: frame / 30, target, assetId, transform }));
+  };
+  const handleGoTo = (k) => {
+    setFrame(Math.round(k.t * 30));
+    if (!reelKeys.isKeyLive(k, scene)) return onResult({ ok: false, reason: "That key's object is not in the scene." });
+    setTarget(k.target);
+    if (k.target === reelKeys.PRODUCT_TARGET) animationStore.writeProductTransform({ ...k.transform });
+    else garageStore.setItemTransform(k.target, { ...k.transform });
+    return onResult({ ok: true, reason: "" });
+  };
+  const step = (n) => setFrame(Math.max(0, Math.min(frames, frame + n)));
+  const warningText = warning
+    ? `Warning: shot ${warning.shot + 1} at ${warning.t.toFixed(2)} s - ${
+        warning.kind === "safe"
+          ? "the keyed product leaves the Instagram safe area."
+          : `the product's ground point is ${Math.round(warning.px)} px off the painted platform.`
+      } Play and Export still work.`
+    : "";
+
+  return (
+    <div className="sos-keys" data-testid="ui-keys">
+      <div className="sos-reel-head">
+        <span className="sos-label">Shot {shotIndex + 1}: keys</span>
+        <span className="sos-reel-total" data-testid="ui-key-count">
+          {keys.length} of {reelKeys.MAX_KEYS_PER_SHOT}
+        </span>
+      </div>
+      <select
+        className="sos2-input sos-key-target"
+        data-testid="ui-key-target"
+        value={target}
+        disabled={busy}
+        aria-label="Object to key"
+        onChange={(e) => setTarget(e.target.value)}
+      >
+        <option value={reelKeys.PRODUCT_TARGET}>Main product ({productName(productId)})</option>
+        {added.map((i) => (
+          <option key={i.itemId} value={i.itemId}>
+            {describeAsset(i.assetId)?.name ?? i.assetId} ({i.itemId})
+          </option>
+        ))}
+      </select>
+      <div className="sos-key-time">
+        <input
+          type="range"
+          data-testid="ui-key-time"
+          min={0}
+          max={frames}
+          step={1}
+          value={frame}
+          disabled={busy}
+          aria-label="Key time"
+          onChange={(e) => setFrame(Number(e.target.value))}
+        />
+        <span className="sos-reel-total" data-testid="ui-key-time-value">
+          {(frame / 30).toFixed(2)} s · frame {frame}
+        </span>
+      </div>
+      <div className="sos-frow">
+        {[
+          ["start", "Start", () => setFrame(0)],
+          ["back-s", "−1 s", () => step(-30)],
+          ["back-f", "−1 f", () => step(-1)],
+          ["fwd-f", "+1 f", () => step(1)],
+          ["fwd-s", "+1 s", () => step(30)],
+          ["end", "End", () => setFrame(frames)],
+        ].map(([id, label, fn]) => (
+          <button key={id} type="button" className="sos-pchip" data-testid={`ui-key-${id}`} disabled={busy} onClick={fn}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="sos-btn sos-btn-ghost sos-rail-export"
+        data-testid="ui-key-add"
+        disabled={busy || !addCheck.ok}
+        title={addCheck.ok ? `Key the ${target === reelKeys.PRODUCT_TARGET ? "main product" : "object"} at ${(frame / 30).toFixed(2)} s` : addCheck.reason}
+        onClick={handleAddKey}
+      >
+        Add key
+      </button>
+      {!addCheck.ok ? (
+        <p className="sos-reel-why" data-testid="ui-key-add-why">
+          {addCheck.reason}
+        </p>
+      ) : null}
+      {keys.length ? (
+        <ol className="sos-reel-list" data-testid="ui-key-list">
+          {keys.map((k, i) => {
+            const live = reelKeys.isKeyLive(k, scene);
+            return (
+              <li key={`${k.target}-${k.t}`} className="sos-key-row" data-live={live || undefined} data-testid={`ui-key-row-${i + 1}`}>
+                <span className="sos-key-sum">
+                  {k.t.toFixed(2)} s · {nameOf(k)}
+                  {live ? "" : " · not in the scene (ignored)"}
+                </span>
+                <button
+                  type="button"
+                  className="sos-pchip"
+                  data-testid={`ui-key-easing-${i + 1}`}
+                  disabled={busy}
+                  title={`Easing to the next key of this object. Click for ${reelKeys.EASING_LABELS[reelKeys.nextEasing(k.easing)]}.`}
+                  onClick={() => onResult(animationStore.setKeyEasing(shotIndex, i, reelKeys.nextEasing(k.easing)))}
+                >
+                  {reelKeys.EASING_LABELS[k.easing]}
+                </button>
+                <button type="button" className="sos-reel-tool" data-testid={`ui-key-goto-${i + 1}`} disabled={busy} title="Go to this key" onClick={() => handleGoTo(k)}>
+                  ⤴
+                </button>
+                <button
+                  type="button"
+                  className="sos-reel-tool"
+                  data-testid={`ui-key-delete-${i + 1}`}
+                  disabled={busy}
+                  aria-label={`Delete key ${i + 1}`}
+                  title="Delete this key"
+                  onClick={() => onResult(animationStore.deleteKey(shotIndex, i))}
+                >
+                  ✕
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+      {missing ? (
+        <p className="sos-reel-why" data-testid="ui-key-missing">
+          {missing} {missing === 1 ? "key targets an object" : "keys target objects"} not in the scene (removed, or another product): kept but ignored.
+        </p>
+      ) : null}
+      {warningText ? (
+        <p className="sos-reel-why sos-key-warning" data-testid="ui-key-warning">
+          {warningText}
+        </p>
+      ) : null}
+      <Hint>
+        Pose the main product with the Transform panel, or an added object with the Garage gizmo, then Add key. Each key&apos;s easing
+        shapes the move to that object&apos;s next key.{" "}
+        <button type="button" className="sos-key-recheck" data-testid="ui-key-recheck" disabled={busy} onClick={() => setCheckTick((n) => n + 1)}>
+          Check again
+        </button>
+      </Hint>
+    </div>
+  );
+}
+
 // Slice C2b: the Reel sheet is a shot list (1 to 5 shots, at most 30 s, hard
 // cuts between shots). Every edit goes through the animation store, which
 // enforces the limits; a blocked Add or duration chip is disabled and the
@@ -1950,11 +2154,35 @@ export function AnimatePanel() {
           {durationCheck(blockedDurations[0]).reason}
         </p>
       ) : null}
+      {/* Slice C3a: what a shot with main-product keys is framed on */}
+      <span className="sos-label">Shot {selected + 1}: frame on</span>
+      <div className="sos-frow">
+        {reelKeys.FRAME_ON.map((v) => (
+          <button
+            key={v}
+            type="button"
+            className="sos-pchip"
+            data-testid={`ui-frame-on-${v}`}
+            data-on={(shot.frameOn ?? "end") === v || undefined}
+            aria-pressed={(shot.frameOn ?? "end") === v}
+            disabled={animBusy}
+            title={
+              v === "start"
+                ? "Frame the camera on the product's keyed pose at the shot's first frame"
+                : "Frame the camera on the product's keyed pose at the shot's last frame"
+            }
+            onClick={() => run(animationStore.setShot(selected, { frameOn: v }))}
+          >
+            {v === "start" ? "Start" : "End"}
+          </button>
+        ))}
+      </div>
       {notice ? (
         <p className="sos-reel-why" data-testid="ui-reel-notice">
           {notice}
         </p>
       ) : null}
+      <ReelKeys sequence={seq} shotIndex={selected} busy={animBusy} productId={productId} onResult={run} />
 
       <button
         type="button"

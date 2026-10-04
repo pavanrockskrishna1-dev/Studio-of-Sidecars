@@ -24,6 +24,7 @@ import { DEFAULT_LIGHTING } from "../lighting/profiles";
 import { computeExportSize, REEL_EXPORT, usesReelFraming } from "../capture/exportOptions";
 import { anchoredShotPoseAt, makeShot, makeTurntable, planAnchoredShot, platformReelPose, reelPose, sampleAt, shotPose, shotPoseAt } from "../animation/path";
 import { reelShotAt, reelShotAtTime } from "../animation/reelSequence";
+import { applyKeyed, checkKeyed, prepareKeyed, restoreKeyed } from "../animation/keyedScene";
 import * as animation from "../animation/animationStore";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
@@ -1091,6 +1092,14 @@ function StudioStage({
         window.removeEventListener("keydown", escHandlerRef.current);
         escHandlerRef.current = null;
       }
+      // Slice C3a: keyed objects back to their exact pre-Play pose, then one
+      // re-measure: a refit that ran while keys had an object moved (e.g. a
+      // transform commit in the same tick as this stop) must not leave the
+      // live fit measured at a keyed pose.
+      if (run.keyed) {
+        restoreKeyed(run.keyed);
+        if (restore) refit();
+      }
       const controls = controlsRef.current;
       if (restore && controls) {
         moveGuarded(() => {
@@ -1105,7 +1114,27 @@ function StudioStage({
       animation.reportStopped();
       return true;
     },
-    [camera, gl, moveGuarded, setOverlaysHidden]
+    [camera, gl, moveGuarded, setOverlaysHidden, refit]
+  );
+
+  // Slice C3a (Reels with keys only): the keyed objects in the scene and
+  // their exact pre-Play poses (animation/keyedScene.js); null without keys,
+  // so a Reel without keys runs exactly the code it ran before.
+  const prepareKeys = useCallback(
+    (anim) =>
+      prepareKeyed({
+        anim,
+        productId: product.id,
+        productNode: transformRef.current,
+        findObject: (itemId, assetId) => {
+          for (const entry of objectPoolRef.current.values()) {
+            if (entry.attached && entry.itemId === itemId) return entry.assetId === assetId ? entry.anchor : null;
+          }
+          return null;
+        },
+        restFit: liveFitRef.current ?? fit,
+      }),
+    [product.id, fit]
   );
 
   // Slice C2b (camera shots only): the start pose of every Reel shot, worked
@@ -1199,6 +1228,7 @@ function StudioStage({
         preView: { position: camera.position.clone(), target: controls.target.clone() },
         starts,
         shotIndex: 0,
+        keyed: prepareKeys(anim),
       };
       controls.enabled = false;
       setOverlaysHidden(true);
@@ -1209,7 +1239,7 @@ function StudioStage({
       window.addEventListener("keydown", onKey);
       return true;
     },
-    [camera, setOverlaysHidden, stopPreview, resolveReelStarts]
+    [camera, setOverlaysHidden, stopPreview, resolveReelStarts, prepareKeys]
   );
 
   // ---- Deterministic frame stepping (Phase 16B Slice C) ---------------------
@@ -1230,6 +1260,12 @@ function StudioStage({
       gl.domElement.removeEventListener("webglcontextlost", run.onLost);
       const controls = controlsRef.current;
       if (pivotRef.current) pivotRef.current.rotation.y = 0;
+      // Slice C3a: keyed objects back to their exact pre-export pose (and the
+      // live fit re-measured at rest, as in stopPreview)
+      if (run.keyed) {
+        restoreKeyed(run.keyed);
+        if (restoreCamera) refit();
+      }
       if (restoreCamera && controls) {
         moveGuarded(() => {
           camera.position.copy(run.saved.position);
@@ -1262,7 +1298,7 @@ function StudioStage({
       }
       return true;
     },
-    [gl, scene, camera, get, moveGuarded, publish, setFrameloop, setOverlaysHidden]
+    [gl, scene, camera, get, moveGuarded, publish, setFrameloop, setOverlaysHidden, refit]
   );
 
   // Only from idle, with the model ready. Sizes are rounded DOWN to even
@@ -1287,6 +1323,7 @@ function StudioStage({
         height: h,
         anim,
         starts,
+        keyed: prepareKeys(anim),
         // Distance % is read ONCE: the store is not published to during the
         // export, but reading it per step would also feed the Reel pose back.
         pct: cameraStudio.getSnapshot().distancePct,
@@ -1320,7 +1357,7 @@ function StudioStage({
       // exportOpts.background and never writes it.
       return true;
     },
-    [gl, camera, finishExport, setFrameloop, setOverlaysHidden, resolveReelStarts]
+    [gl, camera, finishExport, setFrameloop, setOverlaysHidden, resolveReelStarts, prepareKeys]
   );
 
   // The Reel framing (Slice E3: shared by stepExport and the portrait PNG export).
@@ -1450,6 +1487,11 @@ function StudioStage({
         const aspect = run.width / run.height;
         // The Reel framing (Slice E2 platform pose, or the plain reelPose),
         // shared with the portrait PNG export through computeReelView.
+        // Slice C3a: a keyed lone Turntable is framed from the product's pose
+        // at its "Frame on" frame (keys never move the camera plan).
+        const fit0T = run.keyed && !run.anim.shot ? run.keyed.frameFit[0] : null;
+        const restFitT = liveFitRef.current;
+        if (fit0T) liveFitRef.current = fit0T;
         const view = computeReelView({
           width: run.width,
           height: run.height,
@@ -1457,6 +1499,7 @@ function StudioStage({
           liveTarget: run.saved.target.toArray(),
           pct: run.pct,
         });
+        if (fit0T) liveFitRef.current = restFitT;
         if (!view) throw new Error("Reel pose is not valid");
         setCameraProjection(camera, { aspect, far: view.far });
         moveGuarded(() => {
@@ -1464,6 +1507,7 @@ function StudioStage({
           controls.target.fromArray(view.target);
         });
         pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
+        if (run.keyed && !run.anim.shot) applyKeyed(run.keyed, 0, t);
         if (run.anim.shot) {
           // Slice C2a camera shot / C2b sequence: the shot that owns this frame
           // (hard cuts on frame boundaries) is framed exactly as if it were
@@ -1473,9 +1517,15 @@ function StudioStage({
           // while the move pivots on it, fitted once per shot to the Instagram
           // safe area (path.js planAnchoredShot); a Turntable shot spins the
           // model one turn under the static Reel framing.
-          const lf = liveFitRef.current;
+          // Slice C3a: with product keys the shot is framed from the product's
+          // pose at the shot's "Frame on" frame (first or last), and the keys
+          // then move the objects.
           const at = reelShotAt(run.anim, t);
           const start = run.starts[at.index];
+          const fit0 = run.keyed ? run.keyed.frameFit[at.index] : null;
+          const restFit = liveFitRef.current;
+          const lf = fit0 ?? restFit;
+          if (fit0) liveFitRef.current = fit0;
           setCameraProjection(camera, { far: start.far });
           const sv = computeReelView({
             width: run.width,
@@ -1484,6 +1534,7 @@ function StudioStage({
             liveTarget: start.target,
             pct: start.pct,
           });
+          if (fit0) liveFitRef.current = restFit;
           if (!sv) throw new Error("Reel pose is not valid");
           setCameraProjection(camera, { far: sv.far });
           if (at.shot.move === "turntable") {
@@ -1510,6 +1561,7 @@ function StudioStage({
               controls.target.fromArray(p.target);
             });
           }
+          if (run.keyed) applyKeyed(run.keyed, at.index, at.local);
         }
         invalidateShadowMap(gl);
         // Slice C2: cover-cropped backdrop for portrait / square frames, restored
@@ -1523,6 +1575,57 @@ function StudioStage({
       }
     },
     [gl, scene, camera, computeReelView, moveGuarded, finishExport]
+  );
+
+  // Slice C3a: the Reel sheet's warning check. Nothing is drawn and nothing
+  // moves on screen: every export frame of the shots with product keys is
+  // framed exactly as stepExport frames it ("Frame on" fit, start views,
+  // plans) and the keyed product's box and ground point are tested
+  // (keyedScene.js checkKeyed). Returns the first problem or null.
+  const checkKeys = useCallback(
+    (anim) => {
+      const controls = controlsRef.current;
+      if (!controls || animRunRef.current || exportRunRef.current) return null;
+      const keyed = prepareKeys(anim);
+      if (!keyed) return null;
+      const width = REEL_EXPORT.width;
+      const height = REEL_EXPORT.height;
+      const restFit = liveFitRef.current;
+      const framed = (fit0, args) => {
+        liveFitRef.current = fit0;
+        const v = computeReelView({ width, height, ...args });
+        liveFitRef.current = restFit;
+        return v;
+      };
+      let cameraAt;
+      if (!anim.reel) {
+        const v = keyed.frameFit[0]
+          ? framed(keyed.frameFit[0], { livePosition: camera.position.toArray(), liveTarget: controls.target.toArray(), pct: cameraStudio.getSnapshot().distancePct })
+          : null;
+        cameraAt = () => v;
+      } else {
+        const starts = resolveReelStarts(anim.reel.shots);
+        if (!starts) return null;
+        const cams = anim.reel.shots.map((s, k) => {
+          const fit0 = keyed.frameFit[k];
+          if (!fit0) return null;
+          const sv = framed(fit0, { livePosition: starts[k].position, liveTarget: starts[k].target, pct: starts[k].pct });
+          if (!sv) return null;
+          if (s.move === "turntable") return () => sv;
+          const shotAnim = makeShot({ move: s.move, durationS: s.durationS, fps: anim.fps });
+          const plan = planAnchoredShot({ anim: shotAnim, center: fit0.center.toArray(), size: fit0.size.toArray(), reelPosition: sv.position, reelTarget: sv.target, fovDeg: REEL_EXPORT.fovDeg, width, height });
+          return (lt) => (plan ? anchoredShotPoseAt(plan, s.durationS, lt) : shotPoseAt(shotAnim, sv, lt));
+        });
+        cameraAt = (k, lt) => (cams[k] ? cams[k](lt) : null);
+      }
+      // the painted platform in export pixels (null without one)
+      const env = environmentRef.current;
+      const imageAspect = backdropImageAspect(scene);
+      const frame = env && env.platform && imageAspect ? photoToFrame(env.platform, imageAspect, width / height) : null;
+      const platform = frame ? { cx: frame.cx * width, cy: frame.cy * height, a: frame.rx * width, b: frame.ry * height } : null;
+      return checkKeyed({ keyed, anim, cameraAt, fovDeg: REEL_EXPORT.fovDeg, width, height, platform, pivotLocal: pivotRef.current ? pivotRef.current.position.clone() : null });
+    },
+    [camera, scene, computeReelView, resolveReelStarts, prepareKeys]
   );
 
   // Any engine change that moves the camera or the model ends a running
@@ -1545,6 +1648,7 @@ function StudioStage({
       stepExport,
       endExport: () => finishExport({ restoreCamera: true, render: true }),
       getCanvas: () => gl.domElement,
+      checkKeys,
     });
     return () => {
       stopPreview({ restore: false });
@@ -1554,7 +1658,7 @@ function StudioStage({
       if (finishExport({ restoreCamera: false, render: false })) garageStore.setLocked(false);
       unregister();
     };
-  }, [startPreview, stopPreview, beginExport, stepExport, finishExport, gl.domElement]);
+  }, [startPreview, stopPreview, beginExport, stepExport, finishExport, gl.domElement, checkKeys]);
 
   // Move the camera to a view and freeze its slider baseline, measured AFTER
   // the move (the controls may adjust it, e.g. the Top preset's pole clamp).
@@ -1906,6 +2010,11 @@ function StudioStage({
         run.shotIndex = at.index;
         animation.reportShot(at.index);
       }
+      // Slice C3a: the shot's keys pose the keyed objects
+      if (run.keyed) {
+        applyKeyed(run.keyed, at.index, at.local);
+        invalidateShadowMap(gl);
+      }
       const start = run.starts[at.index];
       if (at.shot.move === "turntable") {
         if (changed || !run.placed) {
@@ -1933,6 +2042,7 @@ function StudioStage({
     }
     const t = ((performance.now() - run.start) / 1000) % run.anim.durationS;
     pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
+    if (run.keyed) applyKeyed(run.keyed, 0, t); // Slice C3a: a keyed lone Turntable
     invalidateShadowMap(gl);
   });
 

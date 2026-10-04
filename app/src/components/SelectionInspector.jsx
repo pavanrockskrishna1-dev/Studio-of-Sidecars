@@ -21,9 +21,13 @@ function NumberField({ label, value, onChange, step = 0.05, unit = "", testId })
   const [draft, setDraft] = useState(null);
   const display = draft !== null ? draft : format(value);
 
+  // Slice C3a (owner-approved fix): blur commits only a value that actually
+  // changed. Every keystroke already commits; re-sending an unchanged value
+  // made a new transform object, which ends a running Reel preview or export.
   const commit = (raw) => {
+    if (raw === format(value)) return; // untouched since focus
     const n = parseFloat(raw);
-    if (Number.isFinite(n)) onChange(n);
+    if (Number.isFinite(n) && n !== value) onChange(n);
   };
 
   return (

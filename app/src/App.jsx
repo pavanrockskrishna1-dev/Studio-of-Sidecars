@@ -8,6 +8,7 @@ import { registerEngine } from "./session/studioSession";
 import { apiRef as cameraStudioApiRef } from "./camera/cameraStudio";
 import { getProduct } from "./products/registry";
 import { setCurrentProductId } from "./products/currentProduct";
+import { registerPoseApi } from "./animation/animationStore";
 import { getEnvironment, DEFAULT_ENVIRONMENT_ID } from "./environments/registry";
 import { getLightingProfile } from "./lighting/profiles";
 import { DEFAULT_EXPORT_OPTS, exportFilename } from "./capture/exportOptions";
@@ -89,6 +90,17 @@ export default function App() {
   useEffect(() => {
     setCurrentProductId(productId);
   }, [productId]);
+
+  // Slice C3a: Reel keys read and set the main product's pose, which is the
+  // whole-model Transform panel, through the stage's existing transform api.
+  useEffect(
+    () =>
+      registerPoseApi({
+        read: () => transformApiRef.current?.read() ?? null,
+        write: (t) => transformApiRef.current?.write(t),
+      }),
+    []
+  );
 
   // Reset the camera request in the same render pass as a product switch so the
   // incoming model gets its default hero framing (no camera-state leakage).

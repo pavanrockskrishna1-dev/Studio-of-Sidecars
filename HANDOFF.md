@@ -28,6 +28,7 @@
   4d. Slice C2b (multi-shot Reels: shot list, hard cuts, pre-Play view restore), right
       after C2a.
   4e. Slice C2c (camera preset display labels per product), right after C2b.
+  4f. Slice C3a (keyframes for whole objects in Reel shots), right after C2c.
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -2121,6 +2122,106 @@ azimuth is 0 on every product), so Top's orientation differs between products. T
 - Harness note: the card selector `button[title="3/4 shot"]` only works on products
   without labels; use `button[data-preset-name="3/4"]`.
 - A motorcycle head-on / front 3/4 preset for the coffee bikes is a later slice (owner).
+
+## Slice C3a - keyframes for whole objects in Reel shots (uncommitted at the time of writing)
+
+Files: `animation/reelKeys.js` (new: the key data and maths, pure), `animation/keyedScene.js`
+(new: applies keys to the live three.js nodes, records and restores them, the warning
+check), `animation/reelSequence.js` (shots carry `keys`), `animation/animationStore.js` (key
+commands, the product pose bridge, `checkKeys`), `App.jsx` (registers the pose bridge),
+`ui/InspectorRail.jsx` (`ReelKeys`, the KEYS section of the Reel sheet), `ui/ui-shell.css`,
+and owner-approved changes to `components/StudioCanvas.jsx` that only act when the Reel has
+keys. Test: `app/scripts/test-keys.mjs` (new). Encoding, poster drawing and
+`materials/store.js` are unchanged.
+
+### What a key is (owner decision: the main product is keyed with the Transform panel)
+
+- The G11 gizmo cannot move the whole main product (it targets a part with Parts on, or an
+  added object; `test-garage-gizmo.mjs` asserts that). The owner chose: **main-product keys
+  capture the whole-model Transform panel values and play on that transform group**, so
+  added objects (which hang inside it) ride along with the product. Added objects are posed
+  with the G11 gizmo or the Garage object fields and keyed on their own anchor.
+- A key: `{ t, target, assetId, transform: { x, y, z, rx, ry, rz, s }, easing }`; `t` is on
+  a whole frame at 30 fps; `target` is `"product"` or a Garage item id; `assetId` is the
+  product id or the object's asset id. At most **8 keys per shot** (all objects); keying the
+  same object on the same frame replaces its key. Keys live on the shot (`shot.keys`, only
+  present when non-empty, so a Reel without keys is exactly the C2b data).
+- Easing applies from a key to that object's next key: Smooth (MotionLab smoothstep), Linear,
+  Ease in / Ease out (CSS cubic-Bezier 0.42,0,1,1 and 0,0,0.58,1, solved with the Bezier code
+  ported from MotionLab v0.19.0 `curves-core.js`), Hold (no movement until the next key).
+  Position and scale move linearly through the eased progress; rotation is a quaternion
+  slerp (Euler XYZ in degrees -> quaternion, the same formula as three's). Before the first
+  key the object holds it, after the last it holds the last.
+- Reel sheet: object picker, a frame scrubber (0..shot length) with Start / -1 s / -1 f /
+  +1 f / +1 s / End, Add key (captures the object's CURRENT transform), and per key: time,
+  object, an easing chip (click cycles Smooth -> Linear -> Ease in -> Ease out -> Hold), Go to
+  (scrubber to the key AND the object's transform set to the key's: a normal edit, through
+  the Transform panel or one Garage undo step) and Delete. Test ids: `ui-key-target`,
+  `ui-key-time`, `ui-key-start|back-s|back-f|fwd-f|fwd-s|end`, `ui-key-add`, `ui-key-row-N`,
+  `ui-key-easing-N`, `ui-key-goto-N`, `ui-key-delete-N`, `ui-key-warning`, `ui-key-missing`.
+
+### Playback, camera and restore
+
+- Keys play in Preview and Export, composed with the shot: a Turntable shot still spins the
+  pivot (inside the product's transform group); keys act on the objects' own transforms. An
+  object keyed only in other shots is held at its pre-Play pose in this shot.
+- **Restore (exact):** when Play or an export starts, `prepareKeyed` records every keyed node's
+  `position`, `rotation` (Euler, with its order) and `scale`; Stop, Esc, the end of the Reel,
+  the end or cancel of an export put them back with `.copy()` (the Euler restore recomputes
+  the identical quaternion). Keys never write React state, the Garage store, the session or
+  saved layouts. After the restore the stage refits once (see the bug below).
+- **Camera plans do not follow keyed motion; each shot has "Frame on" (owner rule).** A shot
+  with main-product keys is framed (start views, platform anchor, Instagram safe area) on the
+  keyed product pose at one frame of the shot: **End** (the default: the shot's last
+  exported frame, `(round(d x 30) - 1) / 30`) or **Start** (its first frame). The rest box is
+  carried by the key pose at that time (`keyedScene.js` `frameFit`, `reelKeys.js`
+  `frameTimeOf`) and swapped into `liveFitRef` around `computeReelView` / `planAnchoredShot`
+  in the export step. Shots without product keys are framed exactly as before. The choice is
+  in the shot's settings ("Shot N: frame on", Start / End, test ids `ui-frame-on-start|end`),
+  is stored on the shot only as `frameOn: "start"` (End is the default and is not stored), so
+  sessions saved before this rule restore as End. The demo (Slide across, Branding side,
+  product 1.0 m back at t=0, home at 4 s, Hold to 8 s): End frames the home pose, so the bike
+  rolls IN from the right and ends centred on the platform anchor; Start reproduces the first
+  C3a behaviour (framed on t=0, the bike drives out of frame).
+- **Warning (never blocks):** `StudioCanvas.checkKeys` frames every export frame of the shots
+  with product keys exactly as the export does (start views, "Frame on" fit, plans), moves
+  the product's rest box by the keys (and the turntable spin), and reports the first frame
+  where the box leaves the Instagram safe area or the box's ground point is more than 40 px
+  outside the painted platform ellipse (`env.platform` through `photoToFrame`). The sheet
+  re-checks after shot-list, key, Garage, product or Transform panel changes (the panel's
+  values are read from the engine every 0.5 s and a change triggers a re-check), and on
+  "Check again". Product keys are absolute poses, so a Transform panel edit cannot by itself
+  change the result for a product-keyed shot (owner: no demonstration required).
+- **Missing objects:** a key is live only if its object is in the scene with the same item id
+  AND asset id (product keys: the same product). Others are kept, shown greyed "not in the
+  scene (ignored)" with a note, and skipped by Play / Export / the warning. Save Session does
+  not store Garage objects, so object keys reattach after a reload only when the same layout
+  is loaded again.
+- **Session:** keys save inside the Reel (`reel[].keys`), are sanitized on Restore, and Reset
+  clears them (default shot has no keys).
+
+### Bugs found and fixed during C3a
+
+- Fixed: a keyed preview stopped in the same tick as a Transform panel commit let the stage's
+  `refit()` (it runs before the transform effect's `endAnimations`) measure the box while a
+  key had the product moved; the live fit stayed ~0.3 mm off and the next export framed from
+  it (exports of the same Reel differed run to run). `stopPreview` / `finishExport` now refit
+  after restoring keyed objects (only when the Reel had keys). After the fix the exports are
+  identical run to run.
+- Fixed (owner-approved, `components/SelectionInspector.jsx` `NumberField`): a Transform panel
+  field's blur re-sent its value even when nothing changed; the new transform object ended a
+  running preview or export (it happened at HEAD without keys too). The field now commits on
+  blur only a value that actually changed (every keystroke already commits). Leaving focus in
+  an unchanged field and pressing Play or Export no longer cancels them. The panel has no
+  Enter handler and no undo (it never had either).
+
+### Verification notes
+
+- Production build checks read the live three.js nodes through a stub React DevTools hook
+  installed before load (`window.__REACT_DEVTOOLS_GLOBAL_HOOK__`): r3f's reconciler reports
+  its root, whose `containerInfo.getState().scene` is the scene (no app change, harness only).
+- Reels without keys export pixel-identical to C2c (`ad6938a`): Turntable 4 s, Push-in Rear 3/4
+  4 s, the C2b 3-shot Reel; PNG exports byte-identical.
 
 ## Products and models
 

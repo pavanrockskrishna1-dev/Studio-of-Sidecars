@@ -7,9 +7,14 @@
    the unchanged input and reason is the sentence the Reel sheet shows. Shots
    are joined by hard cuts: shot k owns frames [start, end) at the export fps,
    and the cut frames are the first frame of every shot after the first.
-   Also the session form of a sequence (plain JSON) and its sanitizing parser. */
+   Also the session form of a sequence (plain JSON) and its sanitizing parser.
+   Slice C3a: a shot may also carry `keys` (reelKeys.js); the field is present
+   only when the shot has keys, so a Reel without keys is exactly as before.
+   A shot may carry frameOn: "start" (frame on the keyed product pose at the
+   shot's first frame); absent means "end", the default (the last frame). */
 
 import { SHOT_MOVES, makeShot, makeTurntable } from "./path.js";
+import { keysToSession, sanitizeKeys } from "./reelKeys.js";
 
 export const MAX_SHOTS = 5;
 export const MAX_TOTAL_S = 30;
@@ -21,7 +26,18 @@ export const defaultShot = () => Object.freeze({ move: "orbit", startView: "3/4"
 export const defaultSequence = () => Object.freeze([defaultShot()]);
 
 const isShot = (s) =>
-  !!s && REEL_MOVES.includes(s.move) && REEL_START_VIEWS.includes(s.startView) && SHOT_DURATIONS.includes(s.durationS);
+  !!s &&
+  REEL_MOVES.includes(s.move) &&
+  REEL_START_VIEWS.includes(s.startView) &&
+  SHOT_DURATIONS.includes(s.durationS) &&
+  (s.frameOn === undefined || s.frameOn === "start" || s.frameOn === "end");
+// frameOn is stored only as "start" ("end" is the default and is dropped)
+const normFrameOn = (s) => {
+  if (s.frameOn !== "end") return s;
+  const rest = { ...s };
+  delete rest.frameOn;
+  return rest;
+};
 
 export const totalDuration = (seq) => seq.reduce((n, s) => n + s.durationS, 0);
 
@@ -75,7 +91,19 @@ export function setShot(seq, i, patch) {
     const a = durationAllowed(seq, i, patch.durationS);
     if (!a.ok) return refuse(seq, a.reason);
   }
-  return done(seq.map((s, k) => (k === i ? next : s)));
+  return done(seq.map((s, k) => (k === i ? normFrameOn(next) : s)));
+}
+
+// Slice C3a: replaces shot i's keys (an empty list removes the field).
+export function setShotKeys(seq, i, keys) {
+  if (!Number.isInteger(i) || i < 0 || i >= seq.length) return refuse(seq, "No such shot.");
+  return done(
+    seq.map((s, k) => {
+      if (k !== i) return s;
+      const rest = { move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}) };
+      return Array.isArray(keys) && keys.length ? { ...rest, keys } : rest;
+    })
+  );
 }
 
 // Frame ranges [start, end) of every shot, and the cut frames (first frame of
@@ -112,9 +140,11 @@ export function shotAtFrame(seq, f, fps = 30) {
 export function buildReelAnim(seq, fps = 30) {
   if (!Array.isArray(seq) || seq.length < 1 || seq.length > MAX_SHOTS || !seq.every(isShot)) return null;
   if (totalDuration(seq) > MAX_TOTAL_S) return null;
-  if (seq.length === 1 && seq[0].move === "turntable") return makeTurntable({ durationS: seq[0].durationS, fps });
+  const keysOf = (s) =>
+    Array.isArray(s.keys) && s.keys.length ? { keys: s.keys, ...(s.frameOn === "start" ? { frameOn: "start" } : {}) } : {};
+  if (seq.length === 1 && seq[0].move === "turntable") return { ...makeTurntable({ durationS: seq[0].durationS, fps }), ...keysOf(seq[0]) };
   const ranges = shotFrameRanges(seq, fps);
-  const shots = seq.map((s, k) => ({ move: s.move, startView: s.startView, durationS: s.durationS, f0: ranges[k].start, f1: ranges[k].end, t0: ranges[k].start / fps }));
+  const shots = seq.map((s, k) => ({ move: s.move, startView: s.startView, durationS: s.durationS, f0: ranges[k].start, f1: ranges[k].end, t0: ranges[k].start / fps, ...keysOf(s) }));
   if (seq.length === 1) return { ...makeShot({ move: seq[0].move, durationS: seq[0].durationS, fps }), reel: { shots } };
   return { v: 1, durationS: totalDuration(seq), fps, loop: false, ease: "linear", model: { spinTurns: 0 }, cam: null, shot: { move: "sequence" }, reel: { shots } };
 }
@@ -144,7 +174,14 @@ export function reelShotAtTime(anim, ts) {
 
 /* ---- session form ---- */
 
-export const sequenceToSession = (seq) => seq.map((s) => ({ move: s.move, startView: s.startView, durationS: s.durationS }));
+export const sequenceToSession = (seq) =>
+  seq.map((s) => ({
+    move: s.move,
+    startView: s.startView,
+    durationS: s.durationS,
+    ...(s.frameOn === "start" ? { frameOn: "start" } : {}),
+    ...(Array.isArray(s.keys) && s.keys.length ? { keys: keysToSession(s.keys) } : {}),
+  }));
 
 // A sanitized sequence from saved data, or null when nothing usable is there
 // (bad shots are dropped; the shot count and the 30 s limit are enforced).
@@ -154,7 +191,8 @@ export function sequenceFromSession(raw) {
   let total = 0;
   for (const s of raw) {
     if (!isShot(s) || out.length >= MAX_SHOTS || total + s.durationS > MAX_TOTAL_S) continue;
-    out.push({ move: s.move, startView: s.startView, durationS: s.durationS });
+    const keys = sanitizeKeys(s.keys);
+    out.push({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}), ...(keys ? { keys } : {}) });
     total += s.durationS;
   }
   return out.length ? done(out).seq : null;

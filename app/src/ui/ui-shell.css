@@ -2238,6 +2238,59 @@ body[data-sos-old-panel] [data-studio-controls] {
   line-height: 1.4;
   color: #e8b54d;
 }
+/* Slice C3a - the selected shot's keys */
+.sos-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sos2-line);
+}
+.sos-key-target {
+  width: 100%;
+}
+.sos-key-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sos-key-time input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+.sos-key-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sos-key-sum {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--sos2-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sos-key-row:not([data-live]) .sos-key-sum {
+  color: var(--sos2-text-2);
+  font-style: italic;
+}
+.sos-key-row .sos-reel-tool {
+  height: 24px;
+}
+.sos-key-warning {
+  color: #ff8a65;
+}
+.sos-key-recheck {
+  font: inherit;
+  color: var(--sos2-brass);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .sos2-sheet-divider {
   height: 1px;
   background: var(--sos2-line);
