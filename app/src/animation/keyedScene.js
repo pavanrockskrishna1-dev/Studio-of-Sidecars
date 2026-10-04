@@ -22,7 +22,8 @@
    Instagram safe area and the painted platform. */
 
 import * as THREE from "three";
-import { frameTimeOf, keysByTarget, PRODUCT_TARGET, sampleKeys } from "./reelKeys.js";
+import { frameTimeOf, isPartKey, keysByTarget, PRODUCT_TARGET, sampleKeys } from "./reelKeys.js";
+import { partDeltaMatrix, pivotPoint } from "./partKeys.js";
 import { makeTurntable, projectToPixels, REEL_SAFE_AREA, sampleAt } from "./path.js";
 
 export const PLATFORM_TOLERANCE_PX = 40;
@@ -30,27 +31,65 @@ export const PLATFORM_TOLERANCE_PX = 40;
 const shotKeyLists = (anim) => (anim.reel ? anim.reel.shots.map((s) => s.keys ?? []) : [anim.keys ?? []]);
 export const animHasKeys = (anim) => !!anim && shotKeyLists(anim).some((l) => l.length > 0);
 
+const recordNode = (node) => ({ node, position: node.position.clone(), rotation: node.rotation.clone(), scale: node.scale.clone() });
+
+// Slice C3b: a group of the main product's part meshes. Each mesh keeps its
+// exact rest pose (for the restore), its local matrix and its parent-to-model
+// matrix (constant while it plays: every part hangs under the model root);
+// the group's box is measured in the model frame for the pivot.
+function partRecord(meshes, modelNode) {
+  modelNode.updateWorldMatrix(true, true);
+  const modelInv = modelNode.matrixWorld.clone().invert();
+  const box = new THREE.Box3();
+  const parts = meshes.map((mesh) => {
+    const p2m = modelInv.clone().multiply(mesh.parent.matrixWorld);
+    mesh.updateMatrix();
+    const restLocal = mesh.matrix.clone();
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    box.union(mesh.geometry.boundingBox.clone().applyMatrix4(p2m.clone().multiply(restLocal)));
+    return { ...recordNode(mesh), p2m, p2mInv: p2m.clone().invert(), restLocal };
+  });
+  return { kind: "parts", parts, box: { min: box.min.toArray(), max: box.max.toArray() } };
+}
+
 // productNode: the whole-model transform group. findObject(itemId, assetId):
 // the added object's node, or null. restFit: the stage's live fit (world box).
-export function prepareKeyed({ anim, productId, productNode, findObject, restFit }) {
+// Slice C3b: modelNode (the model root), frontAz (the product's front, for the
+// pivot names) and findParts(ids) -> the part meshes, or null if any is gone.
+export function prepareKeyed({ anim, productId, productNode, findObject, restFit, modelNode = null, frontAz = 0, findParts = null }) {
   if (!animHasKeys(anim) || !productNode) return null;
   const lists = shotKeyLists(anim);
-  const nodeFor = (k) => (k.target === PRODUCT_TARGET ? (k.assetId === productId ? productNode : null) : findObject(k.target, k.assetId));
+  const resolved = new Map();
+  const recordFor = (k) => {
+    const id = `${k.target}#${k.assetId}`;
+    if (resolved.has(id)) return resolved.get(id);
+    let rec = null;
+    if (isPartKey(k)) {
+      const meshes = k.assetId === productId && modelNode && findParts ? findParts(k.parts) : null;
+      if (meshes) rec = partRecord(meshes, modelNode);
+    } else {
+      const node = k.target === PRODUCT_TARGET ? (k.assetId === productId ? productNode : null) : findObject(k.target, k.assetId);
+      if (node) rec = recordNode(node);
+    }
+    resolved.set(id, rec);
+    return rec;
+  };
   const targets = new Map();
   for (const keys of lists) {
     for (const k of keys) {
       if (targets.has(k.target)) continue;
-      const node = nodeFor(k);
-      if (node) targets.set(k.target, { node, position: node.position.clone(), rotation: node.rotation.clone(), scale: node.scale.clone() });
+      const rec = recordFor(k);
+      if (rec) targets.set(k.target, rec);
     }
   }
   if (!targets.size) return null;
-  const perShot = lists.map((keys) => keysByTarget(keys.filter((k) => targets.has(k.target) && nodeFor(k) === targets.get(k.target).node)));
+  const perShot = lists.map((keys) => keysByTarget(keys.filter((k) => targets.has(k.target) && recordFor(k) === targets.get(k.target))));
   productNode.updateWorldMatrix(true, false);
   const keyed = {
     targets,
     perShot,
     restFit,
+    frontAz,
     restWorldInv: productNode.matrixWorld.clone().invert(),
     parentWorld: productNode.parent ? productNode.parent.matrixWorld.clone() : new THREE.Matrix4(),
   };
@@ -67,8 +106,25 @@ function restoreOne(c) {
   c.node.scale.copy(c.scale);
 }
 
+const restoreRecord = (c) => (c.kind === "parts" ? c.parts.forEach(restoreOne) : restoreOne(c));
+
 export function restoreKeyed(keyed) {
-  for (const c of keyed.targets.values()) restoreOne(c);
+  for (const c of keyed.targets.values()) restoreRecord(c);
+}
+
+// Slice C3b: a part group's relative pose, about its pivot, in the model frame:
+// each mesh's local matrix = parentToModel^-1 * delta * parentToModel * rest.
+const _m = new THREE.Matrix4();
+const _d = new THREE.Matrix4();
+function applyParts(c, keys, pose, frontAz) {
+  const pivot = pivotPoint(c.box, keys[0].pivot, frontAz);
+  const delta = pivot ? partDeltaMatrix(pose, pivot) : null;
+  if (!delta) return c.parts.forEach(restoreOne);
+  _d.fromArray(delta);
+  for (const part of c.parts) {
+    _m.copy(part.p2mInv).multiply(_d).multiply(part.p2m).multiply(part.restLocal);
+    _m.decompose(part.node.position, part.node.quaternion, part.node.scale);
+  }
 }
 
 export function applyKeyed(keyed, shotIndex, t) {
@@ -76,7 +132,11 @@ export function applyKeyed(keyed, shotIndex, t) {
   for (const [target, c] of keyed.targets) {
     const pose = g[target] ? sampleKeys(g[target], t) : null;
     if (!pose) {
-      restoreOne(c);
+      restoreRecord(c);
+      continue;
+    }
+    if (c.kind === "parts") {
+      applyParts(c, g[target], pose, keyed.frontAz);
       continue;
     }
     c.node.position.fromArray(pose.position);

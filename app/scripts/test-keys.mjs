@@ -26,7 +26,7 @@ const T = (x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s = 1) => ({ x, y, z, rx
 const key = (t, target, transform, easing = "smooth", assetId = target === "product" ? "coffee-bike" : "cessna-172") => ({ t, target, assetId, transform, easing });
 
 /* ============================ constants ============================ */
-check("MAX_KEYS_PER_SHOT is 8", K.MAX_KEYS_PER_SHOT === 8);
+check("MAX_KEYS_PER_SHOT is 16", K.MAX_KEYS_PER_SHOT === 16);
 check("easings: smooth, linear, in, out, hold", json(K.KEY_EASINGS) === json(["smooth", "linear", "in", "out", "hold"]));
 check("easing labels: Smooth, Linear, Ease in, Ease out, Hold", json(Object.values(K.EASING_LABELS)) === json(["Smooth", "Linear", "Ease in", "Ease out", "Hold"]));
 check("nextEasing cycles smooth -> linear -> in -> out -> hold -> smooth", ["smooth", "linear", "in", "out", "hold"].map(K.nextEasing).join(",") === "linear,in,out,hold,smooth");
@@ -105,9 +105,11 @@ check("keysByTarget groups per object and sorts by time", (() => { const g = K.k
 let ks = [];
 for (let i = 0; i < 8; i++) ks = K.addKey(ks, key(i, i % 2 ? "product" : "i1", T(i)), 12).keys;
 check("8 keys can be added to a shot", ks.length === 8);
-let r = K.addKey(ks, key(9, "product", T()), 12);
-check("a 9th key is refused with the reason, keys unchanged", !r.ok && r.reason === "A shot can have at most 8 keys." && r.keys === ks, r.reason);
-check("canAddKey: refused for a new key at 8", !K.canAddKey(ks, "product", 9).ok && K.canAddKey(ks, "product", 9).reason === "A shot can have at most 8 keys.");
+let ks16 = ks;
+for (let i = 8; i < 16; i++) ks16 = K.addKey(ks16, key(8 + (i - 8) / 2, i % 2 ? "product" : "i1", T(i)), 12).keys;
+let r = K.addKey(ks16, key(9, "product", T()), 12);
+check("a 17th key is refused with the reason, keys unchanged", ks16.length === 16 && !r.ok && r.reason === "A shot can have at most 16 keys." && r.keys === ks16, r.reason);
+check("canAddKey: refused for a new key at 16", !K.canAddKey(ks16, "product", 9).ok && K.canAddKey(ks16, "product", 9).reason === "A shot can have at most 16 keys.");
 r = K.addKey(ks, key(1, "product", T(5, 5, 5)), 12);
 check("re-keying the same object on the same frame replaces it (allowed at 8)", r.ok && r.keys.length === 8 && r.keys.find((k) => k.t === 1).transform.x === 5);
 check("canAddKey: allowed for the same object and frame at 8", K.canAddKey(ks, "product", 1).ok);
@@ -144,7 +146,7 @@ const sess = JSON.parse(JSON.stringify(R.sequenceToSession(keyedSeq)));
 check("session form carries the keys as plain JSON", sess[0].keys.length === 3 && sess[0].keys[2].easing === "hold");
 check("sequenceFromSession restores the same keys (times, objects, transforms, easings)", json(R.sequenceFromSession(sess)[0].keys) === json(keyedSeq[0].keys));
 check("sequenceFromSession drops bad keys", R.sequenceFromSession([{ ...sess[0], keys: [...sess[0].keys, { t: 1, target: "", assetId: "x", transform: T(), easing: "smooth" }] }])[0].keys.length === 3);
-check("sequenceFromSession keeps at most 8 keys", R.sequenceFromSession([{ move: "orbit", startView: "3/4", durationS: 12, keys: Array.from({ length: 11 }, (_, i) => key(i, "product", T(i))) }])[0].keys.length === 8);
+check("sequenceFromSession keeps at most 16 keys", R.sequenceFromSession([{ move: "orbit", startView: "3/4", durationS: 12, keys: Array.from({ length: 20 }, (_, i) => key(i / 2, "product", T(i))) }])[0].keys.length === 16);
 check("a session without keys is unchanged by C3a (same JSON as before)", json(R.sequenceToSession(R.defaultSequence())) === json([{ move: "orbit", startView: "3/4", durationS: 8 }]));
 
 // the store: add keys, save, Reset, restore
@@ -158,8 +160,8 @@ const saved = JSON.parse(JSON.stringify({ reel: store.sequenceForSession() }));
 check("sequenceForSession includes the keys", saved.reel[0].keys.length === 3);
 check("resetSequence clears the keys", store.resetSequence() && !("keys" in store.getSequence()[0]));
 check("restoreSequence brings the keys back, same times and easings", store.restoreSequence(saved.reel) && json(store.getSequence()[0].keys.map((k) => [k.t, k.easing])) === json([[0, "smooth"], [4, "in"], [8, "hold"]]));
-for (let i = 0; i < 5; i++) store.addKey(0, key(1 + i / 30, "i1", T()));
-check("store refuses a 9th key with the visible reason", store.addKey(0, key(2, "product", T())).reason === "A shot can have at most 8 keys.");
+for (let i = 0; i < 13; i++) store.addKey(0, key(1 + i / 30, "i1", T()));
+check("store refuses a 17th key with the visible reason", store.addKey(0, key(2, "product", T())).reason === "A shot can have at most 16 keys.");
 const unreg = store.registerApi({ play: () => true, stop: () => true });
 store.play();
 check("key edits are refused while previewing", store.addKey(0, key(3, "product", T())).reason === "Stop the preview or export first.");

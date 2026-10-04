@@ -188,6 +188,9 @@ function editKeys(i, fn) {
 export const addKey = (i, key) => editKeys(i, (keys, d) => rkeys.addKey(keys, key, d));
 export const deleteKey = (i, k) => editKeys(i, (keys) => rkeys.deleteKey(keys, k));
 export const setKeyEasing = (i, k, easing) => editKeys(i, (keys) => rkeys.setKeyEasing(keys, k, easing));
+// Slice C3b: the Custom curve of key k, and the pivot of a part group in shot i
+export const setKeyCurve = (i, k, bezier) => editKeys(i, (keys) => rkeys.setKeyCurve(keys, k, bezier));
+export const setKeyPivot = (i, target, pivot) => editKeys(i, (keys) => rkeys.setKeyPivot(keys, target, pivot));
 
 // The main product's pose is the whole-model Transform panel, owned by the
 // engine: App registers { read(), write(transform) } here (read returns

@@ -29,6 +29,8 @@
       after C2a.
   4e. Slice C2c (camera preset display labels per product), right after C2b.
   4f. Slice C3a (keyframes for whole objects in Reel shots), right after C2c.
+  4g. Slice C3b (part keys with hinge pivots, the Custom curve editor, 16 keys per shot),
+      right after C3a.
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -2222,6 +2224,88 @@ keys. Test: `app/scripts/test-keys.mjs` (new). Encoding, poster drawing and
   its root, whose `containerInfo.getState().scene` is the scene (no app change, harness only).
 - Reels without keys export pixel-identical to C2c (`ad6938a`): Turntable 4 s, Push-in Rear 3/4
   4 s, the C2b 3-shot Reel; PNG exports byte-identical.
+
+## Slice C3b - part keys, hinge pivots and the Custom curve (uncommitted at the time of writing)
+
+Files: `animation/partKeys.js` (new, pure: pivots and the relative part matrix),
+`animation/reelKeys.js` (part keys, Custom easing, 16-key limit), `animation/keyedScene.js`
+(part groups: record, apply, restore), `animation/animationStore.js` (`setKeyCurve`,
+`setKeyPivot`), `ui/InspectorRail.jsx` (part groups in the KEYS section, relative fields, pivot
+select, `CurveEditor`), `ui/ui-shell.css`, and one owner-approved hunk in
+`components/StudioCanvas.jsx` (`prepareKeys` passes `modelNode`, `frontAz` and a `findParts`
+lookup; it runs only for Reels with keys). Tests: `app/scripts/test-part-keys.mjs` (new) and
+the limit checks in `test-keys.mjs` (8 -> 16, owner-approved; nothing else in it changed).
+Encoding, poster drawing and `materials/store.js` are unchanged.
+
+### Step 0 findings (which parts can move)
+
+- **Coffee Bike:** 8 Garage parts, one per material (Paint_Burgundy_Gloss, Chrome, Gunmetal,
+  Tyre, Steel, Leather_Saddle, Brass, Branding_Gold); each spans nearly the whole vehicle,
+  so no Coffee Bike part can move on its own (a wheel or a lid is not a separate mesh).
+- **THE KOP MAIN:** 753 parts (435 at the root, 220 under `Sidecar_wheel__axle_pivot`, 98
+  `tripo_part` motorcycle pieces). Separate movable pieces include `Service_door__front` /
+  `__rear`, `Grinder__hopper_lid`, `Pressure_gauge__needle`, `Espresso__portafilter`, cups and
+  the milk pitcher. The front service door's sign plates (`Temporary_KOP_wordmark`,
+  `Temporary_descriptor`), its `Brass_pull_handle` and two `Handle_standoff`s are separate
+  parts: key them in the same group as the door or they stay behind. The cart has no cabinet
+  interior, so an opened door reveals a flat burgundy panel.
+
+### What a part key is (owner decision: relative fields + groups)
+
+- The Garage parts selected (Parts on, main product, shift-click for more) are keyed together
+  as ONE item: target `"parts:<sorted part ids joined by |>"`, `parts: [ids]`, one `pivot`.
+  The KEYS section lists such a group as "Parts: <first> + N more" next to the product and
+  the added objects, and keeps listing groups already keyed in the shot.
+- A part key's `transform` is **relative to the group's rest pose** (the pose when Play or
+  the export starts, Garage part edits included) in the product's model frame: Move x/y/z
+  (m), Rotate x/y/z (deg, Euler XYZ, about the pivot), Scale (uniform, about the pivot). The
+  KEYS section shows these fields (`ui-key-rel-x|y|z|rx|ry|rz|s`) for a part group; Add key
+  stores them; Go to loads a key's values back into them. **Garage part edits are never
+  touched** by keys or by these fields.
+- Composition: the group delta is `move * T(pivot) * R * S * T(-pivot)` (`partDeltaMatrix`)
+  in the model frame; each mesh gets `local = parentToModel^-1 * delta * parentToModel *
+  restLocal`, so parts with different parents move rigidly together, inside whatever the
+  product's whole-object keys and the shot camera do.
+- **Pivot** (select `ui-key-pivot`, saved on every key of the group): Centre or the middle of
+  one of the group box's 12 edges, named from the product's front (`frontAz`, the camera
+  presets' front): front / back, left / right as seen from the front, top / bottom. E.g.
+  "back-left edge (vertical)". THE KOP MAIN has frontAz 90: front = +X, right = -Z.
+- **Custom easing:** the easing chip cycles Smooth -> Linear -> Ease in -> Ease out -> Hold ->
+  Custom. Custom stores `bezier: [x1, y1, x2, y2]` and opens a curve graph (toggle
+  `ui-key-curve-N`) with two draggable handles (`ui-curve-h1|h2`); handle x is clamped to
+  0..1 (time stays monotonic), y to -0.5..1.5 (overshoot allowed). The graph shows the values
+  and the progress at 25 / 50 / 75 % (`ui-curve-values`, `ui-curve-progress`). The solver is
+  the cubic-Bezier code ported from MotionLab v0.19.0 `curves-core.js` (attributed in
+  `reelKeys.js`). Picking a preset drops the bezier.
+- **Limit: 16 keys per shot** in total (product, objects and part groups); the 17th is refused
+  with "A shot can have at most 16 keys."
+
+### Restore, missing parts, session
+
+- Exact restore as in C3a: each mesh of a keyed group has its position / rotation / scale
+  recorded at Play or export start and copied back on Stop, Esc, the Reel's end and the end
+  or cancel of an export. Keys never write the Garage store, saved layouts or object
+  transforms.
+- A part key is live only when the product is the same and every part id exists
+  (`garageMode.describePart`); otherwise it is kept, greyed, ignored by Play / Export, with
+  the "not in the scene" note (which now mentions parts).
+- Session: keys save with `parts`, `pivot` and `bezier`; old sessions restore unchanged;
+  Reset clears them.
+
+### Bug found and fixed during C3b
+
+- The curve handle drag committed the value of the previous pointer-move (React state seen
+  through a stale closure), so a release landed short of the pointer. The drag now keeps its
+  live value in a ref and commits the position of the pointerup event itself.
+
+### Verification notes
+
+- The demo (THE KOP MAIN, Push-in, Branding side, 8 s, Frame on End; door group of 6 parts on
+  the back-left edge; keys t=0 rest and t=3 s Rotate y -100 with Custom 0.60, 0.00, 0.90,
+  0.40): rotation 0 / -4.913 / -25.332 / -100 / -100 deg at frames 0 / 30 / 60 / 90 / 239,
+  the hinge point moves at most 1.1e-16 m.
+- Reels without part keys export pixel-identical to C3a (`29dfb89`): Turntable 4 s, Push-in
+  Rear 3/4 4 s, the C2b 3-shot Reel and the C3a roll-in demo; PNG exports byte-identical.
 
 ## Products and models
 

@@ -2282,6 +2282,72 @@ body[data-sos-old-panel] [data-studio-controls] {
 .sos-key-warning {
   color: #ff8a65;
 }
+/* Slice C3b - part groups (pivot, relative fields) and the Custom curve */
+.sos-key-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sos-key-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sos-key-field select {
+  flex: 1;
+  min-width: 0;
+}
+.sos-key-rel {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.sos-key-relfield {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 9.5px;
+  color: var(--sos2-text-2);
+}
+.sos-key-relfield input {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 5px;
+  font-size: 11px;
+}
+.sos-curve {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 4px 0 6px 6px;
+}
+.sos-curve-svg {
+  background: rgba(10, 12, 16, 0.6);
+  border: 1px solid var(--sos2-line);
+  border-radius: 8px;
+  touch-action: none;
+}
+.sos-curve-box {
+  fill: none;
+  stroke: var(--sos2-line);
+  stroke-dasharray: 3 3;
+}
+.sos-curve-arm {
+  stroke: var(--sos2-text-2);
+  stroke-width: 1;
+}
+.sos-curve-path {
+  fill: none;
+  stroke: var(--sos2-brass);
+  stroke-width: 2.5;
+}
+.sos-curve-handle {
+  fill: var(--sos2-text);
+  stroke: var(--sos2-brass);
+  stroke-width: 2;
+  cursor: grab;
+}
 .sos-key-recheck {
   font: inherit;
   color: var(--sos2-brass);
@@ -2695,4 +2761,9 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
 }
 .sos2-sheet-body .sos-fields + .sos-frow {
   margin-top: 12px;
+}
+.sos-key-sub {
+  display: block;
+  font-size: 9.5px;
+  color: var(--sos2-text-2);
 }

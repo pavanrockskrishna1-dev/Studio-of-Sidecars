@@ -1133,8 +1133,16 @@ function StudioStage({
           return null;
         },
         restFit: liveFitRef.current ?? fit,
+        // Slice C3b: part keys (the parts are found by the Garage's own part ids)
+        modelNode: modelScene,
+        frontAz: product.frontAz ?? 0,
+        findParts: (ids) => {
+          const index = buildPartIndex(modelScene);
+          const meshes = index.ok ? ids.map((id) => index.byId.get(id)) : [];
+          return index.ok && meshes.every(Boolean) ? meshes : null;
+        },
       }),
-    [product.id, fit]
+    [product.id, product.frontAz, fit, modelScene]
   );
 
   // Slice C2b (camera shots only): the start pose of every Reel shot, worked

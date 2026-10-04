@@ -15,11 +15,21 @@
    A shot holds at most MAX_KEYS_PER_SHOT keys in total (all targets). Before a
    target's first key it holds that key, after its last key it holds that key.
    Position and scale move linearly through the eased progress; rotation is a
-   quaternion slerp. */
+   quaternion slerp.
+
+   Slice C3b adds:
+     part keys  { ..., target: "parts:<id>|<id>...", parts: [part ids], pivot }:
+                a group of the main product's parts moved RELATIVE to its rest
+                pose about a pivot (partKeys.js); assetId is the product id
+     "custom"   easing with bezier: [x1, y1, x2, y2] (a CSS-style cubic Bezier,
+                solved with the code ported from MotionLab, below); x1 and x2
+                are clamped to 0..1 so time always moves forward
+   and the limit becomes 16 keys per shot in total (owner decision). */
 
 import { smoothstep } from "./path.js";
+import { PIVOT_IDS } from "./partKeys.js";
 
-export const MAX_KEYS_PER_SHOT = 8;
+export const MAX_KEYS_PER_SHOT = 16;
 export const KEY_FPS = 30;
 export const PRODUCT_TARGET = "product";
 export const KEY_EASINGS = Object.freeze(["smooth", "linear", "in", "out", "hold"]);
@@ -43,6 +53,40 @@ export function isTransform(tr) {
   return !!tr && TRANSFORM_KEYS.every((k) => isNum(tr[k])) && tr.s > 0;
 }
 
+/* ---- Slice C3b: part groups and the Custom curve ---- */
+
+export const CUSTOM_EASING = "custom";
+export const CUSTOM_LABEL = "Custom";
+export const DEFAULT_BEZIER = Object.freeze([0.42, 0, 0.58, 1]);
+export const BEZIER_Y_RANGE = Object.freeze([-0.5, 1.5]);
+const MAX_GROUP_PARTS = 400;
+
+// Handles clamped: time (x1, x2) to 0..1 so x(t) never runs backwards, and
+// progress (y1, y2) to the graph's range.
+export function clampBezier(b) {
+  if (!Array.isArray(b) || b.length !== 4 || !b.every(isNum)) return [...DEFAULT_BEZIER];
+  const cx = (v) => Math.min(1, Math.max(0, v));
+  const cy = (v) => Math.min(BEZIER_Y_RANGE[1], Math.max(BEZIER_Y_RANGE[0], v));
+  return [cx(b[0]), cy(b[1]), cx(b[2]), cy(b[3])];
+}
+const isBezier = (b) => Array.isArray(b) && b.length === 4 && b.every(isNum);
+
+// The target id of a group of parts (order-independent).
+export const partsTarget = (parts) => `parts:${[...parts].sort().join("|")}`;
+export const isPartKey = (k) => !!k && Array.isArray(k.parts);
+
+function isPartFields(k) {
+  return (
+    Array.isArray(k.parts) &&
+    k.parts.length >= 1 &&
+    k.parts.length <= MAX_GROUP_PARTS &&
+    k.parts.every((id) => typeof id === "string" && id.length > 0 && id.length <= 200) &&
+    new Set(k.parts).size === k.parts.length &&
+    k.target === partsTarget(k.parts) &&
+    PIVOT_IDS.includes(k.pivot)
+  );
+}
+
 export function isKey(k) {
   return (
     !!k &&
@@ -51,11 +95,11 @@ export function isKey(k) {
     k.t <= MAX_KEY_TIME_S &&
     typeof k.target === "string" &&
     k.target.length > 0 &&
-    k.target.length <= 64 &&
+    (isPartKey(k) ? isPartFields(k) : k.target.length <= 64) &&
     typeof k.assetId === "string" &&
     k.assetId.length <= 200 &&
     isTransform(k.transform) &&
-    KEY_EASINGS.includes(k.easing)
+    (KEY_EASINGS.includes(k.easing) || (k.easing === CUSTOM_EASING && isBezier(k.bezier)))
   );
 }
 
@@ -64,8 +108,10 @@ const cleanKey = (k) =>
     t: snapTime(k.t, MAX_KEY_TIME_S),
     target: k.target,
     assetId: k.assetId,
+    ...(isPartKey(k) ? { parts: Object.freeze([...k.parts].sort()), pivot: k.pivot } : {}),
     transform: Object.freeze(Object.fromEntries(TRANSFORM_KEYS.map((n) => [n, k.transform[n]]))),
     easing: k.easing,
+    ...(k.easing === CUSTOM_EASING ? { bezier: Object.freeze(clampBezier(k.bezier)) } : {}),
   });
 
 const byTime = (a, b) => a.t - b.t || (a.target < b.target ? -1 : a.target > b.target ? 1 : 0);
@@ -78,11 +124,13 @@ const refuse = (keys, reason) => ({ keys, ok: false, reason });
 export function addKey(keys, key, durationS) {
   const list = Array.isArray(keys) ? keys : [];
   const k = { ...key, easing: key?.easing ?? "smooth", t: snapTime(key?.t, durationS) };
+  if (isPartKey(k)) k.target = partsTarget(k.parts);
   if (!isKey(k)) return refuse(list, "That key is not valid.");
   const at = list.findIndex((o) => o.target === k.target && frameOf(o.t) === frameOf(k.t));
   if (at >= 0) {
     const easing = key.easing ?? list[at].easing;
-    return done(list.map((o, i) => (i === at ? cleanKey({ ...k, easing }) : o)));
+    const bezier = key.easing ? key.bezier : list[at].bezier;
+    return done(list.map((o, i) => (i === at ? cleanKey({ ...k, easing, bezier }) : o)));
   }
   if (list.length >= MAX_KEYS_PER_SHOT) return refuse(list, `A shot can have at most ${MAX_KEYS_PER_SHOT} keys.`);
   return done([...list, cleanKey(k)]);
@@ -102,9 +150,31 @@ export function deleteKey(keys, i) {
 export function setKeyEasing(keys, i, easing) {
   const list = Array.isArray(keys) ? keys : [];
   if (!Number.isInteger(i) || i < 0 || i >= list.length) return refuse(list, "No such key.");
+  if (easing === CUSTOM_EASING) return setKeyCurve(list, i, list[i].bezier ?? DEFAULT_BEZIER);
   if (!KEY_EASINGS.includes(easing)) return refuse(list, "Unknown easing.");
-  return done(list.map((o, n) => (n === i ? cleanKey({ ...o, easing }) : o)));
+  return done(list.map((o, n) => (n === i ? cleanKey({ ...o, easing, bezier: undefined }) : o)));
 }
+
+// Slice C3b: the Custom easing with its (clamped) Bezier handles.
+export function setKeyCurve(keys, i, bezier) {
+  const list = Array.isArray(keys) ? keys : [];
+  if (!Number.isInteger(i) || i < 0 || i >= list.length) return refuse(list, "No such key.");
+  if (!isBezier(bezier)) return refuse(list, "Bad curve.");
+  return done(list.map((o, n) => (n === i ? cleanKey({ ...o, easing: CUSTOM_EASING, bezier: clampBezier(bezier) }) : o)));
+}
+
+// Slice C3b: one pivot for every key of a part group in this shot.
+export function setKeyPivot(keys, target, pivot) {
+  const list = Array.isArray(keys) ? keys : [];
+  if (!PIVOT_IDS.includes(pivot)) return refuse(list, "Unknown pivot.");
+  if (!list.some((o) => o.target === target && isPartKey(o))) return refuse(list, "No such part group.");
+  return done(list.map((o) => (o.target === target && isPartKey(o) ? cleanKey({ ...o, pivot }) : o)));
+}
+
+// The UI's easing chip: the 5 presets, then Custom.
+export const nextEasingWithCustom = (easing) =>
+  easing === "hold" ? CUSTOM_EASING : easing === CUSTOM_EASING ? "smooth" : KEY_EASINGS[(KEY_EASINGS.indexOf(easing) + 1) % KEY_EASINGS.length];
+export const easingLabel = (easing) => (easing === CUSTOM_EASING ? CUSTOM_LABEL : EASING_LABELS[easing]);
 
 // Slice C3a: a shot with main-product keys is framed (start views, platform
 // anchor, safe area) on the keyed product pose at its first frame ("start") or
@@ -129,16 +199,27 @@ export function sanitizeKeys(raw) {
 }
 
 export const keysToSession = (keys) =>
-  keys.map((k) => ({ t: k.t, target: k.target, assetId: k.assetId, transform: { ...k.transform }, easing: k.easing }));
+  keys.map((k) => ({
+    t: k.t,
+    target: k.target,
+    assetId: k.assetId,
+    ...(isPartKey(k) ? { parts: [...k.parts], pivot: k.pivot } : {}),
+    transform: { ...k.transform },
+    easing: k.easing,
+    ...(k.easing === CUSTOM_EASING ? { bezier: [...k.bezier] } : {}),
+  }));
 
 /* ---- which keys can play ---- */
 
 // scene = { productId, items: [{ itemId, assetId }] } (the added objects now in
 // the scene). A product key needs the same product; an object key needs an
 // added object with the same item id AND asset id.
+// Slice C3b: a part key needs the same product and every one of its parts
+// (scene.hasPart(id), from the stage's part index).
 export function isKeyLive(key, scene) {
   if (!key || !scene) return false;
   if (key.target === PRODUCT_TARGET) return key.assetId === scene.productId;
+  if (isPartKey(key)) return key.assetId === scene.productId && typeof scene.hasPart === "function" && key.parts.every((id) => scene.hasPart(id));
   return (scene.items || []).some((it) => it.itemId === key.target && it.assetId === key.assetId);
 }
 
@@ -179,10 +260,12 @@ function bezierProgress(c, u) {
 const EASE_IN = compileBezier(0.42, 0, 1, 1);
 const EASE_OUT = compileBezier(0, 0, 0.58, 1);
 
-// Eased progress for u in [0, 1]. Hold stays at 0 until the next key.
-export function easeProgress(easing, u) {
+// Eased progress for u in [0, 1]. Hold stays at 0 until the next key. Custom
+// (Slice C3b) follows the key's clamped Bezier handles.
+export function easeProgress(easing, u, bezier) {
   const v = Math.max(0, Math.min(1, isNum(u) ? u : 0));
   if (easing === "hold") return v >= 1 ? 1 : 0;
+  if (easing === CUSTOM_EASING) return bezierProgress(compileBezier(...clampBezier(bezier)), v);
   if (easing === "linear") return v;
   if (easing === "in") return bezierProgress(EASE_IN, v);
   if (easing === "out") return bezierProgress(EASE_OUT, v);
@@ -257,7 +340,7 @@ export function sampleKeys(keys, t) {
   while (tt >= keys[i + 1].t) i += 1;
   const a = keys[i];
   const b = keys[i + 1];
-  const e = easeProgress(a.easing, (tt - a.t) / (b.t - a.t));
+  const e = easeProgress(a.easing, (tt - a.t) / (b.t - a.t), a.bezier);
   const pa = poseOfKey(a);
   const pb = poseOfKey(b);
   const lerp = (x, y) => x + (y - x) * e;

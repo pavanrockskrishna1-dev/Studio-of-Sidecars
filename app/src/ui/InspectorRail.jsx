@@ -16,6 +16,7 @@ import * as cameraStudio from "../camera/cameraStudio";
 import * as animationStore from "../animation/animationStore";
 import { canAdd, durationAllowed } from "../animation/reelSequence";
 import * as reelKeys from "../animation/reelKeys";
+import { PIVOT_IDS, PIVOT_LABELS } from "../animation/partKeys";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
 import * as layoutLibrary from "../garage/layoutLibrary";
@@ -1714,6 +1715,103 @@ const startViewLabelFor = (product, v) => {
 const startViewTestId = (v) => `ui-anim-start-${v === "3/4" ? "34" : v.toLowerCase().replace(/\s+/g, "-")}`;
 const shotSummary = (s, viewLabel) => `${REEL_PRESET_LABELS[s.move]} · ${viewLabel(s.startView)} · ${s.durationS} s`;
 
+// Slice C3b: the Custom easing's curve, a cubic Bezier from (0, 0) to (1, 1)
+// with two draggable handles (time across, progress up). Handles are clamped
+// by reelKeys.clampBezier (time 0..1, so it never runs backwards); the curve
+// is committed to the key when the drag ends.
+function CurveEditor({ bezier, disabled, onCommit }) {
+  const W = 176;
+  const H = 140;
+  const PAD = 16;
+  const [lo, hi] = reelKeys.BEZIER_Y_RANGE;
+  const svgRef = useRef(null);
+  const [drag, setDrag] = useState(null); // { h: 0 | 1, b: [x1, y1, x2, y2] } (shown while dragging)
+  const dragRef = useRef(null); // the same, read by the pointer handlers (never a stale render)
+  const b = drag ? drag.b : bezier;
+  const px = (x, y) => [PAD + x * (W - 2 * PAD), PAD + ((hi - y) / (hi - lo)) * (H - 2 * PAD)];
+  const fromClient = (e) => {
+    const r = svgRef.current.getBoundingClientRect();
+    const sx = ((e.clientX - r.left) / r.width) * W;
+    const sy = ((e.clientY - r.top) / r.height) * H;
+    return [(sx - PAD) / (W - 2 * PAD), hi - ((sy - PAD) / (H - 2 * PAD)) * (hi - lo)];
+  };
+  const moved = (e) => {
+    const d = dragRef.current;
+    const [x, y] = fromClient(e);
+    const next = [...d.b];
+    next[d.h * 2] = x;
+    next[d.h * 2 + 1] = y;
+    return { h: d.h, b: reelKeys.clampBezier(next) };
+  };
+  const onDown = (h) => (e) => {
+    if (disabled) return;
+    e.preventDefault();
+    svgRef.current.setPointerCapture(e.pointerId);
+    dragRef.current = { h, b: [...bezier] };
+    setDrag(dragRef.current);
+  };
+  const onMove = (e) => {
+    if (!dragRef.current) return;
+    dragRef.current = moved(e);
+    setDrag(dragRef.current);
+  };
+  const onUp = (e) => {
+    if (!dragRef.current) return;
+    const done = moved(e).b; // the release point itself
+    dragRef.current = null;
+    setDrag(null);
+    onCommit(done);
+  };
+  const p0 = px(0, 0);
+  const p1 = px(b[0], b[1]);
+  const p2 = px(b[2], b[3]);
+  const p3 = px(1, 1);
+  const prog = [0.25, 0.5, 0.75].map((u) => reelKeys.easeProgress(reelKeys.CUSTOM_EASING, u, b).toFixed(3));
+  return (
+    <div className="sos-curve" data-testid="ui-curve">
+      <svg
+        ref={svgRef}
+        width={W}
+        height={H}
+        viewBox={`0 0 ${W} ${H}`}
+        className="sos-curve-svg"
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={() => {
+          dragRef.current = null;
+          setDrag(null);
+        }}
+        aria-label="Custom easing curve: drag the two handles"
+      >
+        <rect x={p0[0]} y={p3[1]} width={p3[0] - p0[0]} height={p0[1] - p3[1]} className="sos-curve-box" />
+        <line x1={p0[0]} y1={p0[1]} x2={p1[0]} y2={p1[1]} className="sos-curve-arm" />
+        <line x1={p3[0]} y1={p3[1]} x2={p2[0]} y2={p2[1]} className="sos-curve-arm" />
+        <path d={`M ${p0[0]} ${p0[1]} C ${p1[0]} ${p1[1]} ${p2[0]} ${p2[1]} ${p3[0]} ${p3[1]}`} className="sos-curve-path" />
+        {[p1, p2].map((p, h) => (
+          <circle key={h} cx={p[0]} cy={p[1]} r={7} className="sos-curve-handle" data-testid={`ui-curve-h${h + 1}`} onPointerDown={onDown(h)} />
+        ))}
+      </svg>
+      <span className="sos-reel-total" data-testid="ui-curve-values">
+        handles {b.map((v) => v.toFixed(2)).join(", ")}
+      </span>
+      <span className="sos-reel-total" data-testid="ui-curve-progress">
+        progress at 25 / 50 / 75%: {prog.join(" / ")}
+      </span>
+    </div>
+  );
+}
+
+const REL_FIELDS = [
+  ["x", "Move x", "m"],
+  ["y", "Move y", "m"],
+  ["z", "Move z", "m"],
+  ["rx", "Rotate x", "deg"],
+  ["ry", "Rotate y", "deg"],
+  ["rz", "Rotate z", "deg"],
+  ["s", "Scale", "x"],
+];
+const REST_REL = Object.freeze({ x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, s: 1 });
+
 // Slice C3a: the selected shot's KEYS (whole objects). Pick the main product
 // (posed by the whole-model Transform panel) or an added Garage object (posed
 // by the G11 gizmo), set the time (whole frames at 30 fps), and Add key
@@ -1723,24 +1821,51 @@ const shotSummary = (s, viewLabel) => `${REEL_PRESET_LABELS[s.move]} · ${viewLa
 // again. The warning re-checks the whole Reel (stage checkKeys) after every
 // shot-list, key, Garage, product or Transform panel change; it never blocks
 // Play or Export.
+// Slice C3b: the picker also offers the main product's parts selected in the
+// Garage (Parts on), keyed together as one group: a pivot (centre or one of
+// the 12 edges of the group's box) and a RELATIVE move / rotate / scale typed
+// here (never a Garage part edit). The easing chip ends with Custom, which
+// opens the curve editor.
 function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
   const garageState = useSyncExternalStore(garageStore.subscribe, garageStore.getSnapshot, garageStore.getSnapshot);
   const layout = garageStore.getLayout();
   const added = layout ? layout.items.filter((i) => !i.primary) : [];
+  const primaryId = layout ? layout.items.find((i) => i.primary)?.itemId : null;
   const shot = sequence[shotIndex];
   const keys = shot.keys ?? [];
   const frames = Math.round(shot.durationS * 30);
   const [frameRaw, setFrame] = useState(0);
   const frame = Math.max(0, Math.min(frameRaw, frames));
+  // part groups: the Garage's current part selection, and the groups keyed in this shot
+  const partName = (id) => garageMode.describePart(id)?.name ?? id.replace(/~\d+$/, "");
+  const partGroups = new Map();
+  const selectedParts = (garageState.selection || [])
+    .filter((e) => e.itemId === primaryId && e.partId !== sceneObjects.OBJECT_PART_ID)
+    .map((e) => e.partId);
+  if (selectedParts.length) partGroups.set(reelKeys.partsTarget(selectedParts), [...selectedParts].sort());
+  for (const k of keys) if (reelKeys.isPartKey(k) && !partGroups.has(k.target)) partGroups.set(k.target, k.parts);
+  const groupLabel = (parts) => `Parts: ${partName(parts[0])}${parts.length > 1 ? ` + ${parts.length - 1} more` : ""}`;
   const [targetRaw, setTarget] = useState(reelKeys.PRODUCT_TARGET);
   const target =
-    targetRaw === reelKeys.PRODUCT_TARGET || added.some((i) => i.itemId === targetRaw) ? targetRaw : reelKeys.PRODUCT_TARGET;
-  const scene = { productId, items: added.map((i) => ({ itemId: i.itemId, assetId: i.assetId })) };
+    targetRaw === reelKeys.PRODUCT_TARGET || added.some((i) => i.itemId === targetRaw) || partGroups.has(targetRaw) ? targetRaw : reelKeys.PRODUCT_TARGET;
+  const targetParts = partGroups.get(target) || null;
+  const [pivotDraft, setPivotDraft] = useState("centre");
+  const keyedPivot = targetParts ? keys.find((k) => k.target === target)?.pivot : null;
+  const pivot = keyedPivot ?? pivotDraft;
+  const [rel, setRel] = useState(REST_REL);
+  const [openCurve, setOpenCurve] = useState(null); // the target + time of the key whose curve is open
+  const scene = {
+    productId,
+    items: added.map((i) => ({ itemId: i.itemId, assetId: i.assetId })),
+    hasPart: (id) => !!garageMode.describePart(id),
+  };
   const productName = (id) => PRODUCTS.find((p) => p.id === id)?.name ?? id;
   const nameOf = (k) =>
-    k.target === reelKeys.PRODUCT_TARGET
-      ? `Main product (${productName(k.assetId)})`
-      : `${describeAsset(k.assetId)?.name ?? k.assetId} (${k.target})`;
+    reelKeys.isPartKey(k)
+      ? groupLabel(k.parts)
+      : k.target === reelKeys.PRODUCT_TARGET
+        ? `Main product (${productName(k.assetId)})`
+        : `${describeAsset(k.assetId)?.name ?? k.assetId} (${k.target})`;
   const addCheck = reelKeys.canAddKey(keys, target, frame / 30);
   const missing = keys.filter((k) => !reelKeys.isKeyLive(k, scene)).length;
 
@@ -1766,6 +1891,9 @@ function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
   }, [sequence, garageState.revision, productId, busy, checkTick, poseRev]);
 
   const handleAddKey = () => {
+    if (targetParts) {
+      return onResult(animationStore.addKey(shotIndex, { t: frame / 30, target, parts: targetParts, assetId: productId, pivot, transform: { ...rel } }));
+    }
     const item = target === reelKeys.PRODUCT_TARGET ? null : added.find((i) => i.itemId === target);
     const transform = target === reelKeys.PRODUCT_TARGET ? animationStore.readProductTransform() : item ? item.transform : null;
     const assetId = target === reelKeys.PRODUCT_TARGET ? productId : item ? item.assetId : "";
@@ -1776,9 +1904,23 @@ function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
     setFrame(Math.round(k.t * 30));
     if (!reelKeys.isKeyLive(k, scene)) return onResult({ ok: false, reason: "That key's object is not in the scene." });
     setTarget(k.target);
+    if (reelKeys.isPartKey(k)) {
+      setRel({ ...k.transform }); // part keys: back into the relative fields (no scene change)
+      return onResult({ ok: true, reason: "" });
+    }
     if (k.target === reelKeys.PRODUCT_TARGET) animationStore.writeProductTransform({ ...k.transform });
     else garageStore.setItemTransform(k.target, { ...k.transform });
     return onResult({ ok: true, reason: "" });
+  };
+  const handlePivot = (v) => {
+    setPivotDraft(v);
+    if (keyedPivot) onResult(animationStore.setKeyPivot(shotIndex, target, v));
+  };
+  const handleEasing = (k, i) => {
+    const next = reelKeys.nextEasingWithCustom(k.easing);
+    const r = animationStore.setKeyEasing(shotIndex, i, next);
+    if (r.ok) setOpenCurve(next === reelKeys.CUSTOM_EASING ? `${k.target}@${k.t}` : null);
+    return onResult(r);
   };
   const step = (n) => setFrame(Math.max(0, Math.min(frames, frame + n)));
   const warningText = warning
@@ -1811,7 +1953,50 @@ function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
             {describeAsset(i.assetId)?.name ?? i.assetId} ({i.itemId})
           </option>
         ))}
+        {[...partGroups.entries()].map(([t, parts]) => (
+          <option key={t} value={t}>
+            {groupLabel(parts)}
+          </option>
+        ))}
       </select>
+      {targetParts ? (
+        <>
+          <span className="sos-reel-total" data-testid="ui-key-parts">
+            {targetParts.length} {targetParts.length === 1 ? "part" : "parts"}: {targetParts.map(partName).join(", ")}
+          </span>
+          <label className="sos-key-field">
+            <span className="sos-label">Pivot</span>
+            <select className="sos2-input" data-testid="ui-key-pivot" value={pivot} disabled={busy} onChange={(e) => handlePivot(e.target.value)}>
+              {PIVOT_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {PIVOT_LABELS[id]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="sos-key-rel">
+            {REL_FIELDS.map(([f, label, unit]) => (
+              <label key={f} className="sos-key-relfield">
+                <span>
+                  {label} ({unit})
+                </span>
+                <input
+                  type="number"
+                  className="sos2-input"
+                  data-testid={`ui-key-rel-${f}`}
+                  step={f.startsWith("r") ? 1 : f === "s" ? 0.05 : 0.01}
+                  value={rel[f]}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const n = parseFloat(e.target.value);
+                    if (Number.isFinite(n) && (f !== "s" || n > 0)) setRel((r) => ({ ...r, [f]: n }));
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+        </>
+      ) : null}
       <div className="sos-key-time">
         <input
           type="range"
@@ -1847,7 +2032,11 @@ function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
         className="sos-btn sos-btn-ghost sos-rail-export"
         data-testid="ui-key-add"
         disabled={busy || !addCheck.ok}
-        title={addCheck.ok ? `Key the ${target === reelKeys.PRODUCT_TARGET ? "main product" : "object"} at ${(frame / 30).toFixed(2)} s` : addCheck.reason}
+        title={
+          addCheck.ok
+            ? `Key the ${targetParts ? "parts" : target === reelKeys.PRODUCT_TARGET ? "main product" : "object"} at ${(frame / 30).toFixed(2)} s`
+            : addCheck.reason
+        }
         onClick={handleAddKey}
       >
         Add key
@@ -1861,36 +2050,56 @@ function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
         <ol className="sos-reel-list" data-testid="ui-key-list">
           {keys.map((k, i) => {
             const live = reelKeys.isKeyLive(k, scene);
+            const curveOpen = k.easing === reelKeys.CUSTOM_EASING && openCurve === `${k.target}@${k.t}`;
             return (
-              <li key={`${k.target}-${k.t}`} className="sos-key-row" data-live={live || undefined} data-testid={`ui-key-row-${i + 1}`}>
-                <span className="sos-key-sum">
-                  {k.t.toFixed(2)} s · {nameOf(k)}
-                  {live ? "" : " · not in the scene (ignored)"}
-                </span>
-                <button
-                  type="button"
-                  className="sos-pchip"
-                  data-testid={`ui-key-easing-${i + 1}`}
-                  disabled={busy}
-                  title={`Easing to the next key of this object. Click for ${reelKeys.EASING_LABELS[reelKeys.nextEasing(k.easing)]}.`}
-                  onClick={() => onResult(animationStore.setKeyEasing(shotIndex, i, reelKeys.nextEasing(k.easing)))}
-                >
-                  {reelKeys.EASING_LABELS[k.easing]}
-                </button>
-                <button type="button" className="sos-reel-tool" data-testid={`ui-key-goto-${i + 1}`} disabled={busy} title="Go to this key" onClick={() => handleGoTo(k)}>
-                  ⤴
-                </button>
-                <button
-                  type="button"
-                  className="sos-reel-tool"
-                  data-testid={`ui-key-delete-${i + 1}`}
-                  disabled={busy}
-                  aria-label={`Delete key ${i + 1}`}
-                  title="Delete this key"
-                  onClick={() => onResult(animationStore.deleteKey(shotIndex, i))}
-                >
-                  ✕
-                </button>
+              <li key={`${k.target}-${k.t}`} className="sos-key-item">
+                <div className="sos-key-row" data-live={live || undefined} data-testid={`ui-key-row-${i + 1}`}>
+                  <span className="sos-key-sum">
+                    {k.t.toFixed(2)} s · {nameOf(k)}
+                    {live ? "" : " · not in the scene (ignored)"}
+                    {reelKeys.isPartKey(k) ? <span className="sos-key-sub">pivot: {PIVOT_LABELS[k.pivot]}</span> : null}
+                  </span>
+                  <button
+                    type="button"
+                    className="sos-pchip"
+                    data-testid={`ui-key-easing-${i + 1}`}
+                    disabled={busy}
+                    title={`Easing to the next key of this object. Click for ${reelKeys.easingLabel(reelKeys.nextEasingWithCustom(k.easing))}.`}
+                    onClick={() => handleEasing(k, i)}
+                  >
+                    {reelKeys.easingLabel(k.easing)}
+                  </button>
+                  {k.easing === reelKeys.CUSTOM_EASING ? (
+                    <button
+                      type="button"
+                      className="sos-reel-tool"
+                      data-testid={`ui-key-curve-${i + 1}`}
+                      disabled={busy}
+                      aria-pressed={curveOpen}
+                      title={curveOpen ? "Hide the curve" : "Edit the curve"}
+                      onClick={() => setOpenCurve(curveOpen ? null : `${k.target}@${k.t}`)}
+                    >
+                      ∿
+                    </button>
+                  ) : null}
+                  <button type="button" className="sos-reel-tool" data-testid={`ui-key-goto-${i + 1}`} disabled={busy} title="Go to this key" onClick={() => handleGoTo(k)}>
+                    ⤴
+                  </button>
+                  <button
+                    type="button"
+                    className="sos-reel-tool"
+                    data-testid={`ui-key-delete-${i + 1}`}
+                    disabled={busy}
+                    aria-label={`Delete key ${i + 1}`}
+                    title="Delete this key"
+                    onClick={() => onResult(animationStore.deleteKey(shotIndex, i))}
+                  >
+                    ✕
+                  </button>
+                </div>
+                {curveOpen ? (
+                  <CurveEditor bezier={k.bezier} disabled={busy} onCommit={(b) => onResult(animationStore.setKeyCurve(shotIndex, i, b))} />
+                ) : null}
               </li>
             );
           })}
@@ -1898,7 +2107,7 @@ function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
       ) : null}
       {missing ? (
         <p className="sos-reel-why" data-testid="ui-key-missing">
-          {missing} {missing === 1 ? "key targets an object" : "keys target objects"} not in the scene (removed, or another product): kept but ignored.
+          {missing} {missing === 1 ? "key targets an object or part" : "keys target objects or parts"} not in the scene (removed, another product, or a changed model): kept but ignored.
         </p>
       ) : null}
       {warningText ? (
@@ -1907,7 +2116,8 @@ function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
         </p>
       ) : null}
       <Hint>
-        Pose the main product with the Transform panel, or an added object with the Garage gizmo, then Add key. Each key&apos;s easing
+        Pose the main product with the Transform panel, or an added object with the Garage gizmo, then Add key. For parts, select
+        them in the Garage (Parts on, shift-click adds), pick them here, choose a pivot and type the move. Each key&apos;s easing
         shapes the move to that object&apos;s next key.{" "}
         <button type="button" className="sos-key-recheck" data-testid="ui-key-recheck" disabled={busy} onClick={() => setCheckTick((n) => n + 1)}>
           Check again
