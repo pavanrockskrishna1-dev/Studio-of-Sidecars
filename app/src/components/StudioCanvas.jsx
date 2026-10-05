@@ -1141,6 +1141,12 @@ function StudioStage({
           const meshes = index.ok ? ids.map((id) => index.byId.get(id)) : [];
           return index.ok && meshes.every(Boolean) ? meshes : null;
         },
+        // Slice C4a: a cycle on a part group (every part under that node path)
+        findGroup: (path) => {
+          const index = buildPartIndex(modelScene);
+          const meshes = index.ok ? index.parts.filter((p) => p.id.startsWith(`${path}/`)).map((p) => p.ref) : [];
+          return meshes.length ? meshes : null;
+        },
       }),
     [product.id, product.frontAz, fit, modelScene]
   );
@@ -2630,6 +2636,11 @@ function StudioStage({
         describePart: (partId) => {
           const mesh = partIndex.ok ? partIndex.byId.get(partId) : undefined;
           return mesh ? describeMesh(mesh, partId, modelScene) : null;
+        },
+        // Slice C4a: how many parts hang under a part group (the Reel CYCLES picker)
+        describeGroup: (path) => {
+          const n = partIndex.ok && typeof path === "string" && path ? partIndex.parts.filter((p) => p.id.startsWith(`${path}/`)).length : 0;
+          return n ? { parts: n } : null;
         },
         // Garage G4 — the part's current effective transform (its recorded
         // base pose composed with any existing override), in the numeric

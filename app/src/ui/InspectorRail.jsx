@@ -16,6 +16,7 @@ import * as cameraStudio from "../camera/cameraStudio";
 import * as animationStore from "../animation/animationStore";
 import { canAdd, durationAllowed } from "../animation/reelSequence";
 import * as reelKeys from "../animation/reelKeys";
+import * as reelCycles from "../animation/reelCycles";
 import { PIVOT_IDS, PIVOT_LABELS } from "../animation/partKeys";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
@@ -2127,6 +2128,257 @@ function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
   );
 }
 
+// Slice C4a: a cycle's number field. Typing commits every value that parses and
+// is in range (the store refuses the rest); leaving the field shows the stored
+// value again.
+function CycleNumber({ testId, label, unit, value, step, min, max, disabled, onCommit }) {
+  const [draft, setDraft] = useState(null);
+  return (
+    <label className="sos-key-relfield sos-cycle-num">
+      <span>
+        {label} ({unit})
+      </span>
+      <input
+        type="number"
+        className="sos2-input"
+        data-testid={testId}
+        step={step}
+        min={min}
+        max={max}
+        value={draft ?? String(value)}
+        disabled={disabled}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          const n = parseFloat(e.target.value);
+          if (Number.isFinite(n) && n >= min && n <= max) onCommit(n);
+        }}
+        onBlur={() => setDraft(null)}
+      />
+    </label>
+  );
+}
+
+// Slice C4a: the selected shot's CYCLES, looping motions that run for the whole
+// shot from phase 0: Spin (rpm, or Roll with movement for part groups), Bob,
+// Sway and Pulse. The target picker offers what KEYS offers (main product,
+// added objects, the Garage's selected parts as one group) plus, owner
+// decision, the selected parts' named parent group (e.g. a wheel whose 220
+// meshes hang under one node). At most 6 cycles per shot.
+function ReelCycles({ sequence, shotIndex, busy, productId, onResult }) {
+  const garageState = useSyncExternalStore(garageStore.subscribe, garageStore.getSnapshot, garageStore.getSnapshot);
+  const layout = garageStore.getLayout();
+  const added = layout ? layout.items.filter((i) => !i.primary) : [];
+  const primaryId = layout ? layout.items.find((i) => i.primary)?.itemId : null;
+  const shot = sequence[shotIndex];
+  const cycles = shot.cycles ?? [];
+  const partName = (id) => garageMode.describePart(id)?.name ?? id.replace(/~\d+$/, "");
+  const selectedParts = (garageState.selection || [])
+    .filter((e) => e.itemId === primaryId && e.partId !== sceneObjects.OBJECT_PART_ID)
+    .map((e) => e.partId);
+  // the targets: { value -> { label, parts? | group? } }
+  const groupTargets = new Map();
+  const groupLabel = (parts) => `Parts: ${partName(parts[0])}${parts.length > 1 ? ` + ${parts.length - 1} more` : ""}`;
+  const parentLabel = (path) => {
+    const n = garageMode.describeGroup(path)?.parts;
+    return `Group: ${reelCycles.groupName(path)}${n ? ` (${n} parts)` : ""}`;
+  };
+  if (selectedParts.length) {
+    groupTargets.set(reelKeys.partsTarget(selectedParts), { label: groupLabel([...selectedParts].sort()), parts: [...selectedParts].sort() });
+    const parent = reelCycles.sharedParent(selectedParts);
+    if (parent && garageMode.describeGroup(parent)) groupTargets.set(reelCycles.groupTarget(parent), { label: parentLabel(parent), group: parent });
+  }
+  for (const c of cycles) {
+    if (groupTargets.has(c.target)) continue;
+    if (reelCycles.isPartsCycle(c)) groupTargets.set(c.target, { label: groupLabel(c.parts), parts: c.parts });
+    else if (reelCycles.isGroupCycle(c)) groupTargets.set(c.target, { label: parentLabel(c.group), group: c.group });
+  }
+  const [targetRaw, setTarget] = useState(reelKeys.PRODUCT_TARGET);
+  const target =
+    targetRaw === reelKeys.PRODUCT_TARGET || added.some((i) => i.itemId === targetRaw) || groupTargets.has(targetRaw) ? targetRaw : reelKeys.PRODUCT_TARGET;
+  const [type, setType] = useState("spin");
+  const scene = {
+    productId,
+    items: added.map((i) => ({ itemId: i.itemId, assetId: i.assetId })),
+    hasPart: (id) => !!garageMode.describePart(id),
+    hasGroup: (path) => !!garageMode.describeGroup(path),
+  };
+  const productName = (id) => PRODUCTS.find((p) => p.id === id)?.name ?? id;
+  const nameOf = (c) =>
+    reelCycles.isPartsCycle(c)
+      ? groupLabel(c.parts)
+      : reelCycles.isGroupCycle(c)
+        ? parentLabel(c.group)
+        : c.target === reelKeys.PRODUCT_TARGET
+          ? `Main product (${productName(c.assetId)})`
+          : `${describeAsset(c.assetId)?.name ?? c.assetId} (${c.target})`;
+  const addCheck = reelCycles.canAddCycle(cycles);
+  const missing = cycles.filter((c) => !reelCycles.isCycleLive(c, scene)).length;
+  const R = reelCycles.CYCLE_RANGES;
+
+  const handleAdd = () => {
+    const g = groupTargets.get(target);
+    const item = added.find((i) => i.itemId === target);
+    const assetId = g || target === reelKeys.PRODUCT_TARGET ? productId : item ? item.assetId : "";
+    const cycle = { type, target, assetId, ...(g?.parts ? { parts: g.parts } : {}), ...(g?.group ? { group: g.group } : {}) };
+    return onResult(animationStore.addCycle(shotIndex, cycle));
+  };
+  const set = (i, patch) => onResult(animationStore.setCycle(shotIndex, i, patch));
+  const onParts = (c) => reelCycles.isPartsCycle(c) || reelCycles.isGroupCycle(c);
+
+  return (
+    <div className="sos-keys" data-testid="ui-cycles">
+      <div className="sos-reel-head">
+        <span className="sos-label">Shot {shotIndex + 1}: cycles</span>
+        <span className="sos-reel-total" data-testid="ui-cycle-count">
+          {cycles.length} of {reelCycles.MAX_CYCLES_PER_SHOT}
+        </span>
+      </div>
+      <select className="sos2-input sos-key-target" data-testid="ui-cycle-target" value={target} disabled={busy} aria-label="Object or parts to cycle" onChange={(e) => setTarget(e.target.value)}>
+        <option value={reelKeys.PRODUCT_TARGET}>Main product ({productName(productId)})</option>
+        {added.map((i) => (
+          <option key={i.itemId} value={i.itemId}>
+            {describeAsset(i.assetId)?.name ?? i.assetId} ({i.itemId})
+          </option>
+        ))}
+        {[...groupTargets.entries()].map(([t, g]) => (
+          <option key={t} value={t}>
+            {g.label}
+          </option>
+        ))}
+      </select>
+      <div className="sos-frow">
+        {reelCycles.CYCLE_TYPES.map((ty) => (
+          <button
+            key={ty}
+            type="button"
+            className="sos-pchip"
+            data-testid={`ui-cycle-type-${ty}`}
+            data-on={type === ty || undefined}
+            aria-pressed={type === ty}
+            disabled={busy}
+            onClick={() => setType(ty)}
+          >
+            {reelCycles.CYCLE_LABELS[ty]}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="sos-btn sos-btn-ghost sos-rail-export"
+        data-testid="ui-cycle-add"
+        disabled={busy || !addCheck.ok}
+        title={addCheck.ok ? `Add a ${reelCycles.CYCLE_LABELS[type]} cycle for the whole shot` : addCheck.reason}
+        onClick={handleAdd}
+      >
+        Add cycle
+      </button>
+      {!addCheck.ok ? (
+        <p className="sos-reel-why" data-testid="ui-cycle-add-why">
+          {addCheck.reason}
+        </p>
+      ) : null}
+      {cycles.length ? (
+        <ol className="sos-reel-list" data-testid="ui-cycle-list">
+          {cycles.map((c, i) => {
+            const live = reelCycles.isCycleLive(c, scene);
+            const n = i + 1;
+            return (
+              <li key={`${c.target}-${i}`} className="sos-key-item">
+                <div className="sos-key-row" data-live={live || undefined} data-testid={`ui-cycle-row-${n}`}>
+                  <span className="sos-key-sum">
+                    {reelCycles.CYCLE_LABELS[c.type]} · {nameOf(c)}
+                    {live ? "" : " · not in the scene (ignored)"}
+                  </span>
+                  <button
+                    type="button"
+                    className="sos-reel-tool"
+                    data-testid={`ui-cycle-delete-${n}`}
+                    disabled={busy}
+                    aria-label={`Delete cycle ${n}`}
+                    title="Delete this cycle"
+                    onClick={() => onResult(animationStore.deleteCycle(shotIndex, i))}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="sos-key-rel">
+                  {c.type === "spin" ? (
+                    <>
+                      <CycleNumber testId={`ui-cycle-rpm-${n}`} label={c.roll ? "Speed, unused" : "Speed"} unit="rpm" value={c.rpm} step={1} min={R.rpm[0]} max={R.rpm[1]} disabled={busy || c.roll} onCommit={(v) => set(i, { rpm: v })} />
+                      <label className="sos-key-relfield">
+                        <span>Axis</span>
+                        <select className="sos2-input" data-testid={`ui-cycle-axis-${n}`} value={c.axis} disabled={busy} onChange={(e) => set(i, { axis: e.target.value })}>
+                          {reelCycles.CYCLE_AXES.map((a) => (
+                            <option key={a} value={a}>
+                              {a === "auto" ? "Auto (axle)" : reelCycles.AXIS_LABELS[a]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="sos-key-relfield sos-cycle-roll" title={onParts(c) ? "Turn with the main product's keyed travel (distance / wheel radius)" : "Roll with movement is for part groups (wheels)"}>
+                        <span>Roll with movement</span>
+                        <input type="checkbox" data-testid={`ui-cycle-roll-${n}`} checked={c.roll} disabled={busy || !onParts(c)} onChange={(e) => set(i, { roll: e.target.checked })} />
+                      </label>
+                    </>
+                  ) : null}
+                  {c.type === "bob" ? (
+                    <>
+                      <CycleNumber testId={`ui-cycle-amp-${n}`} label="Height" unit="m" value={c.amplitude} step={0.01} min={R.amplitude[0]} max={R.amplitude[1]} disabled={busy} onCommit={(v) => set(i, { amplitude: v })} />
+                      <CycleNumber testId={`ui-cycle-period-${n}`} label="Period" unit="s" value={c.period} step={0.1} min={R.period[0]} max={R.period[1]} disabled={busy} onCommit={(v) => set(i, { period: v })} />
+                    </>
+                  ) : null}
+                  {c.type === "sway" ? (
+                    <>
+                      <CycleNumber testId={`ui-cycle-angle-${n}`} label="Angle" unit="deg" value={c.angle} step={1} min={R.angle[0]} max={R.angle[1]} disabled={busy} onCommit={(v) => set(i, { angle: v })} />
+                      <CycleNumber testId={`ui-cycle-period-${n}`} label="Period" unit="s" value={c.period} step={0.1} min={R.period[0]} max={R.period[1]} disabled={busy} onCommit={(v) => set(i, { period: v })} />
+                      <label className="sos-key-relfield">
+                        <span>Pivot</span>
+                        <select className="sos2-input" data-testid={`ui-cycle-pivot-${n}`} value={c.pivot} disabled={busy} onChange={(e) => set(i, { pivot: e.target.value })}>
+                          {PIVOT_IDS.map((id) => (
+                            <option key={id} value={id}>
+                              {PIVOT_LABELS[id]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="sos-key-relfield">
+                        <span>Axis</span>
+                        <select className="sos2-input" data-testid={`ui-cycle-axis-${n}`} value={c.axis} disabled={busy} onChange={(e) => set(i, { axis: e.target.value })}>
+                          {reelCycles.CYCLE_AXES.map((a) => (
+                            <option key={a} value={a}>
+                              {a === "auto" ? "Auto (edge)" : reelCycles.AXIS_LABELS[a]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  ) : null}
+                  {c.type === "pulse" ? (
+                    <>
+                      <CycleNumber testId={`ui-cycle-scale-${n}`} label="Scale" unit="%" value={c.scalePct} step={1} min={R.scalePct[0]} max={R.scalePct[1]} disabled={busy} onCommit={(v) => set(i, { scalePct: v })} />
+                      <CycleNumber testId={`ui-cycle-period-${n}`} label="Period" unit="s" value={c.period} step={0.1} min={R.period[0]} max={R.period[1]} disabled={busy} onCommit={(v) => set(i, { period: v })} />
+                    </>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+      {missing ? (
+        <p className="sos-reel-why" data-testid="ui-cycle-missing">
+          {missing} {missing === 1 ? "cycle targets an object or parts" : "cycles target objects or parts"} not in the scene (removed, another product, or a changed model): kept but ignored.
+        </p>
+      ) : null}
+      <Hint>
+        A cycle loops for the whole shot from its first frame, on top of the camera and the keys. For a wheel, select one of its parts
+        in the Garage (Parts on), pick its group here, choose Spin and tick Roll with movement: it turns with the main product&apos;s keyed
+        travel.
+      </Hint>
+    </div>
+  );
+}
+
 // Slice C2b: the Reel sheet is a shot list (1 to 5 shots, at most 30 s, hard
 // cuts between shots). Every edit goes through the animation store, which
 // enforces the limits; a blocked Add or duration chip is disabled and the
@@ -2393,6 +2645,7 @@ export function AnimatePanel() {
         </p>
       ) : null}
       <ReelKeys sequence={seq} shotIndex={selected} busy={animBusy} productId={productId} onResult={run} />
+      <ReelCycles sequence={seq} shotIndex={selected} busy={animBusy} productId={productId} onResult={run} />
 
       <button
         type="button"

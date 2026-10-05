@@ -11,10 +11,13 @@
    Slice C3a: a shot may also carry `keys` (reelKeys.js); the field is present
    only when the shot has keys, so a Reel without keys is exactly as before.
    A shot may carry frameOn: "start" (frame on the keyed product pose at the
-   shot's first frame); absent means "end", the default (the last frame). */
+   shot's first frame); absent means "end", the default (the last frame).
+   Slice C4a: a shot may also carry `cycles` (reelCycles.js), likewise present
+   only when the shot has cycles. */
 
 import { SHOT_MOVES, makeShot, makeTurntable } from "./path.js";
 import { keysToSession, sanitizeKeys } from "./reelKeys.js";
+import { cyclesToSession, sanitizeCycles } from "./reelCycles.js";
 
 export const MAX_SHOTS = 5;
 export const MAX_TOTAL_S = 30;
@@ -95,15 +98,18 @@ export function setShot(seq, i, patch) {
 }
 
 // Slice C3a: replaces shot i's keys (an empty list removes the field).
+// Slice C4a: the shot's cycles are kept (and setShotCycles keeps the keys).
+const shotBase = (s) => ({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}) });
+const withList = (o, name, list) => (Array.isArray(list) && list.length ? { ...o, [name]: list } : o);
 export function setShotKeys(seq, i, keys) {
   if (!Number.isInteger(i) || i < 0 || i >= seq.length) return refuse(seq, "No such shot.");
-  return done(
-    seq.map((s, k) => {
-      if (k !== i) return s;
-      const rest = { move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}) };
-      return Array.isArray(keys) && keys.length ? { ...rest, keys } : rest;
-    })
-  );
+  return done(seq.map((s, k) => (k !== i ? s : withList(withList(shotBase(s), "keys", keys), "cycles", s.cycles))));
+}
+
+// Slice C4a: replaces shot i's cycles (an empty list removes the field).
+export function setShotCycles(seq, i, cycles) {
+  if (!Number.isInteger(i) || i < 0 || i >= seq.length) return refuse(seq, "No such shot.");
+  return done(seq.map((s, k) => (k !== i ? s : withList(withList(shotBase(s), "keys", s.keys), "cycles", cycles))));
 }
 
 // Frame ranges [start, end) of every shot, and the cut frames (first frame of
@@ -140,8 +146,11 @@ export function shotAtFrame(seq, f, fps = 30) {
 export function buildReelAnim(seq, fps = 30) {
   if (!Array.isArray(seq) || seq.length < 1 || seq.length > MAX_SHOTS || !seq.every(isShot)) return null;
   if (totalDuration(seq) > MAX_TOTAL_S) return null;
-  const keysOf = (s) =>
-    Array.isArray(s.keys) && s.keys.length ? { keys: s.keys, ...(s.frameOn === "start" ? { frameOn: "start" } : {}) } : {};
+  // Slice C4a: a shot's cycles ride along with its keys (each only when present)
+  const keysOf = (s) => ({
+    ...(Array.isArray(s.keys) && s.keys.length ? { keys: s.keys, ...(s.frameOn === "start" ? { frameOn: "start" } : {}) } : {}),
+    ...(Array.isArray(s.cycles) && s.cycles.length ? { cycles: s.cycles } : {}),
+  });
   if (seq.length === 1 && seq[0].move === "turntable") return { ...makeTurntable({ durationS: seq[0].durationS, fps }), ...keysOf(seq[0]) };
   const ranges = shotFrameRanges(seq, fps);
   const shots = seq.map((s, k) => ({ move: s.move, startView: s.startView, durationS: s.durationS, f0: ranges[k].start, f1: ranges[k].end, t0: ranges[k].start / fps, ...keysOf(s) }));
@@ -181,6 +190,7 @@ export const sequenceToSession = (seq) =>
     durationS: s.durationS,
     ...(s.frameOn === "start" ? { frameOn: "start" } : {}),
     ...(Array.isArray(s.keys) && s.keys.length ? { keys: keysToSession(s.keys) } : {}),
+    ...(Array.isArray(s.cycles) && s.cycles.length ? { cycles: cyclesToSession(s.cycles) } : {}),
   }));
 
 // A sanitized sequence from saved data, or null when nothing usable is there
@@ -192,7 +202,8 @@ export function sequenceFromSession(raw) {
   for (const s of raw) {
     if (!isShot(s) || out.length >= MAX_SHOTS || total + s.durationS > MAX_TOTAL_S) continue;
     const keys = sanitizeKeys(s.keys);
-    out.push({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}), ...(keys ? { keys } : {}) });
+    const cycles = sanitizeCycles(s.cycles);
+    out.push({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}), ...(keys ? { keys } : {}), ...(cycles ? { cycles } : {}) });
     total += s.durationS;
   }
   return out.length ? done(out).seq : null;

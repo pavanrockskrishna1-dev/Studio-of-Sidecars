@@ -19,12 +19,22 @@
    k from it (start views, platform anchor, safe area). Shots without product
    keys have no frameFit and are framed exactly as before. checkKeyed
    evaluates every exported frame of the shots with product keys against the
-   Instagram safe area and the painted platform. */
+   Instagram safe area and the painted platform.
+
+   Slice C4a: shots may also carry cycles (reelCycles.js). prepareKeyed then
+   records every node a live cycle moves (exact rest pose, as for keys) and
+   applyKeyed runs the cycles AFTER the keys: each node's local matrix (its
+   keyed pose, or its rest pose) is multiplied on the right by the cycle's
+   delta brought into the node's rest frame, so a cycle rides on top of the
+   shot camera, the whole-object keys and the part keys. A Reel without keys
+   and cycles still gets null here and runs the old code; a Reel with keys
+   only runs exactly the C3b code (keyed.cycles is null). */
 
 import * as THREE from "three";
 import { frameTimeOf, isPartKey, keysByTarget, PRODUCT_TARGET, sampleKeys } from "./reelKeys.js";
 import { partDeltaMatrix, pivotPoint } from "./partKeys.js";
 import { makeTurntable, projectToPixels, REEL_SAFE_AREA, sampleAt } from "./path.js";
+import { cycleAxis, cycleDeltaMatrix, isCycle, isGroupCycle, rollAngle, rollAt, rollTable, wheelRadius } from "./reelCycles.js";
 
 export const PLATFORM_TOLERANCE_PX = 40;
 
@@ -56,8 +66,9 @@ function partRecord(meshes, modelNode) {
 // the added object's node, or null. restFit: the stage's live fit (world box).
 // Slice C3b: modelNode (the model root), frontAz (the product's front, for the
 // pivot names) and findParts(ids) -> the part meshes, or null if any is gone.
-export function prepareKeyed({ anim, productId, productNode, findObject, restFit, modelNode = null, frontAz = 0, findParts = null }) {
-  if (!animHasKeys(anim) || !productNode) return null;
+// Slice C4a: findGroup(path) -> the meshes under a part group, or null.
+export function prepareKeyed({ anim, productId, productNode, findObject, restFit, modelNode = null, frontAz = 0, findParts = null, findGroup = null }) {
+  if ((!animHasKeys(anim) && !animHasCycles(anim)) || !productNode) return null;
   const lists = shotKeyLists(anim);
   const resolved = new Map();
   const recordFor = (k) => {
@@ -82,7 +93,7 @@ export function prepareKeyed({ anim, productId, productNode, findObject, restFit
       if (rec) targets.set(k.target, rec);
     }
   }
-  if (!targets.size) return null;
+  if (!targets.size && !animHasCycles(anim)) return null;
   const perShot = lists.map((keys) => keysByTarget(keys.filter((k) => targets.has(k.target) && recordFor(k) === targets.get(k.target))));
   productNode.updateWorldMatrix(true, false);
   const keyed = {
@@ -97,7 +108,123 @@ export function prepareKeyed({ anim, productId, productNode, findObject, restFit
   keyed.frameFit = perShot.map((g, k) =>
     g[PRODUCT_TARGET] ? fitAtPose(keyed, sampleKeys(g[PRODUCT_TARGET], frameTimeOf(shotInfo[k].durationS, shotInfo[k].frameOn))) : null
   );
+  // Slice C4a: the cycles (null without live cycles)
+  keyed.cycles = animHasCycles(anim) ? prepareCycles({ anim, keyed, shotInfo, productId, productNode, findObject, modelNode, frontAz, findParts, findGroup }) : null;
+  if (!targets.size && !keyed.cycles) return null;
   return keyed;
+}
+
+/* ---- Slice C4a: cycles ---- */
+
+const shotCycleLists = (anim) => (anim.reel ? anim.reel.shots.map((s) => s.cycles ?? []) : [anim.cycles ?? []]);
+export const animHasCycles = (anim) => !!anim && shotCycleLists(anim).some((l) => l.length > 0);
+
+// A node's rest box in its own frame, over the given meshes (null when empty).
+function boxInFrame(frameNode, meshes) {
+  frameNode.updateWorldMatrix(true, true);
+  const inv = frameNode.matrixWorld.clone().invert();
+  const box = new THREE.Box3();
+  for (const m of meshes) {
+    if (!m.geometry) continue;
+    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    box.union(m.geometry.boundingBox.clone().applyMatrix4(inv.clone().multiply(m.matrixWorld)));
+  }
+  return box.isEmpty() ? null : { min: box.min.toArray(), max: box.max.toArray() };
+}
+const meshesUnder = (node) => {
+  const out = [];
+  node.traverse((o) => {
+    if (o.isMesh) out.push(o);
+  });
+  return out;
+};
+
+function prepareCycles({ anim, keyed, shotInfo, productId, productNode, findObject, modelNode, frontAz, findParts, findGroup }) {
+  const resolved = new Map();
+  const recordFor = (c) => {
+    const id = `${c.target}#${c.assetId}`;
+    if (resolved.has(id)) return resolved.get(id);
+    let rec = null;
+    if (isPartKey(c) || isGroupCycle(c)) {
+      const meshes =
+        c.assetId !== productId || !modelNode ? null : isGroupCycle(c) ? (findGroup ? findGroup(c.group) : null) : findParts ? findParts(c.parts) : null;
+      if (meshes && meshes.length) {
+        rec = partRecord(meshes, modelNode);
+        for (const p of rec.parts) p.restLocalInv = p.restLocal.clone().invert();
+        rec.frontAz = frontAz;
+      }
+    } else {
+      const node = c.target === PRODUCT_TARGET ? (c.assetId === productId ? productNode : null) : findObject(c.target, c.assetId);
+      // the product's box is its model's (the transform group also holds added objects)
+      const box = node ? boxInFrame(node, c.target === PRODUCT_TARGET && modelNode ? meshesUnder(modelNode) : meshesUnder(node)) : null;
+      if (node && box) rec = { kind: "node", ...recordNode(node), box, frontAz: c.target === PRODUCT_TARGET ? frontAz : 0 };
+    }
+    resolved.set(id, rec);
+    return rec;
+  };
+  // the model's rest placement inside the product node (Roll with movement works in the model frame)
+  let inner = { quaternion: [0, 0, 0, 1], scale: 1 };
+  if (modelNode) {
+    productNode.updateWorldMatrix(true, true);
+    const m = productNode.matrixWorld.clone().invert().multiply(modelNode.matrixWorld);
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    m.decompose(new THREE.Vector3(), q, s);
+    inner = { quaternion: q.toArray(), scale: s.x };
+  }
+  let any = false;
+  const perShot = shotCycleLists(anim).map((cycles, k) => {
+    const live = [];
+    let table;
+    for (const c of cycles) {
+      if (!isCycle(c)) continue;
+      const rec = recordFor(c);
+      if (!rec) continue;
+      const item = { cycle: c, rec };
+      if (c.type === "spin" && c.roll) {
+        if (table === undefined) table = rollTable(keyed.perShot[k]?.[PRODUCT_TARGET], shotInfo[k].durationS, inner);
+        item.table = table;
+        item.axis = cycleAxis(c, rec.box, rec.frontAz);
+        item.radius = wheelRadius(rec.box, item.axis);
+      }
+      live.push(item);
+      any = true;
+    }
+    return live;
+  });
+  if (!any) return null;
+  // nodes a cycle moves that no key target sets each frame: reset to rest before the cycles run
+  const keyedNodes = new Set();
+  for (const c of keyed.targets.values()) (c.kind === "parts" ? c.parts : [c]).forEach((r) => keyedNodes.add(r.node));
+  const rest = new Map();
+  for (const rec of resolved.values()) {
+    if (!rec) continue;
+    for (const r of rec.kind === "parts" ? rec.parts : [rec]) if (!keyedNodes.has(r.node) && !rest.has(r.node)) rest.set(r.node, r);
+  }
+  return { perShot, rest: [...rest.values()] };
+}
+
+// The Roll with movement angle of a spin item at shot time t (rad).
+export const rollAngleAt = (item, t) => (item.table ? rollAngle(rollAt(item.table, t).move, item.axis, item.radius) : 0);
+
+const _cm = new THREE.Matrix4();
+const _cd = new THREE.Matrix4();
+const _cx = new THREE.Matrix4();
+function applyCycles(cycles, shotIndex, t) {
+  for (const r of cycles.rest) restoreOne(r);
+  for (const item of cycles.perShot[shotIndex] || []) {
+    const { cycle, rec } = item;
+    const delta = cycleDeltaMatrix(cycle, t, rec.box, rec.frontAz, item.table ? rollAngleAt(item, t) : 0);
+    if (!delta) continue;
+    _cd.fromArray(delta);
+    for (const r of rec.kind === "parts" ? rec.parts : [rec]) {
+      // the delta in the node's rest frame: restLocal^-1 * parentToModel^-1 * delta * parentToModel * restLocal
+      if (rec.kind === "parts") _cx.copy(r.restLocalInv).multiply(r.p2mInv).multiply(_cd).multiply(r.p2m).multiply(r.restLocal);
+      else _cx.copy(_cd);
+      _cm.compose(r.node.position, r.node.quaternion, r.node.scale).multiply(_cx);
+      _cm.decompose(r.node.position, r.node.quaternion, r.node.scale);
+    }
+  }
 }
 
 function restoreOne(c) {
@@ -110,6 +237,7 @@ const restoreRecord = (c) => (c.kind === "parts" ? c.parts.forEach(restoreOne) :
 
 export function restoreKeyed(keyed) {
   for (const c of keyed.targets.values()) restoreRecord(c);
+  if (keyed.cycles) for (const r of keyed.cycles.rest) restoreOne(r); // Slice C4a
 }
 
 // Slice C3b: a part group's relative pose, about its pivot, in the model frame:
@@ -143,6 +271,7 @@ export function applyKeyed(keyed, shotIndex, t) {
     c.node.quaternion.fromArray(pose.quaternion);
     c.node.scale.fromArray(pose.scale);
   }
+  if (keyed.cycles) applyCycles(keyed.cycles, shotIndex, t); // Slice C4a: on top of the keys
 }
 
 const poseMatrix = (pose) =>

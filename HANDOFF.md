@@ -31,6 +31,8 @@
   4f. Slice C3a (keyframes for whole objects in Reel shots), right after C2c.
   4g. Slice C3b (part keys with hinge pivots, the Custom curve editor, 16 keys per shot),
       right after C3a.
+  4h. Slice C4a (cycles: Spin / Bob / Sway / Pulse per shot, Roll with movement for wheels,
+      parent groups), right after C3b.
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -2307,6 +2309,106 @@ Encoding, poster drawing and `materials/store.js` are unchanged.
 - Reels without part keys export pixel-identical to C3a (`29dfb89`): Turntable 4 s, Push-in
   Rear 3/4 4 s, the C2b 3-shot Reel and the C3a roll-in demo; PNG exports byte-identical.
 
+## Slice C4a - cycles (looping motions) in Reel shots (uncommitted at the time of writing)
+
+Files: `animation/reelCycles.js` (new, pure: the cycle data, values, axes, delta matrices and
+Roll with movement), `animation/keyedScene.js` (the cycle step: records, applies after the
+keys, restores), `animation/reelSequence.js` (shots carry `cycles`; key edits keep them),
+`animation/animationStore.js` (`addCycle`, `deleteCycle`, `setCycle`), `garage/garageMode.js`
+(`describeGroup`), `ui/InspectorRail.jsx` (`ReelCycles`, the CYCLES section of the Reel sheet),
+`ui/ui-shell.css`, and two owner-allowed hunks in `components/StudioCanvas.jsx` (`prepareKeys`
+passes `findGroup`; the Garage registration gains `describeGroup`). Test:
+`app/scripts/test-cycles.mjs` (new). The 18 older test scripts, encoding, poster drawing and
+`materials/store.js` are unchanged.
+
+### Step 0 findings (which wheels can spin)
+
+- **Coffee Bike: none.** Its 8 parts are one mesh per material; `Rubber_Tyre` holds all three
+  tyres (three separate rings at three axle centres) and the rims / spokes are inside the
+  whole-vehicle Chrome and Gunmetal meshes, so no wheel can turn on its own.
+- **THE KOP MAIN, sidecar wheel: yes.** 220 meshes under one node `Sidecar_wheel__axle_pivot`
+  (tyre, 2 spoked rims, hub, 72 spokes, 144 tread blocks), the node sits exactly on the axle
+  (model x 1.17, y 0.285, z -0.31, axle along model X). Tyre, rims and hub are round within
+  0.3 mm about that axle; the fender, shock and suspension link are outside the group.
+- **THE KOP MAIN, motorcycle rear wheel: yes.** `tripo_part_0` (tyre) + `tripo_part_3` (rim,
+  spokes and hub in one mesh), axle along model X at y 0.287, z -0.588, round within about
+  4 mm (AI-made mesh); the swingarm / fender meshes are separate.
+- **THE KOP MAIN, motorcycle front wheel: no.** Its spoke mesh (`tripo_part_6`) also holds the
+  brake plate, and the tyre texture carries the white fork's colour: turned, a grey-white disc
+  shows beside the fork end and white smears move round the tyre.
+- The Garage picks one mesh per click and selects at most 200 parts, so the sidecar wheel
+  cannot be selected part by part. **Owner decision (parent group):** with a part selected the
+  CYCLES picker also offers that part's named parent group ("Group: Sidecar_wheel__axle_pivot
+  (220 parts)"), stored by its part-tree path (`group:<path>`); the Garage store and its limit
+  are unchanged.
+
+### What a cycle is
+
+- `{ type, target, assetId, parts? | group?, ...type fields }` on the shot (`shot.cycles`, only
+  present when non-empty). Targets: the main product, an added object, a part group (the C3b
+  picker: the selected parts) or a parent group. At most **6 cycles per shot**; the 7th is
+  refused with "A shot can have at most 6 cycles." (Add disabled, the reason under it).
+- Each cycle runs for the whole shot from phase 0 at its first frame (the loop clock is ported
+  from MotionLab v0.19.0 `cycles-core.js`, attributed in `reelCycles.js`):
+  - **Spin**: rpm (-600..600, + = right-handed about the axis), axis Auto (the box's thinnest
+    side: a wheel's axle) / Front-back / Left-right / Up-down (named from the product's front,
+    like the C3b pivots), through the box centre. **Roll with movement** (part and parent
+    groups only): angle = (the main product's keyed travel in this shot, in the model frame,
+    projected on axle x up) / radius, radius = half the group box's larger side across the
+    axle. So a forward travel rolls the wheel forward, a backward travel backward, sideways
+    travel (along the axle) not at all, and no product keys = no turn; rpm is unused then.
+  - **Bob**: amplitude (m, 0..2), period (s): up by A sin(2 pi t / P).
+  - **Sway**: angle (deg, 0..180), period, pivot (the C3b pivots), axis (Auto = the pivot
+    edge's own direction, or the thinnest side for Centre).
+  - **Pulse**: scale % (0..90), period: uniform scale 1 + pct/100 sin(2 pi t / P) about the
+    box centre.
+- Part and group cycles work in the model frame on the group's rest box; whole-object cycles in
+  the object node's own frame on its rest box (the main product's box is its model's).
+
+### Composition, restore, missing parts, session
+
+- Order: shot camera, whole-object keys, part keys, then cycles. `applyKeyed` runs the C3b key
+  loop unchanged, then `applyCycles` multiplies each affected node's local matrix on the right
+  by the cycle delta brought into that node's rest frame, so a cycle rides on the keyed pose.
+  Nodes moved only by cycles are reset to their rest pose every frame first.
+- Exact restore: every node a cycle moves is recorded at Play / export start (position, Euler
+  rotation, scale) and copied back with the key targets on Stop, Esc, the end and export end /
+  cancel; the stage's refit after a keyed restore also runs for cycles. Cycles never write the
+  Garage store, layouts or transforms.
+- A Reel with keys only runs exactly the C3b path (`keyed.cycles` is null); a Reel without keys
+  and cycles gets `prepareKeyed` null and runs the old code.
+- Missing targets (group or parts gone, another product, object removed): the cycle is kept,
+  shown "not in the scene (ignored)" with a note, and skipped by Play / Export.
+- Session: cycles save inside the Reel (`reel[].cycles`), are sanitized on Restore (at most 6,
+  bad ones dropped); old sessions restore unchanged; Reset clears them.
+- The C3a safe-area / platform warning still checks product keys only (cycles do not move the
+  camera plan).
+
+### Verification notes
+
+- Demo (MAIN, the C3a roll-in: Slide across, Branding side, 8 s, Frame on End, product z 1 -> 0
+  over 0-4 s Smooth, Hold; Roll with movement on the sidecar group, radius 0.29, and the rear
+  wheel, radius 0.2861): at frames 0 / 30 / 60 / 90 / 120 / 239 the sidecar turns 0 / -30.871 /
+  -98.786 / -166.701 / -197.572 / -197.572 deg and the rear wheel 0 / -31.290 / -100.128 /
+  -168.967 / -200.257 / -200.257 deg, equal to -distance / radius to 3 decimals; the tyre
+  centres do not move. From the Bike side the tyre's top point moves ahead of the hub (rolls
+  forward).
+- MAIN exports differ slightly from run to run **at HEAD too**. Checked in C4a on the C3b door
+  demo with 2 HEAD and 2 new exports (fresh browser each): the frames the exporter hands to the
+  encoder (hashed before encoding) differ in 37-46 of 240 frames in every pair, HEAD-vs-HEAD
+  included, so the cause is the render, not the encoder (Edge's H.264 encoder gave byte-identical
+  output for identical input, 3 runs; the config the exporter requests, hardwareAcceleration
+  unset = no-preference, matched prefer-hardware byte for byte). Frames that are multiples of 30
+  (forced key frames, `keyFrameInterval: 1` in `mp4.js`, confirmed in each file's sync-sample
+  table) were identical in all pairs but one: in the 4 files of the first set only HEAD1 differs,
+  at frame 120 (65 channel values, max 2, one 10 x 10 px box); in a second set, HEAD1 differs from
+  the others at frame 30 (3624 values). Not caused by cycles; the render cause is not
+  investigated.
+- Reels without cycles export pixel-identical to C3b (`fc0cfdb`): Turntable 4 s, Push-in Rear
+  3/4 4 s, the C2b 3-shot Reel and the C3a roll-in (files differ only in header timestamp
+  bytes); the C3b door demo (MAIN) stays within HEAD's own run-to-run spread; PNG exports
+  byte-identical.
+
 ## Products and models
 
 ### The three built-in products (`app/src/products/registry.js`)
@@ -2642,6 +2744,7 @@ In order, per the owner (none started unless noted otherwise):
 - Test on `http://localhost:5173` first.
 - Do not run Arena and Claude Code on the same repo at the same time.
 - Every task needs real evidence (diff, lint, build, browser proof), not "it works".
+- Regression for THE KOP MAIN exports is checked on the frames that are multiples of 30 (the encoder's key frames), over at least 2 HEAD and 2 new exports, and a build passes when its differences stay inside HEAD1-vs-HEAD2's own spread: MAIN's rendered frames vary slightly from run to run even at HEAD (C4a: 37-46 of 240 frames differ before encoding; the hardware H.264 encoder is deterministic for identical input), so zero differences are not expected on every key frame either. Coffee Bike exports were byte-identical across runs and builds (apart from header timestamp bytes).
 
 ## Git Checkpoints
 

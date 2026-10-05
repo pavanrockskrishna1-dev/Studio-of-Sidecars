@@ -27,6 +27,7 @@
 import { validateAnimation } from "./path.js";
 import * as reel from "./reelSequence.js";
 import * as rkeys from "./reelKeys.js";
+import * as rcycles from "./reelCycles.js";
 
 export const DURATIONS = reel.SHOT_DURATIONS;
 
@@ -191,6 +192,24 @@ export const setKeyEasing = (i, k, easing) => editKeys(i, (keys) => rkeys.setKey
 // Slice C3b: the Custom curve of key k, and the pivot of a part group in shot i
 export const setKeyCurve = (i, k, bezier) => editKeys(i, (keys) => rkeys.setKeyCurve(keys, k, bezier));
 export const setKeyPivot = (i, target, pivot) => editKeys(i, (keys) => rkeys.setKeyPivot(keys, target, pivot));
+
+/* ---- Slice C4a: cycles (looping motions), per shot ----------------------- */
+
+// Same rules as the keys: only while idle, through reelCycles (the 6-cycle
+// limit and the value ranges); returns { ok, reason }.
+function editCycles(i, fn) {
+  if (snapshot.mode !== "idle") return { ok: false, reason: "Stop the preview or export first." };
+  const shot = snapshot.sequence[i];
+  if (!shot) return { ok: false, reason: "No such shot." };
+  const r = fn(shot.cycles ?? []);
+  if (!r.ok) return { ok: false, reason: r.reason };
+  return edit(reel.setShotCycles(snapshot.sequence, i, r.cycles));
+}
+
+// cycle = { type, target, assetId, parts? | group?, ...type fields (defaults filled) }
+export const addCycle = (i, cycle) => editCycles(i, (cycles) => rcycles.addCycle(cycles, cycle));
+export const deleteCycle = (i, k) => editCycles(i, (cycles) => rcycles.deleteCycle(cycles, k));
+export const setCycle = (i, k, patch) => editCycles(i, (cycles) => rcycles.setCycle(cycles, k, patch));
 
 // The main product's pose is the whole-model Transform panel, owned by the
 // engine: App registers { read(), write(transform) } here (read returns

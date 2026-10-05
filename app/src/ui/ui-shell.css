@@ -2315,6 +2315,28 @@ body[data-sos-old-panel] [data-studio-controls] {
   padding: 3px 5px;
   font-size: 11px;
 }
+/* Slice C4a: the CYCLES rows (fields under each row; the Roll checkbox on one line) */
+.sos-key-item > .sos-key-rel {
+  margin: 2px 0 6px;
+}
+.sos-key-relfield select {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 4px;
+  font-size: 11px;
+}
+.sos-key-relfield.sos-cycle-roll {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.sos-key-relfield.sos-cycle-roll input {
+  width: auto;
+}
+.sos-cycle-num input:disabled {
+  opacity: 0.5;
+}
 .sos-curve {
   display: flex;
   flex-direction: column;

@@ -77,6 +77,20 @@ export function describePart(partId) {
   }
 }
 
+// Slice C4a — additive: a part group (a node path, e.g. "Sidecar_wheel__axle_pivot~0")
+// as { parts } (how many part meshes hang under it), or null (no stage, no such
+// group, or an api that failed). The Reel sheet's CYCLES picker uses it.
+export function describeGroup(path) {
+  const api = apiRef.current;
+  if (!api || typeof api.describeGroup !== "function") return null;
+  try {
+    const d = api.describeGroup(path);
+    return d === undefined ? null : d;
+  } catch {
+    return null;
+  }
+}
+
 /* Garage G4 — additive: the single-selection helper, and the read/commit
    wrappers for per-part numeric editing. Nothing above this line changes. */
 
