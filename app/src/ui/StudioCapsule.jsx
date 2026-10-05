@@ -6,6 +6,8 @@
    Slice C2b: while the Reel plays it adds "Shot N of M", and while a Reel
    export runs "Exporting NN%" (both read from the animation store); during
    either the capsule stays fully visible (no idle fade).
+   Slice U2: while a Reel export runs the capsule also carries Cancel (the Reel
+   sheet is slid out of view then).
    ========================================================================== */
 
 import { useSyncExternalStore } from "react";
@@ -44,6 +46,21 @@ export default function StudioCapsule({ productName, idle }) {
             {status}
           </span>
         </>
+      ) : null}
+      {/* Slice U2: the sheets slide away during an export, so the one control
+          that was in the Reel sheet while exporting (Cancel export) lives here
+          for as long as the export runs. It calls the same store command. */}
+      {anim.mode === "exporting" ? (
+        <button
+          type="button"
+          className="sos2-capsule-cancel"
+          data-testid="capsule-cancel-export"
+          title="Cancel the running export"
+          onClick={animationStore.cancelExport}
+          onMouseUp={(e) => e.currentTarget.blur()}
+        >
+          Cancel
+        </button>
       ) : null}
     </div>
   );

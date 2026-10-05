@@ -186,6 +186,13 @@ const PATHS = {
       <path d="M9 3.8h6l-.9 5.4 3.1 3v1.6h-4.7V20L12 21l-.5-1V13.8H6.8v-1.6l3.1-3Z" />
     </>
   ),
+  /* Slice U2: the sheet header's peek button (the Reel sections reuse "chevron") */
+  eye: (
+    <>
+      <path d="M2.8 12S6.2 5.8 12 5.8 21.2 12 21.2 12 17.8 18.2 12 18.2 2.8 12 2.8 12Z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </>
+  ),
   save: (
     <>
       <path d="M5.6 3.8h10.2l3.6 3.6v11.4a1.6 1.6 0 0 1-1.6 1.6H5.6A1.6 1.6 0 0 1 4 18.8V5.4a1.6 1.6 0 0 1 1.6-1.6Z" />

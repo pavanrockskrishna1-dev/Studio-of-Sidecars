@@ -33,6 +33,9 @@
       right after C3a.
   4h. Slice C4a (cycles: Spin / Bob / Sway / Pulse per shot, Roll with movement for wheels,
       parent groups), right after C3b.
+  4i. Slice U2 (sheets never hide the product: right / left docking, collapsible Reel
+      sections, sheets slide away during Play and export, peek button), right after C4a.
+      **Read U2 with U1: it replaced U1's sheet placement.**
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -1781,7 +1784,9 @@ Light sliders. Two consequences to remember:
   icon is clicked. At most two sheets are open: one pinned plus one normal.
   Unpinning makes it the normal sheet (a different normal sheet closes); pinning
   replaces any other pinned sheet.
-- **Placement** (`placeSheets` in `ui/StudioShell.jsx`): tall tools dock to the right
+- **Placement (superseded by Slice U2: no sheet opens in the centre any more; every sheet
+  docks to the right edge and a second open sheet to the left edge; see "Slice U2").** U1's
+  rule was: (`placeSheets` in `ui/StudioShell.jsx`): tall tools dock to the right
   edge (x 970-1350), the rest sit above the dock (x 513-853). If the newer sheet
   would land in the older one's column it moves to the other side (an edge sheet
   to the opposite edge, x 16-396; a centre sheet to the right edge). Edge sheets
@@ -2408,6 +2413,59 @@ passes `findGroup`; the Garage registration gains `describeGroup`). Test:
   3/4 4 s, the C2b 3-shot Reel and the C3a roll-in (files differ only in header timestamp
   bytes); the C3b door demo (MAIN) stays within HEAD's own run-to-run spread; PNG exports
   byte-identical.
+
+## Slice U2 - sheets never hide the product (uncommitted at the time of writing)
+
+UI only. Files: `ui/StudioShell.jsx` (placement, `away`), `ui/Sheet.jsx` (peek, away),
+`ui/ReelSection.jsx` + `ui/reelSections.js` (new: collapsible sections and their remembered
+state), `ui/InspectorRail.jsx` (`AnimatePanel` laid out as sections), `ui/StudioCapsule.jsx`,
+`ui/icons.jsx` (`eye`), `ui/ui-shell.css`. `StudioCanvas.jsx`, the scene, camera, lights, export
+and encoding code, `materials/store.js` and all test scripts are untouched: exports are
+identical to HEAD (see below).
+
+- **Placement:** no sheet opens in the middle. Every sheet docks to the RIGHT edge (x 970-1350,
+  16 px gap), from y 64 down to at most y 656 (dock row at y 686) and scrolls inside; Creator,
+  Materials, Garage, Poster and Reel always stretch to y 656, Camera, Light, Save and Capture
+  are as tall as their content. With two open sheets the pinned one keeps the right edge and the
+  other docks to the LEFT edge (x 16-396); never two on one side. `placeSheets` is now 3 lines.
+- **Reel sheet:** Play (and its status hint) is a sticky row at the top; below it four
+  collapsible sections, Shots, Keys, Cycles, Export (`ui2-reel-sec-<id>` / `-head`). Only one is
+  open; opening one closes the others, clicking the open one closes all. Collapsed headers show a
+  summary ("1 of 5 · 8 s", "6 of 16", "2 of 6", "1080×1920 · 30 fps"; with several shots Keys and
+  Cycles say "Shot 2 · 3 of 16"). The open section is held in `reelSections.js` (module level,
+  mirrored to `sessionStorage` key `sos-reel-section`; default Shots). A closed section stays
+  mounted (so drafts survive) but is `inert` and folded by a 220 ms grid transition. Every control
+  and test id inside is unchanged; harnesses must open a section before clicking inside it.
+- **Play / Export:** while `animationStore` mode is not idle every open sheet gets `data-away`:
+  it slides off its own edge and fades (transform + opacity, 220 ms), is `inert`, and stays
+  mounted, so it returns exactly as it was (section, scroll position, key time, rows). Esc, Stop
+  or the canvas click end Play as before.
+- **Added beyond the spec (owner to confirm):** the Reel sheet's "Cancel export" button would be
+  unreachable while the sheet is away, so the capsule carries a Cancel button while exporting
+  (`capsule-cancel-export`, same `animationStore.cancelExport`), and the Reel sheet's export
+  button reads a disabled "Exporting..." meanwhile (one copy of the control).
+- **Peek:** an eye button in every sheet header (`ui2-sheet-<id>-peek`). Held (mouse, touch, or
+  Space / Enter on the focused button) the sheet is 10% opaque with `pointer-events: none`;
+  released it returns. The release is stopped at the window (capture phase), so the canvas never
+  gets a pointerup for a pointerdown it did not see (it would count as a click against its last
+  stored press point; verified: 0 canvas pointerups from a release over the model).
+- Rules kept: no `backdrop-filter` / blur anywhere in the shell (scanned); new text contrast:
+  section name 14.7:1, collapsed summary 6.3:1 (5.7:1 on the hover background), Cancel text 14.7:1;
+  focus ring 2 px brass on the section headers, eye and Cancel (real Tab presses); motion 220 ms,
+  `prefers-reduced-motion` makes the sheet, chevron and section transitions instant.
+- Gotchas: a sticky offset is measured from the scroller's content edge (the sheet body has 14 px
+  padding), so the Play row uses `top: -14px`. The app's `App.css` `button { padding: 16px 34px;
+  background: orange }` applies to every new button: `.sos2-sec-head`, `.sos2-capsule-cancel` reset it.
+  `StudioShell.jsx` and `InspectorRail.jsx` have CRLF line endings in the working copy.
+
+### Verification notes (headless Edge, real GPU, 1366x768, THE KOP MAIN)
+
+- Each sheet alone: right edge x 970-1350, no dock overlap, ends at y 656 (tall) or earlier. The
+  product's projected screen box (all visible mesh vertices) is x 262-1007, y 100-696: a sheet
+  covers 1.4% (Capture) to 4.6% (tall sheets) of that box, the strip x 970-1007 at the sidecar's
+  right end. Reel + Camera: Reel right (pinned), Camera left covers 13.7% (the front wheel).
+- Exports identical to HEAD `322cd1e`: Turntable 4 s frames 0 / 60 / 119 (0 differing values),
+  PNG sha256 (software GL) 3 cases x 3 on both builds: `92627c2c...`, `4748ab2e...`, `58c6c0e4...`.
 
 ## Products and models
 

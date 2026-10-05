@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import "./ui-shell.css";
 import StudioCapsule from "./StudioCapsule";
 import StudioDock from "./StudioDock";
@@ -43,35 +43,31 @@ import * as measure from "../garage/measure";
    Z-order: shell 8 < StudioControls 10 < SelectionInspector 20 < Capture 40.
    ========================================================================== */
 
-// Where each sheet docks when nothing else is open. Tall tools stretch down an
-// edge of the screen; the rest float above the dock.
+// The nine sheets. Slice U2: no sheet opens in the middle of the screen (it
+// would cover the product); every sheet docks to the right edge, from below the
+// capsule to just above the dock row, and scrolls inside. `tall` sheets always
+// stretch to the dock row; the others are as tall as their content.
 const SHEETS = {
-  creator: { title: "Creator", icon: "cube", side: "right", tall: true },
-  materials: { title: "Materials", icon: "palette", side: "right", tall: true },
-  camera: { title: "Camera", icon: "camera", side: "center" },
-  light: { title: "Light", icon: "sun", side: "center" },
-  garage: { title: "Garage", icon: "frame", side: "right", tall: true },
-  poster: { title: "Poster", icon: "swatch", side: "right", tall: true },
-  reel: { title: "Reel", icon: "film", side: "center" },
-  save: { title: "Save", icon: "save", side: "center" },
-  capture: { title: "Capture", icon: "aperture", side: "center" },
+  creator: { title: "Creator", icon: "cube", tall: true },
+  materials: { title: "Materials", icon: "palette", tall: true },
+  camera: { title: "Camera", icon: "camera" },
+  light: { title: "Light", icon: "sun" },
+  garage: { title: "Garage", icon: "frame", tall: true },
+  poster: { title: "Poster", icon: "swatch", tall: true },
+  reel: { title: "Reel", icon: "film", tall: true },
+  save: { title: "Save", icon: "save" },
+  capture: { title: "Capture", icon: "aperture" },
 };
 
-// Placement of up to two open sheets (the pinned one is older). If the newer
-// one would land where the older one is, it moves to the other side: an edge
-// sheet goes to the opposite edge, a centre sheet to the right edge. At
-// 1366x768 the three columns (left 16-396, centre 513-853, right 970-1350)
-// never overlap each other or the dock (440-927, bottom row).
+// Placement of up to two open sheets: the first one docks to the right edge; a
+// second open sheet (the pinned one keeps its place) docks to the LEFT edge, so
+// two sheets are never on the same side. At 1366x768 the left (16-396) and
+// right (970-1350) columns never overlap each other or the dock (440-927,
+// bottom row), and the middle of the view stays free.
 function placeSheets(pinnedId, normalId) {
   const out = {};
-  if (pinnedId) out[pinnedId] = SHEETS[pinnedId].side;
-  if (normalId) {
-    let side = SHEETS[normalId].side;
-    if (pinnedId && out[pinnedId] === side) {
-      side = side === "right" ? "left" : side === "left" ? "right" : "right";
-    }
-    out[normalId] = side;
-  }
+  if (pinnedId) out[pinnedId] = "right";
+  if (normalId) out[normalId] = pinnedId ? "left" : "right";
   return out;
 }
 
@@ -93,6 +89,10 @@ export default function StudioShell() {
   const [pinnedId, setPinnedId] = useState(null);
   const [normalId, setNormalId] = useState(null);
   const idle = useIdleFade();
+  // Slice U2: while a Reel plays or exports every open sheet slides out of view
+  // (the sheets stay mounted, so they come back exactly as they were).
+  const away =
+    useSyncExternalStore(animationStore.subscribe, animationStore.getSnapshot, animationStore.getSnapshot).mode !== "idle";
   const openIds = [pinnedId, normalId].filter(Boolean);
 
   const handleDockSelect = (id) => {
@@ -178,6 +178,7 @@ export default function StudioShell() {
           side={sides[id]}
           tall={SHEETS[id].tall}
           pinned={id === pinnedId}
+          away={away}
           onPin={() => handlePin(id)}
           onClose={() => (id === pinnedId ? setPinnedId(null) : setNormalId(null))}
         >

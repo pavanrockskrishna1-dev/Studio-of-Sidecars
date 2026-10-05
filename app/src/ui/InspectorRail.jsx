@@ -17,6 +17,7 @@ import * as animationStore from "../animation/animationStore";
 import { canAdd, durationAllowed } from "../animation/reelSequence";
 import * as reelKeys from "../animation/reelKeys";
 import * as reelCycles from "../animation/reelCycles";
+import ReelSection from "./ReelSection";
 import { PIVOT_IDS, PIVOT_LABELS } from "../animation/partKeys";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
@@ -2468,199 +2469,32 @@ export function AnimatePanel() {
     if (run(animationStore.deleteShot(i)) && selected >= i && selected > 0) setSelected(selected - 1);
   };
 
+  // Slice U2: what a collapsed section header says. Keys and cycles belong to
+  // the selected shot, so with several shots the summary names it.
+  const shotTag = seq.length > 1 ? `Shot ${selected + 1} · ` : "";
+  const keysSummary = `${shotTag}${(shot.keys ?? []).length} of ${reelKeys.MAX_KEYS_PER_SHOT}`;
+  const cyclesSummary = `${shotTag}${(shot.cycles ?? []).length} of ${reelCycles.MAX_CYCLES_PER_SHOT}`;
+  const exportSummary = animExporting ? `Exporting ${animState.progress}%` : "1080×1920 · 30 fps";
+
   return (
     <div className="sos-reel">
-      <div className="sos-reel-head">
-        <span className="sos-label">Shots</span>
-        <span className="sos-reel-total" data-testid="ui-reel-total">
-          {seq.length} of 5 · {total} s of 30 s
-        </span>
+      {/* Slice U2: Play stays at the top of the sheet whatever section is open */}
+      <div className="sos-reel-play">
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost sos-rail-export"
+          data-testid="ui-anim-play"
+          disabled={animExporting || (!animPreviewing && (!animState.ready || !!blockedReason))}
+          title={
+            animPreviewing
+              ? "Stop: the camera returns to your view from before Play"
+              : `Play the Reel (${seq.length} ${seq.length === 1 ? "shot" : "shots"}, ${total} s)`
+          }
+          onClick={handlePlay}
+        >
+          {animPreviewing ? "Stop" : "Play"}
+        </button>
       </div>
-      <ol className="sos-reel-list" data-testid="ui-reel-shots">
-        {seq.map((s, i) => (
-          <li key={i} className="sos-reel-row" data-on={i === selected || undefined}>
-            <button
-              type="button"
-              className="sos-reel-pick"
-              data-testid={`ui-shot-${i + 1}`}
-              aria-pressed={i === selected}
-              disabled={animBusy}
-              title={`Edit shot ${i + 1}`}
-              onClick={() => setSelected(i)}
-            >
-              <span className="sos-reel-num">{i + 1}</span>
-              <span className="sos-reel-sum">{shotSummary(s, startViewLabel)}</span>
-              {animPreviewing && animState.shot === i ? <span className="sos-reel-live">playing</span> : null}
-            </button>
-            <button
-              type="button"
-              className="sos-reel-tool"
-              data-testid={`ui-shot-${i + 1}-up`}
-              aria-label={`Move shot ${i + 1} up`}
-              title={i === 0 ? "Already the first shot." : `Move shot ${i + 1} up`}
-              disabled={animBusy || i === 0}
-              onClick={() => handleMove(i, -1)}
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              className="sos-reel-tool"
-              data-testid={`ui-shot-${i + 1}-down`}
-              aria-label={`Move shot ${i + 1} down`}
-              title={i === seq.length - 1 ? "Already the last shot." : `Move shot ${i + 1} down`}
-              disabled={animBusy || i === seq.length - 1}
-              onClick={() => handleMove(i, 1)}
-            >
-              ↓
-            </button>
-            <button
-              type="button"
-              className="sos-reel-tool"
-              data-testid={`ui-shot-${i + 1}-delete`}
-              aria-label={`Delete shot ${i + 1}`}
-              title={seq.length === 1 ? "A Reel needs at least one shot." : `Delete shot ${i + 1}`}
-              disabled={animBusy || seq.length === 1}
-              onClick={() => handleDelete(i)}
-            >
-              ✕
-            </button>
-          </li>
-        ))}
-      </ol>
-      <button
-        type="button"
-        className="sos-btn sos-btn-ghost sos-rail-export"
-        data-testid="ui-shot-add"
-        disabled={animBusy || !addCheck.ok}
-        title={addCheck.ok ? "Add a shot at the end" : addCheck.reason}
-        onClick={handleAdd}
-      >
-        Add shot
-      </button>
-      {!addCheck.ok ? (
-        <p className="sos-reel-why" data-testid="ui-shot-add-why">
-          {addCheck.reason}
-        </p>
-      ) : null}
-
-      <span className="sos-label">Shot {selected + 1}: move</span>
-      <div className="sos-frow">
-        {animationStore.PRESETS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            className="sos-pchip"
-            data-testid={id === "turntable" ? "ui-anim-turntable" : `ui-anim-preset-${id}`}
-            data-on={shot.move === id || undefined}
-            aria-pressed={shot.move === id}
-            disabled={animBusy}
-            onClick={() => run(animationStore.setShot(selected, { move: id }))}
-          >
-            {REEL_PRESET_LABELS[id]}
-          </button>
-        ))}
-      </div>
-      <span className="sos-label">Shot {selected + 1}: start view</span>
-      <div className="sos-frow">
-        {animationStore.START_VIEWS.map((v) => (
-          <button
-            key={v}
-            type="button"
-            className="sos-pchip"
-            data-testid={startViewTestId(v)}
-            data-on={(!loneTurntable && shot.startView === v) || undefined}
-            aria-pressed={!loneTurntable && shot.startView === v}
-            disabled={animBusy || loneTurntable || (v === "custom" && !hasCustomView)}
-            title={
-              loneTurntable
-                ? "A Turntable on its own spins from the current camera view"
-                : v === "custom" && !hasCustomView
-                  ? "Save a custom view in the Camera sheet first"
-                  : `Start shot ${selected + 1} from the ${startViewLabel(v)} view`
-            }
-            onClick={() => run(animationStore.setShot(selected, { startView: v }))}
-          >
-            {startViewLabel(v)}
-          </button>
-        ))}
-      </div>
-      {loneTurntable ? (
-        <p className="sos-reel-why">
-          A Turntable on its own spins from the current camera view, as before. In a Reel with more shots it starts from its start view.
-        </p>
-      ) : null}
-      <span className="sos-label">Shot {selected + 1}: duration</span>
-      <div className="sos-frow">
-        {animationStore.DURATIONS.map((n) => {
-          const c = durationCheck(n);
-          return (
-            <button
-              key={n}
-              type="button"
-              className="sos-pchip"
-              data-testid={`ui-anim-duration-${n}`}
-              data-on={shot.durationS === n || undefined}
-              aria-pressed={shot.durationS === n}
-              disabled={animBusy || !c.ok}
-              title={c.ok ? `Shot ${selected + 1} lasts ${n} s` : c.reason}
-              onClick={() => run(animationStore.setShot(selected, { durationS: n }))}
-            >
-              {n} s
-            </button>
-          );
-        })}
-      </div>
-      {blockedDurations.length ? (
-        <p className="sos-reel-why" data-testid="ui-duration-why">
-          {durationCheck(blockedDurations[0]).reason}
-        </p>
-      ) : null}
-      {/* Slice C3a: what a shot with main-product keys is framed on */}
-      <span className="sos-label">Shot {selected + 1}: frame on</span>
-      <div className="sos-frow">
-        {reelKeys.FRAME_ON.map((v) => (
-          <button
-            key={v}
-            type="button"
-            className="sos-pchip"
-            data-testid={`ui-frame-on-${v}`}
-            data-on={(shot.frameOn ?? "end") === v || undefined}
-            aria-pressed={(shot.frameOn ?? "end") === v}
-            disabled={animBusy}
-            title={
-              v === "start"
-                ? "Frame the camera on the product's keyed pose at the shot's first frame"
-                : "Frame the camera on the product's keyed pose at the shot's last frame"
-            }
-            onClick={() => run(animationStore.setShot(selected, { frameOn: v }))}
-          >
-            {v === "start" ? "Start" : "End"}
-          </button>
-        ))}
-      </div>
-      {notice ? (
-        <p className="sos-reel-why" data-testid="ui-reel-notice">
-          {notice}
-        </p>
-      ) : null}
-      <ReelKeys sequence={seq} shotIndex={selected} busy={animBusy} productId={productId} onResult={run} />
-      <ReelCycles sequence={seq} shotIndex={selected} busy={animBusy} productId={productId} onResult={run} />
-
-      <button
-        type="button"
-        className="sos-btn sos-btn-ghost sos-rail-export"
-        data-testid="ui-anim-play"
-        disabled={animExporting || (!animPreviewing && (!animState.ready || !!blockedReason))}
-        title={
-          animPreviewing
-            ? "Stop: the camera returns to your view from before Play"
-            : `Play the Reel (${seq.length} ${seq.length === 1 ? "shot" : "shots"}, ${total} s)`
-        }
-        onClick={handlePlay}
-      >
-        {animPreviewing ? "Stop" : "Play"}
-      </button>
       <Hint>
         {blockedReason
           ? blockedReason
@@ -2674,38 +2508,220 @@ export function AnimatePanel() {
                 ? "Spins the model about its own centre; the camera stays put. Loops."
                 : `${seq.length === 1 ? "One shot" : `${seq.length} shots with hard cuts`}, ${total} s, each easing in and out. The camera returns to your view afterwards.`}
       </Hint>
-      <span className="sos-label">Reel export</span>
-      <button
-        type="button"
-        className="sos-btn sos-btn-ghost sos-rail-export"
-        data-testid="ui-anim-export"
-        disabled={
-          animExporting
-            ? false
-            : gateBlocked || !!blockedReason || !(animState.ready && animState.mode === "idle" && exportSupport?.ok)
-        }
-        title={
-          animExporting
-            ? "Cancel the running export"
-            : gateBlocked
-              ? "Waiting for the environment backdrop to load"
-              : `Render the Reel (${total} s) at 1080x1920 and save it as one MP4`
-        }
-        onClick={animExporting ? animationStore.cancelExport : handleExport}
-      >
-        {animExporting ? "Cancel export" : gateBlocked ? GATE_LABEL : "Export Reel (MP4)"}
-      </button>
-      <Hint>
-        {animExporting
-          ? `Exporting ${animState.progress}% - keep this tab visible.`
-          : exportSupport === null
-            ? "Checking MP4 support..."
-            : !exportSupport.ok
-              ? `${exportSupport.reason} MP4 export needs a current Edge or Chrome on localhost or https.`
-              : animState.message
-                ? animState.message
-                : "1080x1920 - 30 fps - silent. On this PC an export can take a while: keep this tab visible."}
-      </Hint>
+      <ReelSection id="shots" title="Shots" summary={`${seq.length} of 5 · ${total} s`}>
+        <div className="sos-reel-sec">
+          <div className="sos-reel-head">
+            <span className="sos-reel-total" data-testid="ui-reel-total">
+              {seq.length} of 5 · {total} s of 30 s
+            </span>
+          </div>
+          <ol className="sos-reel-list" data-testid="ui-reel-shots">
+            {seq.map((s, i) => (
+              <li key={i} className="sos-reel-row" data-on={i === selected || undefined}>
+                <button
+                  type="button"
+                  className="sos-reel-pick"
+                  data-testid={`ui-shot-${i + 1}`}
+                  aria-pressed={i === selected}
+                  disabled={animBusy}
+                  title={`Edit shot ${i + 1}`}
+                  onClick={() => setSelected(i)}
+                >
+                  <span className="sos-reel-num">{i + 1}</span>
+                  <span className="sos-reel-sum">{shotSummary(s, startViewLabel)}</span>
+                  {animPreviewing && animState.shot === i ? <span className="sos-reel-live">playing</span> : null}
+                </button>
+                <button
+                  type="button"
+                  className="sos-reel-tool"
+                  data-testid={`ui-shot-${i + 1}-up`}
+                  aria-label={`Move shot ${i + 1} up`}
+                  title={i === 0 ? "Already the first shot." : `Move shot ${i + 1} up`}
+                  disabled={animBusy || i === 0}
+                  onClick={() => handleMove(i, -1)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="sos-reel-tool"
+                  data-testid={`ui-shot-${i + 1}-down`}
+                  aria-label={`Move shot ${i + 1} down`}
+                  title={i === seq.length - 1 ? "Already the last shot." : `Move shot ${i + 1} down`}
+                  disabled={animBusy || i === seq.length - 1}
+                  onClick={() => handleMove(i, 1)}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  className="sos-reel-tool"
+                  data-testid={`ui-shot-${i + 1}-delete`}
+                  aria-label={`Delete shot ${i + 1}`}
+                  title={seq.length === 1 ? "A Reel needs at least one shot." : `Delete shot ${i + 1}`}
+                  disabled={animBusy || seq.length === 1}
+                  onClick={() => handleDelete(i)}
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ol>
+          <button
+            type="button"
+            className="sos-btn sos-btn-ghost sos-rail-export"
+            data-testid="ui-shot-add"
+            disabled={animBusy || !addCheck.ok}
+            title={addCheck.ok ? "Add a shot at the end" : addCheck.reason}
+            onClick={handleAdd}
+          >
+            Add shot
+          </button>
+          {!addCheck.ok ? (
+            <p className="sos-reel-why" data-testid="ui-shot-add-why">
+              {addCheck.reason}
+            </p>
+          ) : null}
+
+          <span className="sos-label">Shot {selected + 1}: move</span>
+          <div className="sos-frow">
+            {animationStore.PRESETS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                className="sos-pchip"
+                data-testid={id === "turntable" ? "ui-anim-turntable" : `ui-anim-preset-${id}`}
+                data-on={shot.move === id || undefined}
+                aria-pressed={shot.move === id}
+                disabled={animBusy}
+                onClick={() => run(animationStore.setShot(selected, { move: id }))}
+              >
+                {REEL_PRESET_LABELS[id]}
+              </button>
+            ))}
+          </div>
+          <span className="sos-label">Shot {selected + 1}: start view</span>
+          <div className="sos-frow">
+            {animationStore.START_VIEWS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="sos-pchip"
+                data-testid={startViewTestId(v)}
+                data-on={(!loneTurntable && shot.startView === v) || undefined}
+                aria-pressed={!loneTurntable && shot.startView === v}
+                disabled={animBusy || loneTurntable || (v === "custom" && !hasCustomView)}
+                title={
+                  loneTurntable
+                    ? "A Turntable on its own spins from the current camera view"
+                    : v === "custom" && !hasCustomView
+                      ? "Save a custom view in the Camera sheet first"
+                      : `Start shot ${selected + 1} from the ${startViewLabel(v)} view`
+                }
+                onClick={() => run(animationStore.setShot(selected, { startView: v }))}
+              >
+                {startViewLabel(v)}
+              </button>
+            ))}
+          </div>
+          {loneTurntable ? (
+            <p className="sos-reel-why">
+              A Turntable on its own spins from the current camera view, as before. In a Reel with more shots it starts from its start view.
+            </p>
+          ) : null}
+          <span className="sos-label">Shot {selected + 1}: duration</span>
+          <div className="sos-frow">
+            {animationStore.DURATIONS.map((n) => {
+              const c = durationCheck(n);
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  className="sos-pchip"
+                  data-testid={`ui-anim-duration-${n}`}
+                  data-on={shot.durationS === n || undefined}
+                  aria-pressed={shot.durationS === n}
+                  disabled={animBusy || !c.ok}
+                  title={c.ok ? `Shot ${selected + 1} lasts ${n} s` : c.reason}
+                  onClick={() => run(animationStore.setShot(selected, { durationS: n }))}
+                >
+                  {n} s
+                </button>
+              );
+            })}
+          </div>
+          {blockedDurations.length ? (
+            <p className="sos-reel-why" data-testid="ui-duration-why">
+              {durationCheck(blockedDurations[0]).reason}
+            </p>
+          ) : null}
+          {/* Slice C3a: what a shot with main-product keys is framed on */}
+          <span className="sos-label">Shot {selected + 1}: frame on</span>
+          <div className="sos-frow">
+            {reelKeys.FRAME_ON.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="sos-pchip"
+                data-testid={`ui-frame-on-${v}`}
+                data-on={(shot.frameOn ?? "end") === v || undefined}
+                aria-pressed={(shot.frameOn ?? "end") === v}
+                disabled={animBusy}
+                title={
+                  v === "start"
+                    ? "Frame the camera on the product's keyed pose at the shot's first frame"
+                    : "Frame the camera on the product's keyed pose at the shot's last frame"
+                }
+                onClick={() => run(animationStore.setShot(selected, { frameOn: v }))}
+              >
+                {v === "start" ? "Start" : "End"}
+              </button>
+            ))}
+          </div>
+          {notice ? (
+            <p className="sos-reel-why" data-testid="ui-reel-notice">
+              {notice}
+            </p>
+          ) : null}
+        </div>
+      </ReelSection>
+      <ReelSection id="keys" title="Keys" summary={keysSummary}>
+        <ReelKeys sequence={seq} shotIndex={selected} busy={animBusy} productId={productId} onResult={run} />
+      </ReelSection>
+      <ReelSection id="cycles" title="Cycles" summary={cyclesSummary}>
+        <ReelCycles sequence={seq} shotIndex={selected} busy={animBusy} productId={productId} onResult={run} />
+      </ReelSection>
+      <ReelSection id="export" title="Export" summary={exportSummary}>
+        <div className="sos-reel-sec">
+          <button
+            type="button"
+            className="sos-btn sos-btn-ghost sos-rail-export"
+            data-testid="ui-anim-export"
+            disabled={animExporting || gateBlocked || !!blockedReason || !(animState.ready && animState.mode === "idle" && exportSupport?.ok)}
+            title={
+              animExporting
+                ? "Exporting: Cancel is in the capsule at the top"
+                : gateBlocked
+                  ? "Waiting for the environment backdrop to load"
+                  : `Render the Reel (${total} s) at 1080x1920 and save it as one MP4`
+            }
+            onClick={handleExport}
+          >
+            {animExporting ? "Exporting..." : gateBlocked ? GATE_LABEL : "Export Reel (MP4)"}
+          </button>
+          <Hint>
+            {animExporting
+              ? `Exporting ${animState.progress}% - keep this tab visible. Cancel is in the capsule at the top.`
+              : exportSupport === null
+                ? "Checking MP4 support..."
+                : !exportSupport.ok
+                  ? `${exportSupport.reason} MP4 export needs a current Edge or Chrome on localhost or https.`
+                  : animState.message
+                    ? animState.message
+                    : "1080x1920 - 30 fps - silent. On this PC an export can take a while: keep this tab visible."}
+          </Hint>
+        </div>
+      </ReelSection>
     </div>
   );
 }
