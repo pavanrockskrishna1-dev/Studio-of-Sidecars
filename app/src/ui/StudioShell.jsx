@@ -5,6 +5,7 @@ import StudioDock from "./StudioDock";
 import Sheet from "./Sheet";
 import useIdleFade from "./useIdleFade";
 import useSessionUi from "./useSessionUi";
+import usePosterKitDefault from "./usePosterKitDefault";
 import {
   CreatorBody,
   MaterialsBody,
@@ -81,6 +82,8 @@ export default function StudioShell() {
   // the user edits it (null = follow); it is saved and restored with the session.
   const assetName = PRODUCTS.find((p) => p.id === assets.productId)?.name ?? "";
   const session = useSessionUi(assetName);
+  // Slice B1: the BBQ Ride poster kit is the default while the BBQ Bike is loaded
+  usePosterKitDefault(assets.productId);
 
   // Which sheets are open: at most one pinned and one normal. Clicking an icon
   // whose sheet is open closes it; otherwise it opens as the normal sheet (and

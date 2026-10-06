@@ -36,6 +36,8 @@
   4i. Slice U2 (sheets never hide the product: right / left docking, collapsible Reel
       sections, sheets slide away during Play and export, peek button), right after C4a.
       **Read U2 with U1: it replaced U1's sheet placement.**
+  4j. Slice B1 (the BBQ Bike as a fourth product: assembled model, registry entry, Creator
+      card, poster default kit), right after U2.
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -2467,9 +2469,159 @@ identical to HEAD (see below).
 - Exports identical to HEAD `322cd1e`: Turntable 4 s frames 0 / 60 / 119 (0 differing values),
   PNG sha256 (software GL) 3 cases x 3 on both builds: `92627c2c...`, `4748ab2e...`, `58c6c0e4...`.
 
+## Slice B1 - the BBQ Bike product (uncommitted at the time of writing)
+
+**UPDATE (B1 v5): the bike in this file is now the Tripo HD Royal Enfield Classic 350 black; see "B1 v5: the new bike" below.
+Wherever this section describes the OLD bike (98 `tripo_part_N` meshes, the maroon-to-black texture repaint of step 3, the old
+wheel positions, the 339,255-triangle total) it is superseded; the grill, sidecar and chassis notes still hold.**
+Files: `app/public/models/bbq-bike.glb` (v5: 9,956,308 bytes, sha256 `0950ca116874011bd86e2b28c26840520f060e872dc5265cac77bea8673c2e40`;
+the previous v2 file was 24,486,152 bytes, sha256 `b0ebe4a189ba7892733b7e9957ad86f129f71ae8c4079b1cc16828c8ccb93c16`;
+before that the step-2 file `bbq_bike_v2.glb`, 20,625,304 bytes, sha256 `df9efe15...8b9709`, plus the step-3 asset fix below),
+`app/public/models/bbq-bike-thumb.jpg` (480 x 216 JPEG, 27,809 bytes; v5: a crop of the studio's own 3/4 preset screenshot, scaled to size), `products/registry.js` (the entry), `ui/content.js` (the card is a real product now),
+`ui/usePosterKitDefault.js` (new) + one line in `ui/StudioShell.jsx`, and a comment in `ui/bbqPack.js`.
+`StudioCanvas.jsx`, export / video / poster drawing code, `materials/store.js`, `poster/poster.js` and all 19 test
+scripts are unchanged.
+
+### The registry entry and the labels
+
+- `id "bbq-bike"`, name and label "BBQ Bike", `modelPath /models/bbq-bike.glb`, `thumbUrl /models/bbq-bike-thumb.jpg`,
+  **`frontAz 0`** (azimuth 0 = camera on +Z): "Front" shows the headlight and the BBQ RIDE door. The vehicle runs along
+  z, the sidecar and the grill's branding side face +X, the bike is at -X.
+- **Camera labels need no per-product map:** the six generic names are true (checked on screenshots): Front =
+  headlight + BBQ RIDE door, Side = the grill / branding side with the sidecar wheel (the bike side is not a preset),
+  3/4 = front + grill side, Rear = the bike's tail and plate + the grill's rear, Top, Low Hero = low front-right.
+- Creator: the BBQ Bike card is a normal, selectable card ("Food mobility · BBQ", real thumbnail). The old inert
+  "Coming Soon" placeholder is gone (`PRODUCT_PLACEHOLDERS` is empty; the mechanism stays). The "BBQ Bike - reference
+  views" block (the old UI-pack stills) is kept unchanged: it is still brand / reference art.
+- Poster: when the BBQ Bike is loaded the active kit becomes `bbq-ride` (every time it is loaded). A kit the user picks
+  WHILE the BBQ Bike is loaded wins for the rest of the page session; a kit picked on another product does not block
+  the default. Other products are untouched.
+
+### How the model was assembled (Blender 3.6.23, `C:\Program Files\Blender Foundation\Blender 3.6\blender.exe`, background mode; the scripts are not in the repo)
+
+- Frame = THE KOP MAIN's (metres, Y up, tyres on y = 0). Parts, newest versions found on the PC:
+  1. the Royal Enfield: the whole `Motorcycle / assembly root` subtree (98 `tripo_part_N` meshes, one material with base
+     colour + normal textures) of `app/public/models/the-kop-main.glb`, **not moved** (matches the source to 0.1 um);
+  2. the sidecar wheel: the `Sidecar wheel / axle pivot` group (220 meshes), **not moved**, renamed
+     `Sidecar_wheel__axle_pivot` (the name three.js gives it);
+  3. `bbq_grill_unit_v05.glb` (Downloads, 2026-09-26 09:03), 42 meshes, as authored;
+  4. `sidecar_chassis_v01 (1).glb` (Downloads, 2026-09-26 04:33). There is **no chassis v02** on the PC (the "v2" files
+     are HTML generators and the hardware library).
+- Placement: chassis rotated -90 deg about Y (its long axis onto Z, its outboard side onto +X, the cart side) and moved
+  (+0.1032, -0.0146, -0.5386) so that its deck top is level with the bottom of THE KOP MAIN's cart body (y 0.341) and the
+  main wheel's centre (x 1.17, z -0.31) is where the chassis wheel was; grill rotated -90 deg about Y and moved
+  (+0.7128, +0.3410, +0.1472): the cabinet shell centred on the deck and resting on it (**gap 0.00 mm**), Front_Door at
+  +Z, Rear_Door at -Z. Top-level nodes: `Motorcycle`, `Sidecar_Chassis`, `Sidecar_wheel__axle_pivot`, `BBQ_Unit`;
+  every source node name kept (five chassis names Blender had to make unique were restored in the GLB JSON).
+- **Decisions and deviations (owner-approved or flagged):** the chassis file ships its own `Sidecar_Wheel` (Rim, Spokes,
+  Hub_Drum, Tyre, 0.64 m): it was removed and THE KOP MAIN's wheel is used instead (the axle is 20 mm off the fender's
+  centre vertically); **the grill's `Tool_Box` (Tool_Box_Body, Tool_Box_Star) was removed** (the real BBQ bike has none;
+  it collided with the chassis shock by up to 51 mm). `Side_Box` / `Side_Box_Lid` are a different item and stay. The
+  mount kit (Main_Stay, struts, brackets...) is not included in v1.
+- **Chassis v01 deck note:** its deck plate is 1.372 x 0.61 m (about 54 x 24 in), not 52 x 22; the grill cabinet
+  (1.321 x 0.559 m = 52 x 22 in) sits on it with about 25 mm to spare at each end.
+- Result: 409 meshes, 451 nodes, 339,255 triangles, 14 materials, 7 images after step 3 (the bike's two 2048 x 2048 textures at source
+  resolution), box 1.611 x 1.517 x 1.981 m (x -0.369..1.242, y 0.0001..1.517, z -0.990..0.991). True triangle
+  intersection between the grill and the chassis / wheel: none (contact only, the cabinet on the deck). Chassis clamps
+  and clevises overlap bike parts by up to 28 mm (box level): they wrap the frame tubes, not checked further.
+- **Load / speed (Edge, real GPU, Intel HD 5500, 1366x768):** about 4.5 s from the card click; 409 draw calls; **about
+  39 FPS** (38.98, 37.5, 40.07) against 13.2 for THE KOP MAIN measured the same way. The console shows 116
+  `GL_INVALID_OPERATION ... Mismatch between texture format and sampler type` warnings while it loads; **the same
+  warning appears on HEAD with THE KOP MAIN (103)**, so it is not new and not BBQ-specific; no errors, no page errors.
+
+### Step 3: asset fix (the real BBQ bike is BLACK) - edited in `bbq-bike.glb` only; THE KOP MAIN's GLB untouched
+
+- **Paint:** the bike's base-colour texture (texture 2) now points at a NEW image (image 6, `bike_basecolor_black`, PNG);
+  the clearcoat map (texture 0) keeps the original image 0 (the two shared it, so a copy was required). Rule: per
+  texel, a smooth weight = hue in the burgundy band (-35..-23 deg fades in, +9..+20 deg fades out) x saturation
+  (0.30..0.55 fades in) x (1 - value fade 0.55..0.78); the texel is blended toward gloss black
+  `n = 15 + 32 * ((luma - 8) / 150)^1.3` (sRGB 15..47, shading kept, tiny blue lift of 2). Protected: the UV islands of
+  the tail light (`tripo_part_87`) and the three amber indicators (`tripo_part_73/74/75`), dilated 3 px, so no
+  saturated red / orange is touched; chrome, silver, white, tyres and the headlight do not match the hue / saturation
+  band. **1,309,367 of 4,194,304 texels changed (31.22 %)**: 1,142,285 fully, 167,082 partly (edges); mean luma of the
+  repainted area 23.7 -> 17.2; 2,465 texels in the protected islands matched the rule and were left alone.
+- **Grill finish:** `Black_Powdercoat` (every grill body part, 19 meshes) metallic 0.15 -> 0, roughness 0.5 -> 0.65.
+  Chrome, Brushed_Steel (grate only), Star / Logo / Text and Ember unchanged. No other body material exists.
+  Note: from the Front preset the door face still reads mid grey (about sRGB 99) because the dark dielectric shows the
+  studio lights' specular at that angle; the 3/4 faces read about 47. A rougher value would darken it.
+- **Chimney:** node `Chimney` moved **28 mm** toward the bike side (translation [0, 0, 0.028] in the grill frame =
+  world -X). Why: a ray test from the Front, 3/4 and Low Hero cameras (+-6 deg) showed the pipe hid 2.7-5.9 % of the
+  first letter's texels; the smallest sufficient move toward the bike side is 28 mm, toward the rear 96 mm. After the
+  move 0 letter texels are hidden from all 9 cameras (checked up to 40 mm).
+- **Step 3b (owner review):** `Black_Powdercoat` baseColorFactor [0.018, 0.018, 0.020] -> [0.008, 0.008, 0.0088] (linear, sRGB about 25; the material has no base colour texture), roughness 0.65 -> 0.5, metallic stays 0. Result: the 3/4 faces read RGB 26-27, but the Front-preset door face still reads RGB 75-121 (a specular reflection of the key DirectionalLight 2.7 at (4,6,5), not base colour: diagnostic roughness 1 gives 53-91, env intensity 0 changes nothing). Open question for the owner: KHR_materials_specular specularFactor (matte black) or a lighting change.
+- **Step 3c/3d - FINAL grill material (applied):** the grill front read grey because the scene environment reflects off the face-on powdercoat (door face 75-121 with the environment on, 9-47 with scene.environmentIntensity 0; the decal / text planes and the base colour were not the cause). Lighting and environment stay untouched (owner decision), so the fix is in the model: `Black_Powdercoat` = baseColor [0.008, 0.008, 0.0088], metallic 0, roughness 0.6 and the `KHR_materials_specular` extension with specularFactor 0.1 (added to `extensionsUsed`; loads as a MeshPhysicalMaterial, specularIntensity 0.1). Measured on the production build: Front door face / lid-end face 29-33, 3/4 side wall 13, white text and logo clearly readable. **Sampling lesson:** sample flat areas at least 20 px away from logos / text; a 5x5 patch at (600,440) touched the BBQ RIDE roundel ring (white 243) and read 73 / 121 on a face that is really 30.
+- True triangle intersection grill vs chassis / wheel: still none (contact only, Cabinet_Shell on Deck_Plate).
+  Node boxes of the bike, sidecar wheel and chassis unchanged.
+
+### B1 v5: the new bike (uncommitted) - Tripo HD Royal Enfield Classic 350 black
+
+Built in a scratchpad with Blender 3.6 (background) + a small Python glTF merge; the scripts are not in the repo. Source:
+`re_classic350_black_150k.glb` (Downloads; 17 parts `tripo_part_0..16`, one material, 143,598 triangles, ~0.98 m long).
+
+- **Size and placement:** the bike is uniformly scaled **x2.104** so the axle-to-axle distance is **1.39 m** (3D axle distance
+  in the file: 1.3896 m after the front tyre rebuild). Box about 2.06 m long x 1.07 m wide (handlebar and mirrors) x 1.35 m high.
+  **Front = +Z** (the bike's native Tripo orientation; the rider's right is -X, so the exhaust is on -X, away from the sidecar at +X).
+  The source was skewed, so the whole bike was rotated 5.36 deg about the vertical to put both wheels in line, and each wheel's
+  axle was straightened onto X (front 3.1 deg, rear 2.1 deg). Ground = the old bike's lowest tyre point (y 0.000114), the rear axle
+  z = -0.58821 (the old rear wheel, `tripo_part_0` of the old file), centreline x = -0.0000325, then **the whole Motorcycle node is
+  shifted 20 mm along -X** (node translation x -0.02003) because the sidecar's `U_Clamp_3_Ubolt` / spacer intersected `Engine_Frame`
+  at offset 0 (113 triangle pairs; 5/10/15 mm still collided, 20 mm is clear; 0 pairs against all three sidecar nodes after).
+  `Sidecar_Chassis`, `Sidecar_wheel__axle_pivot` and `BBQ_Unit` were not touched (world boxes identical).
+- **Node tree:** top-level `Motorcycle` (replaces the old node) with 18 parts as direct children plus **`Front_Wheel_pivot`** and
+  **`Rear_Wheel_pivot`** (empties at each axle centre, wheel meshes `Front_Wheel` / `Rear_Wheel` parented to them): rotate a pivot
+  about its **local X** and the wheel spins in place (the app's Spin cycle on the group `Motorcycle~0/Front_Wheel_pivot~0` does
+  exactly this; checked with the app's own cycle code on the real file: the wheel's bounding-box centre moves 0-0.9 mm (front)
+  and 0-2.5 mm (rear) over a turn, because the hub / disc are not perfectly symmetric). Parts: Engine_Frame, Front_Wheel, Front_Mudguard, Rear_Wheel, Rear_Mudguard, Handlebar_Headlamp
+  (one fused mesh), Exhaust (the right rear shock is fused into it), Fuel_Tank, Seat, Mirror_L (+X) / Mirror_R (-X), Rear_Shock_L,
+  Front_Fork_Upper, Front_Fork_Lower_L / _R, Brake_Cable, Rear_Axle_End_L / _R.
+- **Wheels:** the rear tyre was oval (radius 329-354 mm); it was scaled about its axle in Y/Z (x0.967 / x1.041) to a round
+  341-346 mm and its pivot moved down 17.1 mm so its lowest point is on the ground. The front mudguard was split out of
+  `tripo_part_1` geometrically (the mesh is one fused piece). **The front tyre was rebuilt:** Tripo never modelled the top half of
+  the tread, so only the clean bottom 120 deg arc is kept (cut with planes through the axle at +-60 deg), copied at +120 / +240 deg
+  about the axle and joined (seam vertices welded at <= 1 mm; rim, spokes, hub and disc untouched). Front tyre radius over 36
+  angles: 291.3-293.1 mm (range 1.8 mm, was 22.5). Lowest tyre point over a 0/90/180/270 spin: spread 1.8 mm (front), 0.0 mm (rear).
+  Then 557 `Front_Mudguard` faces that lay in the new tyre's band (radius 0.215-0.2935 m from the pivot axle, axial -0.059..+0.046 m;
+  266 with all 3 vertices inside, 291 more with 1-2) were deleted so no static old-tyre fragment z-fights with the spinning tread;
+  vertices in the band 321 -> 0. A strip of old-tread fragments just outside r 0.2935 at the mudguard's front end remains (outside
+  the specified band, left on purpose).
+- **Materials:** the bike's material is **`RE_Body`** (was "Material"): `KHR_materials_specular` specularFactor **0.3**, and the
+  metallicRoughness texture's roughness (G) is raised to at least **0.22** wherever metallic (B) < 0.3 (77.8% of texels; JPEG q90,
+  2048 x 2048); base colour and normal untouched. `Black_Powdercoat` (the 19 grill parts) = baseColor **[0.020, 0.020, 0.020]**,
+  roughness 0.55, metallic 0, specularFactor 0.1.
+- **File:** 371 nodes, 329 meshes, 14 materials, 7 images, **212,762 triangles** (143,598 of them the bike), 9.96 MB (was
+  24.5 MB: the old bike's PNG textures are gone). `KHR_materials_clearcoat` is no longer used.
+- **Checks on the real build (Edge, Intel HD 5500, dev server):** loads in about 5.5 s, **41-45 FPS**, no console errors; Reel Spin
+  cycles on both wheel groups added through the UI. The old notes about the maroon paint, the clearcoat map, the bike's
+  `tripo_part_87` / `73-75` protected islands, and "Roll with movement" radius 0.29 m refer to the old bike: the new wheel radii
+  are front 0.292 m, rear 0.343 m (use these for Roll with movement).
+
+### Using it: part keys and cycles
+
+- Parts: `Front_Door` and `Rear_Door` are Garage parts (ids like `BBQ_Unit~0/BBQ_Grill_Unit~0/Front_Door~0/Front_Door_Panel~0`;
+  each door is 4 meshes: Panel, Handle, Hinge, and Logo_Decal on the front door). With one door part selected the CYCLES
+  picker also offers "Group: Front_Door (4 parts)"; with a wheel part, "Group: Sidecar_wheel__axle_pivot (220 parts)".
+- **Door swing:** the hinge is a pin along world X at the door's TOP edge (y 0.892). Select the 4 door parts, pivot
+  **back-top**, key 0 s rest and 3 s Rotate x -90 (Smooth): the door swings out and up into a flat shelf (13 mm thick,
+  y 0.880-0.893, z 0.820-1.364). The pivot list has only box edges, and the box's back-top edge is 12.5 mm off the real
+  hinge axis, so the 3 s key also carries Move y -0.020, z +0.005 (this is (I - R)(H - P)): then the hinge pin ends 0.3
+  mm from its rest position (at most 4 mm off in between).
+- **Wheel:** Spin + Roll with movement on the sidecar group: the angle equals -distance / 0.29 m exactly. Note the
+  demo's product key z +1.0 -> 0 moves the vehicle toward -Z, i.e. it REVERSES (its front is +Z), so the wheel rolls
+  backwards; for a forward roll key z 0 -> +1.
+
+### Verification notes
+
+- Exports without BBQ identical to HEAD `d7d8945`: Coffee Bike PNG 3 cases x 3 (software GL) `92627c2c...`,
+  `4748ab2e...`, `58c6c0e4...` on both builds; THE KOP MAIN PNG 3 cases x 3 (real GPU) `17df3237...`, `de97d26a...`,
+  `afdcddc5...` on HEAD, and on the new build 8 of 9 the same (one run of the current-view case came out 5 bytes
+  smaller, not reproduced in 12 more runs per build, all identical: GPU noise); Turntable 4 s (Coffee Bike) frames
+  0 / 60 / 119 pixel-identical. After step 3 (production build): Coffee Bike 3 cases x 3 and THE KOP MAIN 3 cases x 3
+  are byte-identical to HEAD (`92627c2c...`, `4748ab2e...`, `58c6c0e4...` / `17df3237...`, `de97d26a...`, `afdcddc5...`);
+  all 19 test scripts exit 0; ESLint clean.
+
 ## Products and models
 
-### The three built-in products (`app/src/products/registry.js`)
+### The built-in products (`app/src/products/registry.js`; a fourth, `bbq-bike`, was added in Slice B1: see "Slice B1")
 
 | id | Label | Model file | `frontAz` | Why (registry comments) |
 |---|---|---|---|---|

@@ -73,6 +73,26 @@ export const PRODUCTS = [
     frontAz: 90,
     presetLabels: COFFEE_BIKE_PRESET_LABELS,
   },
+  {
+    // Slice B1: the BBQ Bike, assembled by the owner's team from separate
+    // pieces (see HANDOFF "Slice B1"): the Royal Enfield and the sidecar wheel
+    // taken unmoved from THE KOP MAIN, the BBQ grill unit v05 (no tool box) and
+    // the sidecar chassis v01. Metres, Y up, tyres on y = 0, 409 meshes,
+    // 339,255 triangles, 19.7 MB. The vehicle runs along z: the headlight and
+    // the grill's "BBQ RIDE" front door face +Z, the sidecar and the grill's
+    // branding side face +X, the bike sits at -X.
+    // Source and terms of use of the parts are the owner's to confirm; not
+    // checked here.
+    id: "bbq-bike",
+    name: "BBQ Bike",
+    label: "BBQ Bike",
+    modelPath: "/models/bbq-bike.glb",
+    // Azimuth 0 = the camera on the +Z side, so "Front" shows the headlight
+    // and the BBQ RIDE door.
+    frontAz: 0,
+    // Real render of the model (made with the studio itself, see HANDOFF B1)
+    thumbUrl: "/models/bbq-bike-thumb.jpg",
+  },
 ];
 
 export function getProduct(id) {

@@ -1,7 +1,6 @@
 import { ENVIRONMENTS } from "../environments/registry";
 import { PRODUCTS } from "../products/registry";
 import { CAMERA_PRESETS } from "../camera/presets";
-import { BBQ_CARD_THUMB } from "./bbqPack";
 
 /* ==========================================================================
    Creator UI content (Agent #2 · UI ONLY)
@@ -37,18 +36,17 @@ const PRODUCT_CATEGORY = {
   "coffee-bike": "Retail mobility · hero",
   "cessna-172": "Aviation · heritage",
   "the-kop-main": "Retail mobility · hero",
+  "bbq-bike": "Food mobility · BBQ",
 };
-const PRODUCT_ICON = { "coffee-bike": "bike", "cessna-172": "plane", "the-kop-main": "bike" };
+const PRODUCT_ICON = { "coffee-bike": "bike", "cessna-172": "plane", "the-kop-main": "bike", "bbq-bike": "flame" };
 
-// Announced but not shipped. Deliberately NOT a registry entry: no id in
-// PRODUCTS, no modelPath, nothing the engine could load — so the card can
-// only ever render as the inert placeholder the sidebar already uses.
-// Mission 10B adds artwork for it (a still rendered from the pack's own GLB),
-// which changes how the card looks and nothing about what it is: still no id in
-// PRODUCTS, no modelPath, still inert in the grid.
-export const PRODUCT_PLACEHOLDERS = [
-  { id: "bbq-bike", name: "BBQ Bike", icon: "flame", thumb: BBQ_CARD_THUMB },
-];
+// Announced but not shipped products: deliberately NOT registry entries (no id
+// in PRODUCTS, no modelPath, nothing the engine could load), so a card can only
+// ever render as the inert "Coming Soon" placeholder. Slice B1: the BBQ Bike
+// shipped (it is a real registry entry now, with a real model and a real
+// thumbnail), so the list is empty; the mechanism stays for the next announced
+// product.
+export const PRODUCT_PLACEHOLDERS = [];
 
 function productCards() {
   return [

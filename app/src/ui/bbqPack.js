@@ -9,8 +9,9 @@
 
    What this deliberately is NOT:
      · not a registry — `app/src/products/registry.js` decides what the studio
-       can display, and the BBQ Bike is intentionally absent from it (Mission
-       11A lands that);
+       can display. (Slice B1 added the real BBQ Bike there, with its own model
+       and thumbnail; these stills stay as brand and reference art and nothing
+       here feeds the stage.)
      · not a second library — the Asset Library reads the engine registries
        (see content.js); this module only names picture files;
      · not interactive data — no ids, no handlers, no store. The `id` fields
