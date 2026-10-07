@@ -2619,6 +2619,51 @@ Built in a scratchpad with Blender 3.6 (background) + a small Python glTF merge;
   are byte-identical to HEAD (`92627c2c...`, `4748ab2e...`, `58c6c0e4...` / `17df3237...`, `de97d26a...`, `afdcddc5...`);
   all 19 test scripts exit 0; ESLint clean.
 
+## Slice P2 - the Props shelf in Creator (uncommitted at the time of writing)
+
+Four real-size BBQ food props (Burger, Roll, Wings, Drumsticks) as cards in a "Props" section of the Creator sheet. A prop is
+an ORDINARY Garage added object (G7a): same store, same `addObject`, same selection / gizmo / undo / layouts / Reel keys and
+cycles. No second object system.
+
+- **Reused:** `garageStore.addItem/removeItem/setItemTransform/setItemHidden/loadPartsOverrides`, `garageMode.apiRef`,
+  `StudioCanvas.addObject` (extended, see below), `sceneObjects.js` (`checkAdd*`, `boxesOverlap`, `OBJECT_LIMITS`),
+  `layoutLibrary.resolveLoad`, `keyedScene`/`reelCycles` (cycles on object item ids), the Creator `.sos-asset` card styling.
+- **New files:** `products/props.js` (the 4 props, `MAX_PROPS 12`, `isPropId`; props are NOT in `PRODUCTS`), `ui/PropsShelf.jsx`,
+  `garage/propsSession.js` (pure session save/parse), `session/propsRestore.js` (waits for the stage, re-adds), `scripts/test-props.mjs`,
+  `public/models/props/{burger,roll,wings,drumsticks}.glb` + `-thumb.jpg` (480x216, a crop of the studio's own render).
+- **Changed:** `products/registry.js` (`getAsset(id)` = product or prop; the BBQ Bike gets `propSurface`), `sceneObjects.js`
+  (`MAX_PROPS`, `PROP_GAP`, `countObjects`, `checkPropCount`, `checkAddProp`, `placeProp`), `StudioCanvas.jsx` (`addObject(assetId, opts)`,
+  `propSurfaceBox`, `clearPropSurface`, api `propOnSurface`; asset lookups via `getAsset`; layout-load caps count objects and props
+  separately), `garageStore.addItem` (optional `itemId` and `hidden`), `layoutLibrary.resolveLoad` (new reason `max-props`),
+  `studioSession.js` (`props` saved at the top level of the session; Reset removes props), `InspectorRail.jsx` (asset names via `getAsset`),
+  `SheetContents.jsx`, `ui-shell.css`. No product GLB changed.
+- **Rules:** 12 props max, separate from the 5-object max (1 + 5 + 12 = 18 <= 20 layout items); at 12 the cards grey out with "Max 12 props".
+  Real size, never rescaled. Each prop ~11k triangles.
+- **Where a prop drops (`placeProp`, deterministic):** BBQ Bike: on the mesh `Grill_Grate` (BBQ_Unit / BBQ_Grill_Unit / Grill_Housing /
+  Grill_Grate), top y = 1.2090 m, a 0.330 x 1.245 m rectangle, one row along the grill that starts at the CENTRE of the long axis and grows outward on alternating sides (first prop at z 0.1472, the grate centre), 2 cm gaps, then anywhere free on the grate (nearest the centre first),
+  then (grill full or prop too big) the floor in front. Any other product: on the floor (`fit.floorY`) in FRONT of the product (along
+  `frontAz`), centred, row by row, 2 cm gaps, never overlapping the product or another prop.
+- **The grill lid (review fix):** the closed lid sits 4 cm above the grate, so while ANY visible prop stands on the grate the lid OPENS
+  85 degrees about its real hinge: the mesh `Lid_Hinge_Pins` (a pin along z at x 0.628, y 1.255, on the lid's bike-side edge); all 7 lid
+  meshes (`Lid_Main`, `Lid_Rear`) turn together. The open lid is DERIVED, not stored: `StudioCanvas.applyOverrides` composes a per-mesh delta
+  (`A^-1 R A`, `lidDeltas`; its cache is cleared by an effect whenever `modelScene` or `partIndex` changes) on top of each lid mesh's pose whenever `sceneObjects.lidShouldOpen(items, surface)` is true, so removing the
+  last grill prop, Undo, Redo, Reset and a restored session close it exactly (the mesh is re-assigned from its base pose) and nothing is
+  added to the undo history. Why 85 and not 100: a true triangle test (test-props.mjs) shows the lid meets the bike's left mirror
+  (`Mirror_L`) from 88 degrees; 85 is clear of everything in the BBQ Bike. Registry: `propSurface.lid`.
+- **Session:** `props: [{ itemId, assetId, transform, hidden, }]` in the saved session; item ids are kept so Reel keys and
+  cycles still point at them. A session without `props` (old) restores as before and leaves the scene's props alone.
+- **Textures:** all 3 per prop downscaled 2048 -> 1024, JPEG q85 (geometry untouched). File sizes: burger 884,448, roll 787,412,
+  wings 722,904, drumsticks 1,064,444 bytes; the roll's BASE COLOUR is 2048 (its small "CHILL WHILE WE GRILL" line is soft at 1k):
+  roll.glb 1,472,652 bytes. The burger stamp is readable at 1k.
+- **Verification:** `node scripts/test-props.mjs` 118 PASS (includes a true triangle test: no prop triangle crosses any BBQ Bike
+  triangle). The 19 older scripts equal their baselines. Production build PNG hashes unchanged: Coffee Bike `92627c2c...`,
+  `4748ab2e...`, `58c6c0e4...` (software GL) and THE KOP MAIN `17df3237...`, `de97d26a...`, `afdcddc5...` (real GPU), 3 reps each.
+  Browser harness (not in the repo): add, size, drop, select, typed move, delete, undo, Spin cycle, save / reload / restore, old session,
+  Reset, 12-prop cap. FPS (Edge, real GPU, Intel HD 5500, 1366x768): BBQ Bike + 4 props 49.1 (close view); + 12 props 38.9 (close) /
+  49.7 (whole vehicle).
+- **Known:** after a typed Garage field edit the first Undo press appears to do nothing (same with an added Cessna: pre-existing,
+  not P2). The Coffee Bike models are about 0.6 m tall, so real-size props look large beside them.
+
 ## Products and models
 
 ### The built-in products (`app/src/products/registry.js`; a fourth, `bbq-bike`, was added in Slice B1: see "Slice B1")

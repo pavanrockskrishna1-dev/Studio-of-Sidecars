@@ -22,6 +22,8 @@ const COFFEE_BIKE_PRESET_LABELS = Object.freeze({
   "low-hero": "Low branding side",
 });
 
+import { PROPS } from "./props.js";
+
 export const PRODUCTS = [
   {
     id: "coffee-bike",
@@ -92,6 +94,15 @@ export const PRODUCTS = [
     frontAz: 0,
     // Real render of the model (made with the studio itself, see HANDOFF B1)
     thumbUrl: "/models/bbq-bike-thumb.jpg",
+    // Slice P2: where props are dropped. `node` is the cooking grate (a mesh
+    // inside BBQ_Unit/BBQ_Grill_Unit/Grill_Housing; its top is the surface).
+    // `lid`: the closed lid sits 4 cm above the grate, so while any prop stands
+    // on the grate the lid OPENS (derived, not stored): the lid groups `nodes`
+    // turn `angleDeg` about the real hinge line (the centre of the mesh
+    // `hinge`, Lid_Hinge_Pins, along z). 85 deg: at 88 deg and more the lid
+    // meets the bike's left mirror (Mirror_L); checked on triangles in
+    // scripts/test-props.mjs.
+    propSurface: { node: "Grill_Grate", lid: { hinge: "Lid_Hinge_Pins", nodes: ["Lid_Main", "Lid_Rear"], angleDeg: 85 } },
   },
 ];
 
@@ -101,3 +112,9 @@ export function getProduct(id) {
 
 // Slice C2c: the label a camera preset ({ id, name }) shows for a product.
 export const presetLabel = (product, preset) => product?.presetLabels?.[preset.id] ?? preset.name;
+
+// Slice P2: every asset an added object can come from: a product (built-in or
+// imported) or a prop. Props live in products/props.js, not in PRODUCTS.
+export function getAsset(id) {
+  return PRODUCTS.find((p) => p.id === id) ?? PROPS.find((p) => p.id === id) ?? null;
+}

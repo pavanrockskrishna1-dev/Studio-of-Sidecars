@@ -10,10 +10,15 @@
    image. Materials are captured only while a model's materials are attached
    (the Materials panel mounts them); otherwise that part is skipped.
    Slice C2b: the Reel shot list (animationStore) is saved as `reel`, restored
-   when the saved session has one, and Reset puts back the default single shot. */
+   when the saved session has one, and Reset puts back the default single shot.
+   Slice P2: the props in the scene are saved as `props` (garage/propsSession.js)
+   and put back by session/propsRestore.js; a session without `props` (saved
+   before the props shelf) leaves the scene's props untouched, and Reset
+   removes them. */
 
 import * as materials from "../materials/store";
 import * as animationStore from "../animation/animationStore";
+import { cancelRestore, currentSessionProps, removeAllProps, restoreSessionProps } from "./propsRestore";
 
 const KEY = "sos-studio-session-v1";
 const VERSION = 1;
@@ -47,6 +52,7 @@ export function saveSession(projectName) {
     engine: engine.snapshot(),
     materials: materials.snapshotOverrides(),
     reel: animationStore.sequenceForSession(),
+    props: currentSessionProps(),
   };
   try {
     localStorage.setItem(KEY, JSON.stringify(snap));
@@ -83,6 +89,7 @@ export function restoreSession() {
   if (!snap || !engine) return null;
   engine.apply(snap.engine);
   if (snap.reel) animationStore.restoreSequence(snap.reel);
+  if (Array.isArray(snap.props)) restoreSessionProps(snap.engine.productId, snap.props);
   if (snap.materials) {
     whenMaterialsReady(snap.materials.modelKey, () => materials.restoreOverrides(snap.materials));
   }
@@ -92,6 +99,8 @@ export function restoreSession() {
 export function resetSession() {
   if (!engine) return false;
   engine.reset();
+  cancelRestore();
+  removeAllProps();
   materials.resetModel();
   animationStore.resetSequence();
   return true;

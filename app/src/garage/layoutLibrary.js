@@ -32,7 +32,7 @@
    A formatVersion 2 envelope without an `objects` array is "bad-version". */
 
 import { validateLayout, serializeLayout, LAYOUT_LIMITS } from "./layout.js";
-import { OBJECT_LIMITS, checkBudget } from "./sceneObjects.js";
+import { OBJECT_LIMITS, checkBudget, countObjects } from "./sceneObjects.js";
 
 export const ENVELOPE_KIND = "sos-garage-layout";
 export const ENVELOPE_FORMAT_VERSION = 2;
@@ -312,8 +312,15 @@ export function resolveLoad(envelopeRaw, expectedProductId, existsFn, assetExist
   const env = parsed.envelope;
   if (!isStr(expectedProductId) || expectedProductId === "") return { ok: false, reason: "no-product" };
   if (env.productId !== expectedProductId) return { ok: false, reason: "wrong-product", productId: env.productId };
-  if (env.formatVersion === 2 && env.objects.length > OBJECT_LIMITS.MAX_ADDED) {
-    return { ok: false, reason: "max-objects", count: env.objects.length, message: maxObjectsMessage(env.objects.length) };
+  // Slice P2: props have their own cap and do not count as added objects.
+  if (env.formatVersion === 2) {
+    const n = countObjects(env.objects);
+    if (n.objects > OBJECT_LIMITS.MAX_ADDED) {
+      return { ok: false, reason: "max-objects", count: n.objects, message: maxObjectsMessage(n.objects) };
+    }
+    if (n.props > OBJECT_LIMITS.MAX_PROPS) {
+      return { ok: false, reason: "max-props", count: n.props, message: `Refused: this layout has ${n.props} props; the maximum is ${OBJECT_LIMITS.MAX_PROPS}. Nothing was changed.` };
+    }
   }
   const item = env.layout.items[0];
   const check = typeof existsFn === "function" ? existsFn : () => true;

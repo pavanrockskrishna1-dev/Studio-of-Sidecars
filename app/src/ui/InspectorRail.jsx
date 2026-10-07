@@ -25,7 +25,7 @@ import * as layoutLibrary from "../garage/layoutLibrary";
 import * as sceneObjects from "../garage/sceneObjects";
 import * as gizmo from "../garage/gizmo";
 import * as measure from "../garage/measure";
-import { PRODUCTS, getProduct, presetLabel } from "../products/registry";
+import { PRODUCTS, getAsset, getProduct, presetLabel } from "../products/registry";
 import * as currentProduct from "../products/currentProduct";
 import { CAMERA_PRESETS } from "../camera/presets";
 import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
@@ -1096,7 +1096,7 @@ function GarageSection({ pickMode, garageState, busy }) {
   const isObjectEntry = (e) => e.itemId !== primaryItemId;
   const objectName = (itemId) => {
     const it = layoutNow ? layoutNow.items.find((i) => i.itemId === itemId) : null;
-    const asset = it ? PRODUCTS.find((p) => p.id === it.assetId) : null;
+    const asset = it ? getAsset(it.assetId) : null;
     return asset ? asset.name : it ? it.assetId : itemId;
   };
   const singleObject = single && isObjectEntry(single) ? single : null;
@@ -1238,12 +1238,13 @@ function GarageSection({ pickMode, garageState, busy }) {
 // asset is available in this browser (built-ins, plus imported assets from
 // the Asset Library, which the runtime registry mirrors into PRODUCTS).
 function describeAsset(assetId) {
-  const p = PRODUCTS.find((x) => x.id === assetId);
+  const p = getAsset(assetId);
   return p ? { source: p.source === "imported" ? "imported" : "builtin", name: p.name } : null;
 }
 
 function assetExists(assetId) {
-  return PRODUCTS.some((p) => p.id === assetId && !p.placeholder && p.modelPath);
+  const p = getAsset(assetId);
+  return !!p && !p.placeholder && !!p.modelPath;
 }
 
 function GarageLayoutSection({ productId, busy }) {
@@ -1317,7 +1318,7 @@ function GarageLayoutSection({ productId, busy }) {
     if (!resolved.ok) {
       if (resolved.reason === "wrong-product") {
         setMessage(`Refused: this layout was saved for "${resolved.productId}", not the current product.`);
-      } else if (resolved.reason === "max-objects") {
+      } else if (resolved.reason === "max-objects" || resolved.reason === "max-props") {
         setMessage(resolved.message);
       } else {
         setMessage("This layout is not valid and was not applied.");
@@ -1861,7 +1862,7 @@ function ReelKeys({ sequence, shotIndex, busy, productId, onResult }) {
     items: added.map((i) => ({ itemId: i.itemId, assetId: i.assetId })),
     hasPart: (id) => !!garageMode.describePart(id),
   };
-  const productName = (id) => PRODUCTS.find((p) => p.id === id)?.name ?? id;
+  const productName = (id) => getAsset(id)?.name ?? id;
   const nameOf = (k) =>
     reelKeys.isPartKey(k)
       ? groupLabel(k.parts)
@@ -2203,7 +2204,7 @@ function ReelCycles({ sequence, shotIndex, busy, productId, onResult }) {
     hasPart: (id) => !!garageMode.describePart(id),
     hasGroup: (path) => !!garageMode.describeGroup(path),
   };
-  const productName = (id) => PRODUCTS.find((p) => p.id === id)?.name ?? id;
+  const productName = (id) => getAsset(id)?.name ?? id;
   const nameOf = (c) =>
     reelCycles.isPartsCycle(c)
       ? groupLabel(c.parts)

@@ -15,7 +15,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
-import { PRODUCTS } from "../products/registry";
+import { PRODUCTS, getAsset } from "../products/registry";
+import { isPropId } from "../products/props";
 import { ENVIRONMENTS } from "../environments/registry";
 import SelectionInspector from "./SelectionInspector";
 import { CAMERA_PRESETS, computeCameraShot, fitDistance, getBaseline, getCameraPreset } from "../camera/presets";
@@ -2190,8 +2191,12 @@ function StudioStage({
   // frame (where the model and the objects both hang): the main product's
   // visible union and every added object's box, hidden ones included (they
   // may be shown again).
-  const occupiedBoxes = useCallback(() => {
+  // Slice P2: occupiedBoxes(true) returns { solid, props }: the same boxes with
+  // the props' own boxes kept apart (a prop is placed against the product and
+  // the other objects as `solid`, and against the other props as `props`).
+  const occupiedBoxes = useCallback((split = false) => {
     const boxes = [];
+    const propBoxes = [];
     const main = unionBounds(adaptObject3D(modelScene));
     if (main) boxes.push({ min: main.min, max: main.max });
     else {
@@ -2202,31 +2207,98 @@ function StudioStage({
       if (!entry.attached) continue;
       entry.anchor.updateMatrix();
       const u = unionBounds(adaptObject3D(entry.inner), { rootMatrix: entry.anchor.matrix.toArray() });
-      if (u) boxes.push({ min: u.min, max: u.max });
+      if (u) (split && isPropId(entry.assetId) ? propBoxes : boxes).push({ min: u.min, max: u.max });
     }
-    return boxes;
+    return split ? { solid: boxes, props: propBoxes } : boxes;
   }, [modelScene, fit]);
 
-  // Decisions 1-4 — loads a built-in product or an imported asset as a NEW
-  // object (its own parse), checks the count and the triangle budget, places
-  // it beside the main product on the floor and adds it with ONE
-  // garageStore.addItem (one undo step). Anything refused or failed releases
-  // the loaded object and changes nothing. Resolves { ok, reason?, message }.
+  // Slice P2 — the cooking surface of a product that has one (registry
+  // `propSurface`): the box of its `node` in the frame the model and the added
+  // objects share, or null. A hidden or missing node gives null.
+  const propSurfaceBox = useCallback(() => {
+    const spec = product.propSurface;
+    if (!spec) return null;
+    const node = modelScene.getObjectByName(spec.node);
+    if (!node || !node.parent) return null;
+    modelScene.updateWorldMatrix(true, true);
+    const inv = new THREE.Matrix4();
+    if (modelScene.parent) inv.copy(modelScene.parent.matrixWorld).invert();
+    const rel = inv.multiply(node.parent.matrixWorld);
+    const u = unionBounds(adaptObject3D(node), { rootMatrix: rel.toArray() });
+    return u ? { min: u.min, max: u.max } : null;
+  }, [modelScene, product]);
+
+  // Slice P2 (review) — the grill lid opens while any prop stands on the
+  // grate. The open lid is DERIVED, never stored: applyOverrides (below)
+  // composes the lid delta on top of each lid mesh's own pose whenever a
+  // visible prop stands on the surface, so removing the last prop, Undo, Redo,
+  // Reset and a restored session all close it again exactly (the delta is
+  // simply not applied) and nothing is added to the undo history.
+  // `propSurface.lid` = { hinge, nodes, angleDeg }: `hinge` is the mesh whose
+  // box centre (x, y) is the hinge line, running along z in the model frame;
+  // `nodes` are the lid groups; the lid turns by angleDeg about it. One delta
+  // per lid mesh, in the mesh's parent frame: A^-1 * R * A.
+  const lidRef = useRef(null);
+  // The cache holds mesh references: drop it whenever the parsed model or its
+  // part index is replaced (a product switch away and back re-parses the file).
+  // Declared before the layout effect that reads it, so on a model change the
+  // cache is already empty when applyOverrides runs.
+  useEffect(() => {
+    lidRef.current = null;
+  }, [modelScene, partIndex]);
+  const lidDeltas = useCallback(() => {
+    const spec = product.propSurface && product.propSurface.lid;
+    if (!spec || !partIndex.ok) return null;
+    if (lidRef.current) return lidRef.current;
+    const pin = modelScene.getObjectByName(spec.hinge);
+    if (!pin || !pin.isMesh || !pin.geometry) return null;
+    modelScene.updateWorldMatrix(true, true);
+    const inv = modelScene.matrixWorld.clone().invert();
+    if (!pin.geometry.boundingBox) pin.geometry.computeBoundingBox();
+    const c = pin.geometry.boundingBox.clone().applyMatrix4(inv.clone().multiply(pin.matrixWorld)).getCenter(new THREE.Vector3());
+    const rot = new THREE.Matrix4()
+      .makeTranslation(c.x, c.y, 0)
+      .multiply(new THREE.Matrix4().makeRotationZ(THREE.MathUtils.degToRad(spec.angleDeg)))
+      .multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, 0));
+    const names = new Set(spec.nodes);
+    const map = new Map();
+    for (const part of partIndex.parts) {
+      if (!part.id.split("/").some((seg) => names.has(seg.replace(/~\d+$/, "")))) continue;
+      const a = inv.clone().multiply(part.ref.parent.matrixWorld);
+      map.set(part.ref, a.clone().invert().multiply(rot).multiply(a));
+    }
+    lidRef.current = map;
+    return map;
+  }, [modelScene, product, partIndex]);
+
+  // Decisions 1-4 — loads a built-in product, an imported asset or a PROP as a
+  // NEW object (its own parse), checks the count and the triangle budget,
+  // places it and adds it with ONE garageStore.addItem (one undo step).
+  // Products and imports stand beside the main product on the floor (max 5);
+  // a prop (Slice P2, max 12 of its own) is dropped on the product's cooking
+  // surface when it has one, else on the floor in front of it, never
+  // overlapping the product or another prop. Anything refused or failed
+  // releases the loaded object and changes nothing.
+  // opts (session restore): { transform, itemId, hidden } adds the object at
+  // exactly that pose and id, with no placement.
+  // Resolves { ok, reason?, message }.
   const addObject = useCallback(
-    async (assetId) => {
+    async (assetId, opts = {}) => {
       const refuse = (reason, message) => ({ ok: false, reason, message });
       const addedNow = () => {
         const l = garageStore.getLayout();
-        return l ? l.items.filter((i) => !i.primary).length : 0;
+        return sceneObjects.countObjects(l ? l.items.filter((i) => !i.primary) : []);
       };
+      const isProp = isPropId(assetId);
+      const countOk = () => (isProp ? sceneObjects.checkPropCount(addedNow().props) : sceneObjects.checkAddCount(addedNow().objects));
       if (!garageStore.getLayout()) return refuse("no-layout", "No product is loaded yet.");
       // Garage G7b — a new add cancels a layout load still in progress.
       if (loadRunRef.current) loadRunRef.current.aborted = true;
-      const count = sceneObjects.checkAddCount(addedNow());
+      const count = countOk();
       if (!count.ok) return count;
       if (addingObjectRef.current) return refuse("busy", "Another object is still loading.");
-      const asset = PRODUCTS.find((p) => p.id === assetId && !p.placeholder);
-      if (!asset || !asset.modelPath) return refuse("unknown-asset", "That object is not in the library.");
+      const asset = getAsset(assetId);
+      if (!asset || asset.placeholder || !asset.modelPath) return refuse("unknown-asset", "That object is not in the library.");
       // A file whose weight is already known is refused before loading it again.
       const known = knownTrianglesRef.current.get(asset.modelPath);
       if (known !== undefined) {
@@ -2255,31 +2327,59 @@ function StudioStage({
       }
       knownTrianglesRef.current.set(asset.modelPath, entry.triangles);
       // Both rules again, against the scene as it is now.
-      const check = sceneObjects.checkAdd({
-        addedCount: addedNow(),
-        currentTriangles: sceneTriangles().total,
-        newTriangles: entry.triangles,
-      });
+      const again = countOk();
+      if (!again.ok) {
+        discard();
+        return again;
+      }
+      const budget = { currentTriangles: sceneTriangles().total, newTriangles: entry.triangles };
+      const check = isProp
+        ? sceneObjects.checkAddProp({ propCount: addedNow().props, ...budget })
+        : sceneObjects.checkAdd({ addedCount: addedNow().objects, ...budget });
       if (!check.ok) {
         discard();
         return check;
       }
-      const placed = sceneObjects.placeObject({
-        occupied: occupiedBoxes(),
-        objectSize: entry.size,
-        floorY: fit.floorY,
-        frontAz: product.frontAz ?? 0,
-      });
-      if (!placed.ok) {
-        discard();
-        return refuse("placement", "Could not find a free place for this object; nothing was added.");
+      let transform;
+      if (opts.transform) {
+        transform = opts.transform;
+      } else {
+        let placed;
+        if (isProp) {
+          const all = occupiedBoxes(true);
+          placed = sceneObjects.placeProp({
+            solid: all.solid,
+            props: all.props,
+            objectSize: entry.size,
+            floorY: fit.floorY,
+            frontAz: product.frontAz ?? 0,
+            surface: propSurfaceBox(),
+          });
+        } else {
+          placed = sceneObjects.placeObject({
+            occupied: occupiedBoxes(),
+            objectSize: entry.size,
+            floorY: fit.floorY,
+            frontAz: product.frontAz ?? 0,
+          });
+        }
+        if (!placed.ok) {
+          discard();
+          return refuse("placement", "Could not find a free place for this object; nothing was added.");
+        }
+        const [x, y, z] = placed.position;
+        transform = { x, y, z, rx: 0, ry: 0, rz: 0, s: 1 };
       }
       const pending = { entry, adopted: false };
       pendingObjectRef.current = pending;
       let r;
       try {
-        const [x, y, z] = placed.position;
-        r = garageStore.addItem({ assetId, transform: { x, y, z, rx: 0, ry: 0, rz: 0, s: 1 } });
+        r = garageStore.addItem({
+          assetId,
+          transform,
+          ...(opts.itemId ? { itemId: opts.itemId } : {}),
+          ...(opts.hidden === true ? { hidden: true } : {}),
+        });
       } finally {
         pendingObjectRef.current = null;
       }
@@ -2295,7 +2395,7 @@ function StudioStage({
         message: check.warn ? `Added "${asset.name}". ${check.message}` : `Added "${asset.name}".`,
       };
     },
-    [fit, product.frontAz, sceneTriangles, occupiedBoxes]
+    [fit, product.frontAz, sceneTriangles, occupiedBoxes, propSurfaceBox]
   );
 
   // Garage G7b — the main product's visible triangles as they WILL be once
@@ -2347,7 +2447,9 @@ function StudioStage({
       const primary = layoutNow ? layoutNow.items.find((i) => i.primary) : null;
       if (!primary) return refuse("no-layout", "No product is loaded yet.");
       if (!isObj(parts) || !Array.isArray(specs)) return refuse("bad-input", "This layout is not valid and was not applied.");
-      if (specs.length > sceneObjects.OBJECT_LIMITS.MAX_ADDED) return refuse("max-objects", layoutLibrary.maxObjectsMessage(specs.length));
+      const counted = sceneObjects.countObjects(specs);
+      if (counted.objects > sceneObjects.OBJECT_LIMITS.MAX_ADDED) return refuse("max-objects", layoutLibrary.maxObjectsMessage(counted.objects));
+      if (counted.props > sceneObjects.OBJECT_LIMITS.MAX_PROPS) return refuse("max-props", `Refused: this layout has ${counted.props} props; the maximum is ${sceneObjects.OBJECT_LIMITS.MAX_PROPS}. Nothing was changed.`);
       if (addingObjectRef.current) return refuse("busy", "Another object is still loading; the layout was not loaded.");
       if (loadRunRef.current) loadRunRef.current.aborted = true; // the newer load wins
       const run = { aborted: false };
@@ -2370,8 +2472,8 @@ function StudioStage({
         let running = mainTrianglesFor(parts);
         for (const spec of specs) {
           const label = typeof spec.name === "string" && spec.name ? spec.name : spec.assetId;
-          const asset = PRODUCTS.find((p) => p.id === spec.assetId && !p.placeholder);
-          if (!asset || !asset.modelPath) {
+          const asset = getAsset(spec.assetId);
+          if (!asset || asset.placeholder || !asset.modelPath) {
             skipped.push({ assetId: spec.assetId, name: label, reason: "missing" });
             continue;
           }
@@ -2468,6 +2570,10 @@ function StudioStage({
       const layout = garageStore.getLayout();
       const item = layout ? layout.items.find((i) => i.itemId === "i0") : null;
       const overrides = item ? item.parts : {};
+      // Slice P2 (review): the lid is open while a visible prop stands on the grate
+      const deltas = lidDeltas();
+      const sb = deltas ? propSurfaceBox() : null;
+      const lidOpen = sceneObjects.lidShouldOpen(layout ? layout.items : [], sb);
       // eslint-disable-next-line react-hooks/immutability
       for (const part of parts) {
         const mesh = part.ref;
@@ -2478,6 +2584,13 @@ function StudioStage({
           mesh.position.fromArray(pose.pos);
           mesh.quaternion.fromArray(pose.quat);
           mesh.scale.fromArray(pose.scale);
+          const d = lidOpen ? deltas.get(mesh) : null;
+          if (d) {
+            new THREE.Matrix4()
+              .compose(mesh.position, mesh.quaternion, mesh.scale)
+              .premultiply(d)
+              .decompose(mesh.position, mesh.quaternion, mesh.scale);
+          }
         }
         mesh.visible = ov && typeof ov.visible === "boolean" ? ov.visible : base.visible;
         // Garage G6 — same commit, same loop: a part with no material override
@@ -2489,7 +2602,7 @@ function StudioStage({
     };
     applyOverrides();
     return garageStore.subscribe(applyOverrides);
-  }, [partIndex, refit, syncObjects]);
+  }, [partIndex, refit, syncObjects, lidDeltas, propSurfaceBox]);
 
   // Part overlay — imperative, rebuilt from a Garage store subscription (never
   // React state), parented to the same group as the whole-model outline. Hidden
@@ -2753,6 +2866,15 @@ function StudioStage({
           const t = sceneTriangles();
           return { ...t, level: sceneObjects.budgetLevel(t.total), message: sceneObjects.budgetMessage(t.total) };
         },
+        // Slice P2 — does this added object stand on the product's cooking
+        // surface (its base on the surface top, its centre inside the surface)?
+        propOnSurface: (itemId) => {
+          const layout = garageStore.getLayout();
+          const item = layout ? layout.items.find((i) => i.itemId === itemId && !i.primary) : null;
+          const sb = propSurfaceBox();
+          if (!item || !sb) return false;
+          return sceneObjects.standsOnSurface(item.transform, sb);
+        },
         // [{ itemId, assetId, name, hidden, triangles, transform }] in layout order.
         listObjects: () => {
           const layout = garageStore.getLayout();
@@ -2760,7 +2882,7 @@ function StudioStage({
             .filter((i) => !i.primary)
             .map((i) => {
               const entry = objectPoolRef.current.get(`${i.itemId}|${i.assetId}`);
-              const asset = PRODUCTS.find((p) => p.id === i.assetId);
+              const asset = getAsset(i.assetId);
               return {
                 itemId: i.itemId,
                 assetId: i.assetId,
@@ -2804,7 +2926,7 @@ function StudioStage({
           return r.ok ? { ok: true } : { ok: false, reason: r.reason, message: "The object could not be changed." };
         },
       }),
-    [partIndex, modelScene, addObject, loadObjects, sceneTriangles]
+    [partIndex, modelScene, addObject, loadObjects, sceneTriangles, propSurfaceBox]
   );
 
   // Garage G11 — the TransformControls gizmo. It exists only while exactly one

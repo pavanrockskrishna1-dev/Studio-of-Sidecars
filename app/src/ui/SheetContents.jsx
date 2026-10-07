@@ -5,6 +5,7 @@ import ImportPanel from "./ImportPanel";
 import AssetGrid from "./AssetLibrary";
 import MaterialsManager from "./MaterialsManager";
 import AssetPreview from "./AssetPreview";
+import PropsShelf from "./PropsShelf";
 import PosterPanel from "./PosterPanel";
 import {
   AnimatePanel,
@@ -79,6 +80,13 @@ export function CreatorBody({ selection, onSelect }) {
             onSelect={(id) => onSelect?.(group.kind, id)}
           />
           {group.kind === "product" ? <BbqReference /> : null}
+          {group.kind === "product" ? (
+            <>
+              <div className="sos2-sheet-divider" aria-hidden="true" />
+              <span className="sos2-sheet-subhead">Props</span>
+              <PropsShelf />
+            </>
+          ) : null}
         </section>
       ))}
     </>

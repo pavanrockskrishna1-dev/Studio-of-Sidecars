@@ -568,13 +568,20 @@ export function createGarageStore() {
     }
     if (layout.items.length >= LAYOUT_LIMITS.MAX_ITEMS) return fail("limit");
     const used = new Set(layout.items.map((i) => i.itemId));
-    let n = 0;
-    while (used.has(`i${n}`)) n += 1;
-    const itemId = `i${n}`;
+    // Slice P2: an optional spec.itemId ("i" + digits, not in use) is honoured,
+    // so a restored session keeps the ids its Reel keys and cycles point at.
+    let itemId;
+    if (typeof spec.itemId === "string" && /^i[0-9]{1,6}$/.test(spec.itemId) && !used.has(spec.itemId)) {
+      itemId = spec.itemId;
+    } else {
+      let n = 0;
+      while (used.has(`i${n}`)) n += 1;
+      itemId = `i${n}`;
+    }
     const v = validateLayout({
       version: 1,
       name: "x",
-      items: [{ itemId, assetId: spec.assetId, primary: true, transform: given }],
+      items: [{ itemId, assetId: spec.assetId, primary: true, transform: given, hidden: spec.hidden === true }],
     });
     if (!v.ok) return fail("invalid");
     const item = deepFreeze({ ...v.layout.items[0], primary: false });

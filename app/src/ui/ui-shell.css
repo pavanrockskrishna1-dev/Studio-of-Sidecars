@@ -2936,3 +2936,27 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
   font-size: 9.5px;
   color: var(--sos2-text-2);
 }
+
+/* Slice P2: the Props shelf (Creator sheet). Cards reuse the product card
+   styling; at the cap they grey out and stay inert. */
+.sos2-props .sos-lib {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.sos2-props .sos-asset[data-disabled="true"] {
+  cursor: default;
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+.sos2-props .sos-asset[data-disabled="true"]:hover {
+  background: var(--sos-glass-3);
+  border-color: var(--sos-line);
+}
+.sos2-props-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+.sos2-props[data-full] .sos2-props-note {
+  color: var(--sos2-brass);
+}
