@@ -53,16 +53,20 @@ export default function PropsShelf() {
                 onClick={() => add(p.id)}
               >
                 <span className="sos-asset-media">
-                  <img
-                    className="sos-asset-plate-img"
-                    src={p.thumbUrl}
-                    alt=""
-                    width="120"
-                    height="54"
-                    loading="lazy"
-                    decoding="async"
-                    draggable="false"
-                  />
+                  {p.thumbUrl ? (
+                    <img
+                      className="sos-asset-plate-img"
+                      src={p.thumbUrl}
+                      alt=""
+                      width="120"
+                      height="54"
+                      loading="lazy"
+                      decoding="async"
+                      draggable="false"
+                    />
+                  ) : (
+                    <span className="sos-asset-plate-noimg" aria-hidden="true">🍖</span>
+                  )}
                 </span>
                 <span className="sos-asset-txt">
                   <span className="sos-row-name">{p.label}</span>

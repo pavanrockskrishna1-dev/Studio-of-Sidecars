@@ -28,6 +28,7 @@ import { validateAnimation } from "./path.js";
 import * as reel from "./reelSequence.js";
 import * as rkeys from "./reelKeys.js";
 import * as rcycles from "./reelCycles.js";
+import { endCardFits, brandingState } from "../poster/branding.js";
 
 export const DURATIONS = reel.SHOT_DURATIONS;
 
@@ -142,7 +143,15 @@ export function stop() {
 // shows when an edit is refused.
 function edit(result) {
   if (snapshot.mode !== "idle") return { ok: false, reason: "Stop the preview or export first." };
-  if (result.ok) replace({ sequence: result.seq, durationS: reel.totalDuration(result.seq) });
+  if (result.ok) {
+    // Slice R1: with the end card on, a longer Reel must still fit the 28 s limit
+    const total = reel.totalDuration(result.seq);
+    if (total > snapshot.durationS && brandingState.getSnapshot().endCard) {
+      const fit = endCardFits(total);
+      if (!fit.ok) return { ok: false, reason: fit.reason + " Turn the end card off or shorten a shot." };
+    }
+    replace({ sequence: result.seq, durationS: total });
+  }
   return { ok: result.ok, reason: result.reason };
 }
 

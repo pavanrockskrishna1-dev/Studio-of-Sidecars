@@ -27,7 +27,7 @@
    clamp, they only have to be finite numbers; the scale is at least 0.05. */
 
 export const LAYOUT_LIMITS = Object.freeze({
-  MAX_ITEMS: 20,
+  MAX_ITEMS: 40,
   MAX_PARTS_PER_ITEM: 2000,
   MAX_SPLITS_PER_ITEM: 200,
   MAX_NAME: 60,

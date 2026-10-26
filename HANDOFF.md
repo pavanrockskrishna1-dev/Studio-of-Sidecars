@@ -38,6 +38,8 @@
       **Read U2 with U1: it replaced U1's sheet placement.**
   4j. Slice B1 (the BBQ Bike as a fourth product: assembled model, registry entry, Creator
       card, poster default kit), right after U2.
+  4k. Slice P2 (the Props shelf), then Slice R1 (Reel branding: logo, shot titles, end card), right
+      before "Products and models".
   5. Current Studio Status table
   6. Open Issues (Next Phase)
   7. Known Limitations
@@ -2663,6 +2665,62 @@ cycles. No second object system.
   49.7 (whole vehicle).
 - **Known:** after a typed Garage field edit the first Undo press appears to do nothing (same with an added Cessna: pre-existing,
   not P2). The Coffee Bike models are about 0.6 m tall, so real-size props look large beside them.
+
+## Slice R1 - Reel branding overlays: logo, shot titles, end card (uncommitted at the time of writing)
+
+Generic for any product: nothing here names BBQ Ride. The branding comes from the ACTIVE Poster kit (its logo, colours, fonts and
+first handle); there is no second branding system.
+
+- **Reused:** the Poster kit system (`poster/poster.js`: `readKits`, `posterState.kitId`, the IndexedDB kit logo with its decoded-image cache,
+  `ensureLogoImage` which also awaits the fonts, `fitFontSize`, `truncateToWidth`, the two font constants, now exported); the Reel sheet's
+  `ReelSection` pattern; the shot list (`reelSequence`, `animationStore`); the session (`studioSession`); the MP4 export path (`exporter.js`,
+  mediabunny, 1080x1920 at 30 fps); `REEL_SAFE_AREA` (x 60-1020, y 220-1500).
+- **Handle:** the kits already had one: `handle1` (BBQ Ride = `@bbqrideindia`, THE KOP = empty). No new kit field was added. The Branding section
+  pre-fills the handle from it; typing a handle (even an empty one) overrides it for the Reel and is saved with the session; "Use the kit's handle"
+  goes back to following the kit. An empty handle hides the line.
+- **New files:** `poster/branding.js` (state, spec, layout, `drawBranding`), `animation/shotTitle.js` (title text rules), `ui/ReelBranding.jsx`
+  (Branding section body and the per-shot title editor), `ui/BrandingOverlay.jsx` (the live preview), `ui/useBranding.js`,
+  `scripts/test-branding.mjs`.
+- **Changed:** `exporter.js` (composites and appends the end card), `StudioCanvas.jsx` (preview clock, end-card hold in the preview; PNG path untouched),
+  `reelSequence.js` / `animationStore.js` (a shot may carry `title`; the 28 s guard), `studioSession.js`, `InspectorRail.jsx`, `StudioShell.jsx`,
+  `reelSections.js` (five sections), `ui-shell.css`, `poster.js` (two `export`s).
+- **One drawing function:** `drawBranding(ctx, w, h, spec, t)` paints in the 1080x1920 frame (scaled to w x h). The live overlay (a 2D canvas at the
+  largest 9:16 rectangle that fits the window, only while Play runs, z-index 1 like the Poster preview) and the exporter both call it.
+  Gotcha found by the pixel test: a canvas that is in the page inherits `letter-spacing: 0.18px`, kerning and `text-rendering` from `index.css`,
+  a detached one does not, so `drawBranding` sets them explicitly (`letterSpacing 0px`, `fontKerning normal`, `textRendering optimizeLegibility`).
+- **Rules (all in frame pixels):** logo bug top right, 160 px wide, 90% opacity, x 860-1020 from y 220, on every frame of the Reel, never drawn larger than
+  1.5x its own pixel size (a 262 px logo: bug 160, end card 393; a bigger file needs no code change); title per shot, max 2 lines of 60 characters,
+  Top / Middle / Bottom inside the safe area (16 px kept for the shadow), kit font and text colour with a shadow, fades in 0.4 s and out 0.4 s inside
+  the shot, one common size shrunk to fit (28 px minimum, then an ellipsis), a Top title keeps left of the logo bug; end card after the last shot:
+  the last rendered frame held for 2.0 s (60 extra frames), black overlay at 60% (40% brightness), the kit logo centred (max 520 px wide / 420 px
+  high, and 1.5x native), the handle in the kit accent, the user's one line in the kit text colour. The corner logo is not drawn on end-card frames
+  (the big logo replaces it).
+- **28 s:** the practical maximum of a Reel is 28 s (shots are 4, 8 or 12 s). The end card adds 2 s and counts toward it: it cannot be turned on when
+  the Reel is longer than 26 s (the button is disabled and says why), and with it on a shot edit that would pass 26 s is refused with the same
+  reason. A restored session turns the end card off if it would not fit.
+- **UI:** a fifth collapsible Reel section "Branding" (summary "Logo · 2 titles · End card" or "Off"): Logo On/Off, End card On/Off, the end-card line,
+  the handle. Each shot's row in Shots has two title lines and Top / Middle / Bottom chips.
+- **Session:** `branding` { logo, endCard, endText, handle } at the top level, the titles inside each shot of `reel`. A session without them loads as
+  before and leaves the branding alone; Reset turns it all off and clears the titles.
+- **OFF = unchanged:** with the logo, titles and end card off the exporter takes the stage canvas exactly as before (no 2D composite); `getBrandingSpec`
+  returns null when nothing would be drawn (also: logo On but the kit has no logo image, or titles with no visible text).
+- **A lone Turntable loops** in the preview; with the end card on it loops the Reel plus its 2 s card. An MP4 holds the card once at the end.
+- **Verification:** `node scripts/test-branding.mjs` 205 PASS (kit to overlay values for BBQ Ride and a coffee kit, safe-area bounds of every element at all 3
+  positions incl. long 2-line text, fades, end-card timing and the 28 s guard, logo <= 1.5x, empty handle, session save / restore / old session / Reset,
+  OFF = no spec, one shared draw function). The 20 older scripts equal their baselines. ESLint clean; production build.
+  Browser harness (headless Edge, real GPU, Intel HD 5500; not in the repo; run against a production build and a build of HEAD `080ec34` side by side):
+  - OFF = unchanged: Coffee Bike, 2 shots x 4 s, every RGBA frame handed to the encoder hashed: all 240 frames identical HEAD vs new, in 2 runs each, and the
+    MP4 is the same size (10,253,310 bytes).
+  - PNG: Coffee Bike (software GL) `92627c2c...612b` (current), `4748ab2e...fcb6` (portrait), `10d57038...4c5c` (square), 3 reps, identical on HEAD and new;
+    THE KOP MAIN (real GPU) `17df3237...5893`, `de97d26a...e393`, `d7ce8ebf...a827`: 4 interleaved HEAD / new rounds, all 24 hashes the same. Earlier in the
+    session 2 of 29 "current view" runs on the new build came out a few bytes different (HEAD 0 of 29), and a few more while two harnesses ran at once
+    and the machine was at 100% CPU; none in the clean interleaved run. Same kind of rare noise as noted in B1 / P2; the PNG code path is not touched by R1.
+  - Preview = export: at 1080x1920 the live overlay canvas composited over the unbranded export frame vs the branded export frame (same frame): 2,051,135 of
+    2,073,600 pixels identical, 22,464 differ by 1 (alpha rounding of drawing on a transparent layer first), 1 by 2, none more; nothing differs outside the overlay.
+  - Sample MP4 (BBQ Bike, 2 shots x 4 s with titles, logo, end card): 10.0 s, 300 frames, 11,604,399 bytes, `inspect-mp4.mjs` all PASS; the file played back in the
+    browser shows the titles, the logo and the end card.
+  - FPS during Play (rAF rate, 8 s Orbit, BBQ Bike, 1366x768, 4 reps each, interleaved): branding off 56.7, on (logo + 2-line title) 54.7.
+  - Session in the UI: save, reload, restore, Reset, an old session without `branding`, and the 28 s guard all behave as above.
 
 ## Products and models
 

@@ -26,6 +26,8 @@ const TOOLS = [
   { id: "garage", label: "Garage", icon: "frame" },
   { id: "poster", label: "Poster", icon: "swatch" },
   { id: "reel", label: "Reel", icon: "film" },
+  { id: "animate", label: "Animate", icon: "motion" },
+  { id: "occasions", label: "Occasions", icon: "occasions" },
 ];
 
 export default function StudioDock({ openIds = [], onSelect, idle }) {

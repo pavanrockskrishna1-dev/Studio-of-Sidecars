@@ -18,20 +18,31 @@ import { canAdd, durationAllowed } from "../animation/reelSequence";
 import * as reelKeys from "../animation/reelKeys";
 import * as reelCycles from "../animation/reelCycles";
 import ReelSection from "./ReelSection";
+import { BrandingSection, ShotTitleEdit } from "./ReelBranding";
+import { brandingSummary, useBranding } from "./useBranding";
 import { PIVOT_IDS, PIVOT_LABELS } from "../animation/partKeys";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
 import * as layoutLibrary from "../garage/layoutLibrary";
 import * as sceneObjects from "../garage/sceneObjects";
 import * as gizmo from "../garage/gizmo";
+import { placedPose } from "../garage/placedPoses";
+import * as placeMode from "../garage/placeMode";
+import CameraDirector from "./CameraDirector";
+import { hasCamKeys } from "../animation/cameraKeys";
+import { PROPS } from "../products/props";
 import * as measure from "../garage/measure";
 import { PRODUCTS, getAsset, getProduct, presetLabel } from "../products/registry";
 import * as currentProduct from "../products/currentProduct";
 import { CAMERA_PRESETS } from "../camera/presets";
 import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
-import { checkExportSupport, exportReel, saveBlob } from "../animation/exporter";
+import { checkExportSupport, exportReel, exportShotSequence, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
 import PosterPanel from "./PosterPanel";
+import * as shotStore from "../animation/shotStore";
+import * as lowerThirdStore from "../animation/lowerThirdStore.js";
+import { shotStatus } from "../animation/shotStore";
+import { SHOTS as shotDefs } from "../animation/shotDefs";
 import {
   backdropGate,
   exportsAllowed,
@@ -41,6 +52,8 @@ import {
   GATE_LABEL,
   BACKDROP_FAILED_WARNING,
 } from "../capture/exportGate";
+import * as gradeStore from "../fx/gradeStore.js";
+import { GRADES, GRADE_IDS } from "../fx/gradeShader.js";
 
 /* ==========================================================================
    Right inspector rail (Agent #2 · UI ONLY)
@@ -65,6 +78,7 @@ const SECTIONS = [
   { id: "lighting", name: "Lighting", sub: "cinematic looks", icon: "sun" },
   { id: "materials", name: "Materials", sub: "tap a part to style", icon: "cube" },
   { id: "render", name: "Render", sub: "output presets", icon: "render" },
+  { id: "grade", name: "Grade", sub: "cinematic look", icon: "film" },
   { id: "animate", name: "Animate", sub: "turntable preview", icon: "film" },
   { id: "garage", name: "Garage", sub: "pick parts by click", icon: "frame" },
   { id: "poster", name: "Poster", sub: "PNG poster overlay", icon: "swatch" },
@@ -305,6 +319,39 @@ function Hint({ children }) {
       <Icon name="info" size={12} stroke={1.8} />
       <span>{children}</span>
     </p>
+  );
+}
+
+// Cinematic Grade (post-processing presets). Live-viewport only: the engine's
+// EffectComposer pipeline rebuilds on gradeId, and export frames bypass it.
+// The grade selector reads the store with useSyncExternalStore — no local
+// useState mirrors it, so the UI can never drift from the engine.
+function GradePanel() {
+  const gradeId = useSyncExternalStore(
+    gradeStore.subscribe,
+    gradeStore.getSnapshot,
+    gradeStore.getSnapshot
+  ).gradeId;
+  return (
+    <div className="sos-group">
+      <div className="sos-group-head">
+        <span className="sos-eyebrow">Grade</span>
+      </div>
+      <div className="sos-chips">
+        {GRADE_IDS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            className="sos-chip"
+            data-on={gradeId === id || undefined}
+            onClick={() => gradeStore.setGrade(id)}
+          >
+            {GRADES[id].label}
+          </button>
+        ))}
+      </div>
+      <Hint>Live-viewport post-processing. Export frames stay raw.</Hint>
+    </div>
   );
 }
 
@@ -740,6 +787,56 @@ function GarageSizeControls({ assetId, size, busy }) {
   );
 }
 
+// Quick placement: sliders named the way people think about a set (left/right,
+// back/front, height, turn, size). A drag is one undo step (a store gesture);
+// a keyboard step outside a drag is one step each.
+const PLACEMENT_SLIDERS = [
+  { key: "x", label: "Left / right", min: -6, max: 6, step: 0.01, fmt: (v) => `${v.toFixed(2)} m` },
+  { key: "z", label: "Back / front", min: -6, max: 6, step: 0.01, fmt: (v) => `${v.toFixed(2)} m` },
+  { key: "y", label: "Height", min: -0.5, max: 4, step: 0.01, fmt: (v) => `${v.toFixed(2)} m` },
+  { key: "ry", label: "Turn", min: -180, max: 180, step: 1, fmt: (v) => `${Math.round(v)}°` },
+  { key: "s", label: "Size", min: 0.05, max: 5, step: 0.01, fmt: (v) => `×${v.toFixed(2)}` },
+];
+const wrapDeg = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
+
+function GaragePlacementSliders({ itemId, t, busy }) {
+  const dragging = useRef(false);
+  const end = () => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    garageStore.endGesture();
+  };
+  return (
+    <>
+      <span className="sos-label">Quick placement</span>
+      {PLACEMENT_SLIDERS.map((sl) => {
+        const value = sl.key === "ry" ? wrapDeg(t.ry) : t[sl.key];
+        return (
+          <label key={sl.key} className="sos-field sos-slider-field">
+            <em>{sl.label}</em>
+            <input
+              type="range"
+              data-testid={`ui-garage-object-slider-${sl.key}`}
+              min={sl.min}
+              max={sl.max}
+              step={sl.step}
+              value={Math.min(sl.max, Math.max(sl.min, value))}
+              disabled={busy}
+              onPointerDown={() => {
+                if (!dragging.current && garageStore.beginGesture().ok) dragging.current = true;
+              }}
+              onPointerUp={end}
+              onBlur={end}
+              onChange={(e) => garageStore.setItemTransform(itemId, { [sl.key]: Number(e.target.value) })}
+            />
+            <span className="sos-slider-value">{sl.fmt(value)}</span>
+          </label>
+        );
+      })}
+    </>
+  );
+}
+
 // Garage G7a — the selected ADDED object's whole-object fields (Decision 5):
 // position (m), rotation (degrees, Euler XYZ) and one uniform scale (at least
 // 0.05; the layout's item transform has no per-axis scale), plus hidden and
@@ -767,8 +864,47 @@ function GarageObjectFields({ itemId, busy }) {
   // Garage M0 — the object's model-unit size (already including its own
   // Garage scale, t.s) and the asset it's calibrated as (Owner decision 4).
   const objSize = typeof api.getObjectModelSize === "function" ? api.getObjectModelSize(itemId) : null;
+  const home = placedPose(itemId);
   return (
     <>
+      <GaragePlacementSliders itemId={itemId} t={t} busy={busy} />
+      <div className="sos-frow">
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-garage-object-duplicate"
+          disabled={busy}
+          title="Add a copy of this object beside it"
+          onClick={async () => {
+            const r = await api.addObject(obj.assetId, { transform: { ...t, x: t.x + 0.4 } });
+            setMessage(r.ok ? `Duplicated "${obj.name}".` : r.message || "Could not duplicate it.");
+          }}
+        >
+          Duplicate
+        </button>
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-garage-object-snap"
+          disabled={busy || typeof api.getFloorY !== "function"}
+          title="Stand this object on the ground (one undo step)"
+          onClick={() => commit({ y: api.getFloorY() })}
+        >
+          Snap to ground
+        </button>
+        {home ? (
+          <button
+            type="button"
+            className="sos-btn sos-btn-ghost"
+            data-testid="ui-garage-object-put-back"
+            disabled={busy}
+            title="Return this object to where it was first placed (one undo step)"
+            onClick={() => commit(home)}
+          >
+            Put back
+          </button>
+        ) : null}
+      </div>
       <GarageSizeControls assetId={obj.assetId} size={objSize} busy={busy} />
       <span className="sos-label">Object position</span>
       <div className="sos-fields">
@@ -822,6 +958,77 @@ function GarageObjectFields({ itemId, busy }) {
         Remove object
       </button>
       <Hint>Added objects move, turn, scale and hide as whole objects; their parts are not editable.</Hint>
+    </>
+  );
+}
+
+// Prop shelf: every prop by group; click one, then click the ground to place it
+// there (real-world size, standing on the floor). Esc cancels.
+const SHELF_GROUPS = [
+  { label: "Halloween", test: (p) => p.seasonal === "halloween" },
+  { label: "Trees, barrels & wood", test: (p) => /tree|barrel|firewood/.test(p.id) },
+  { label: "BBQ & smoker", test: (p) => /smoker|utensils|letters|venue|box|coal/.test(p.id) },
+  { label: "Food", test: () => true },
+];
+
+function GaragePropShelf({ busy, propCount }) {
+  const max = sceneObjects.OBJECT_LIMITS.MAX_PROPS;
+  const full = propCount >= max;
+  const place = useSyncExternalStore(placeMode.subscribe, placeMode.getSnapshot, placeMode.getSnapshot);
+  useEffect(() => {
+    if (!place.assetId) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") placeMode.stopPlacing("");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [place.assetId]);
+  const left = [...PROPS];
+  const groups = SHELF_GROUPS.map((g) => {
+    const items = left.filter(g.test);
+    for (const it of items) left.splice(left.indexOf(it), 1);
+    return { label: g.label, items };
+  }).filter((g) => g.items.length);
+  const placingName = place.assetId ? (PROPS.find((p) => p.id === place.assetId) || {}).name : "";
+  return (
+    <>
+      <span className="sos-label">
+        Prop shelf · {propCount} / {max} props
+      </span>
+      {full ? (
+        <p className="sos-hint">
+          <span>The scene has the maximum {max} props. Remove one below to add another.</span>
+        </p>
+      ) : null}
+      {groups.map((g) => (
+        <div key={g.label} className="sos-shelf-group">
+          <em className="sos-shelf-head">{g.label}</em>
+          <div className="sos-shelf">
+            {g.items.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="sos-pchip"
+                data-testid={`ui-garage-shelf-${p.id}`}
+                data-on={place.assetId === p.id || undefined}
+                aria-pressed={place.assetId === p.id}
+                disabled={busy || full}
+                title={`Place "${p.name}": click it, then click the ground`}
+                onClick={() => (place.assetId === p.id ? placeMode.stopPlacing("") : placeMode.startPlacing(p.id))}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <p className="sos-hint" data-testid="ui-garage-shelf-status">
+        <span>
+          {place.assetId
+            ? `Click the ground to place "${placingName}" · Esc to cancel`
+            : place.message || "Pick a prop, then click the ground where you want it."}
+        </span>
+      </p>
     </>
   );
 }
@@ -1104,8 +1311,10 @@ function GarageSection({ pickMode, garageState, busy }) {
   const names = selection
     .slice(0, 5)
     .map((e) => (isObjectEntry(e) ? `${objectName(e.itemId)} (object)` : garageMode.describePart(e.partId)?.name ?? e.partId));
+  const propCount = layoutNow ? sceneObjects.countObjects(layoutNow.items.filter((i) => !i.primary)).props : 0;
   return (
     <>
+      <GaragePropShelf busy={busy} propCount={propCount} />
       <span className="sos-label">Parts</span>
       <div className="sos-frow">
         <button
@@ -2393,6 +2602,18 @@ export function AnimatePanel() {
     animationStore.getSnapshot,
     animationStore.getSnapshot
   );
+  // Shot Sequencer: the live cinematic sequence state (separate from the Reel).
+  const shotSnap = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getSnapshot,
+    shotStore.getSnapshot
+  );
+  const ltEnabled = useSyncExternalStore(
+    lowerThirdStore.subscribe,
+    lowerThirdStore.getSnapshot,
+    lowerThirdStore.getSnapshot
+  ).enabled;
+  const totalSeq = shotDefs.reduce((n, s) => n + s.duration, 0);
   // Slice C2c: start views show the current product's display labels
   const productId = useSyncExternalStore(currentProduct.subscribe, currentProduct.getSnapshot, currentProduct.getSnapshot);
   const startViewLabel = (v) => startViewLabelFor(getProduct(productId), v);
@@ -2416,8 +2637,9 @@ export function AnimatePanel() {
   const gate = useSyncExternalStore(backdropGate.subscribe, backdropGate.getSnapshot, backdropGate.getSnapshot);
   const gateBlocked = !exportsAllowed(gate);
   const animBusy = animState.mode !== "idle";
-  const handleExportClick = useCallback(async () => {
-    const r = await withExportLock(garageStore, () => exportReel());
+  const [useShotSeqExport, setUseShotSeqExport] = useState(false);
+  const handleExportClick = useCallback(async (shotSeq) => {
+    const r = await withExportLock(garageStore, () => shotSeq ? exportShotSequence() : exportReel());
     if (r.ok) saveBlob(r.blob, r.filename);
   }, []);
   const [hasCustomView, setHasCustomView] = useState(false);
@@ -2434,6 +2656,7 @@ export function AnimatePanel() {
 
   const seq = animState.sequence;
   const total = animState.durationS;
+  const brandingNow = useBranding(); // Slice R1: the Branding section's summary
   const [selectedRaw, setSelected] = useState(0);
   const selected = Math.min(selectedRaw, seq.length - 1);
   const shot = seq[selected];
@@ -2458,7 +2681,14 @@ export function AnimatePanel() {
   };
   const handleExport = async () => {
     if (blockedReason) return;
-    await handleExportClick();
+    await handleExportClick(useShotSeqExport);
+  };
+  const handleShotPlay = () => {
+    if (shotSnap.status === shotStatus.PLAYING) return;
+    shotStore.play();
+  };
+  const handleShotStop = () => {
+    shotStore.stop();
   };
   const handleAdd = () => {
     if (run(animationStore.addShot())) setSelected(animationStore.getSequence().length - 1);
@@ -2565,6 +2795,8 @@ export function AnimatePanel() {
                 >
                   ✕
                 </button>
+                {/* Slice R1: this shot's title (2 lines) and where it sits */}
+                <ShotTitleEdit index={i} shot={s} busy={animBusy} onResult={run} />
               </li>
             ))}
           </ol>
@@ -2686,11 +2918,82 @@ export function AnimatePanel() {
           ) : null}
         </div>
       </ReelSection>
+      <ReelSection id="director" title="Camera director" summary={`${shotTag}${hasCamKeys(shot) ? `${shot.cam.keys.length} camera keys` : "uses its move"}`}>
+        <CameraDirector selected={selected} shot={shot} busy={animBusy} />
+      </ReelSection>
       <ReelSection id="keys" title="Keys" summary={keysSummary}>
         <ReelKeys sequence={seq} shotIndex={selected} busy={animBusy} productId={productId} onResult={run} />
       </ReelSection>
       <ReelSection id="cycles" title="Cycles" summary={cyclesSummary}>
         <ReelCycles sequence={seq} shotIndex={selected} busy={animBusy} productId={productId} onResult={run} />
+      </ReelSection>
+      <ReelSection id="branding" title="Branding" summary={brandingSummary(seq, brandingNow)}>
+        <BrandingSection sequence={seq} busy={animBusy} />
+      </ReelSection>
+      <ReelSection id="shotseq" title="Shot Sequence" summary={`${shotDefs.length} shots · ${totalSeq}s`}>
+        <div className="sos-reel-sec">
+          <div className="sos-group">
+            <div className="sos-group-head">
+              <span className="sos-eyebrow">Cinematic</span>
+            </div>
+            <button
+              type="button"
+              className="sos-btn sos-btn-primary"
+              data-testid="ui-shotseq-play"
+              disabled={shotSnap.status === shotStatus.PLAYING}
+              title="Play the 6-shot cinematic sequence in the live viewport"
+              onClick={handleShotPlay}
+            >
+              {shotSnap.status === shotStatus.PLAYING ? "Playing..." : "Play Sequence"}
+            </button>
+            <button
+              type="button"
+              className="sos-btn sos-btn-ghost"
+              data-testid="ui-shotseq-stop"
+              disabled={shotSnap.status !== shotStatus.PLAYING}
+              title="Stop the sequence and return the camera to your view"
+              onClick={handleShotStop}
+            >
+              Stop
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
+              <button
+                className={ltEnabled ? "sos-btn sos-btn-primary" : "sos-btn sos-btn-ghost"}
+                style={{ fontSize: 11, padding: "3px 10px" }}
+                onClick={() => lowerThirdStore.setEnabled(!ltEnabled)}
+              >
+                {ltEnabled ? "Title Card On" : "Title Card Off"}
+              </button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
+              <button
+                className={useShotSeqExport ? "sos-btn sos-btn-primary" : "sos-btn sos-btn-ghost"}
+                style={{ fontSize: 11, padding: "3px 10px" }}
+                data-testid="ui-shotseq-export-toggle"
+                title="When on, Export Reel renders the cinematic shot sequence instead of the turntable"
+                onClick={() => setUseShotSeqExport((v) => !v)}
+              >
+                {useShotSeqExport ? "Export: Shot Sequence" : "Export: Turntable"}
+              </button>
+            </div>
+            {shotSnap.status === shotStatus.DONE ? (
+              <p className="sos-reel-why">Sequence complete — the camera is yours again.</p>
+            ) : null}
+          </div>
+          <ol className="shot-list" data-testid="ui-shotseq-list">
+            {shotDefs.map((s, i) => {
+              const active = shotSnap.shotIndex === i;
+              return (
+                <li key={s.name} className="shot-list-item" data-on={active || undefined}>
+                  <span className="shot-list-num">{i + 1}</span>
+                  <span className="shot-list-name">{s.name}</span>
+                  <span className="shot-list-dur">{s.duration}s</span>
+                  {active ? <span className="shot-list-live">playing</span> : null}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       </ReelSection>
       <ReelSection id="export" title="Export" summary={exportSummary}>
         <div className="sos-reel-sec">
@@ -2776,6 +3079,13 @@ export default function InspectorRail({
     materialStore.getSnapshot
   );
   const materialsReady = matState.status === "ready" && matState.entries.length > 0;
+  // Cinematic Grade: the live grade id drives the engine's post-processing
+  // composer. No local useState mirrors the store — useSyncExternalStore only.
+  const gradeId = useSyncExternalStore(
+    gradeStore.subscribe,
+    gradeStore.getSnapshot,
+    gradeStore.getSnapshot
+  ).gradeId;
   const handleMaterialSelect = useCallback((label) => {
     const id = MATERIAL_CHIP_PRESETS[label];
     if (id) materialStore.applyPreset(id);
@@ -2858,6 +3168,8 @@ export default function InspectorRail({
                   Materials sheet.
                 </Hint>
               </>
+            ) : section.id === "grade" ? (
+              <GradePanel />
             ) : section.id === "animate" ? (
               <AnimatePanel />
             ) : section.id === "garage" ? (

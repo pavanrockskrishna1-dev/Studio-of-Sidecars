@@ -7,10 +7,23 @@ import {
   Suspense,
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, useGLTF } from "@react-three/drei";
+import { OrbitControls, useGLTF, useAnimations } from "@react-three/drei";
+import FireRig from "../fx/FireRig";
+import BbqFx from "../fx/BbqFx";
+import BatBurst from "../fx/BatBurst";
+import OccasionFog from "../fx/OccasionFog";
+import { reelFraming } from "../animation/reelFraming";
+import NightStage from "../fx/NightStage";
+import * as stageLook from "../fx/stageLook";
+import { recordPlaced } from "../garage/placedPoses";
+import * as placeMode from "../garage/placeMode";
+import { hasCamKeys, sampleCam } from "../animation/cameraKeys";
+import { createLook } from "../fx/exportLook";
+import * as lookStore from "../fx/lookStore";
+import LidAnimator from "../fx/LidAnimator";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
+import { RGBELoader as HDRLoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
@@ -44,6 +57,22 @@ import {
   withBackdropCrop,
 } from "../capture/backdropCrop";
 import { getPosterSpec, posterAspectOk, drawPoster, ensureLogoImage } from "../poster/poster.js";
+import { endHoldS, setPreviewClock } from "../poster/branding.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { FilmPass } from "three/examples/jsm/postprocessing/FilmPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { useSyncExternalStore } from "react";
+import * as gradeStore from "../fx/gradeStore.js";
+import { GRADES, GradeShader } from "../fx/gradeShader.js";
+import * as shotStore from "../animation/shotStore";
+import { SHOTS as shotDefs } from "../animation/shotDefs";
+
+// Module-level singleton: export frames bypass the composer (the grade is a
+// live-viewport feature only). renderExportFrame / stepExport live at module
+// scope, so they reach this ref directly; StudioStage syncs its own copy.
+export const exportRenderRef = { current: false };
 
 const FOV = 45;
 
@@ -425,7 +454,7 @@ function loadObjectScene(url) {
   loader.setDRACOLoader(objectDracoLoader);
   loader.setMeshoptDecoder(MeshoptDecoder);
   return new Promise((resolve, reject) => {
-    loader.load(url, (gltf) => resolve(gltf.scene), undefined, reject);
+    loader.load(url, (gltf) => resolve({ scene: gltf.scene, animations: gltf.animations || [] }), undefined, reject);
   });
 }
 
@@ -459,7 +488,7 @@ function releaseObjectGpu(res) {
 // CENTRE: anchor (the item transform: metres, degrees XYZ, uniform scale) >
 // inner (moves the model's own local box so its bottom-centre sits at the
 // anchor's origin) > the parsed scene. Measured with bounds.js's own union.
-function makeObjectEntry(assetId, modelPath, scene) {
+function makeObjectEntry(assetId, modelPath, scene, animations = []) {
   scene.updateMatrixWorld(true);
   const u = unionBounds(adaptObject3D(scene));
   if (!u) return null;
@@ -469,6 +498,20 @@ function makeObjectEntry(assetId, modelPath, scene) {
   inner.add(scene);
   const anchor = new THREE.Group();
   anchor.add(inner);
+  let mixer = null;
+  if (animations.length > 0) {
+    mixer = new THREE.AnimationMixer(scene);
+    for (const clip of animations) mixer.clipAction(clip).play();
+  }
+  // A rig that ships without clips (e.g. the pumpkin crab) gets a procedural idle.
+  let rig = null;
+  if (!mixer) {
+    const bones = [];
+    scene.traverse((o) => {
+      if (o.isBone) bones.push({ bone: o, name: o.name.replace(/^mixamorig:?/, ""), rest: o.quaternion.clone() });
+    });
+    if (bones.length) rig = { bones, t: 0 };
+  }
   return {
     key: null,
     itemId: null,
@@ -477,11 +520,38 @@ function makeObjectEntry(assetId, modelPath, scene) {
     anchor,
     inner,
     scene,
+    mixer,
+    rig,
     size: u.size.slice(),
     triangles: countTriangles(scene, false),
     resources: objectResources(scene),
     attached: false,
   };
+}
+
+// Claws raise and snap, fingers pinch, legs scuttle, body sways (Mixamo bone names).
+const IDLE_AXIS_X = new THREE.Vector3(1, 0, 0);
+const IDLE_AXIS_Y = new THREE.Vector3(0, 1, 0);
+const IDLE_AXIS_Z = new THREE.Vector3(0, 0, 1);
+const idleQ = new THREE.Quaternion();
+function idleTurn(name, t) {
+  const side = name.startsWith("Left") ? 1 : -1;
+  if (/^(Left|Right)Arm$/.test(name)) return [IDLE_AXIS_Z, side * (0.25 + 0.3 * Math.sin(t * 2.1 + side))];
+  if (/ForeArm$/.test(name)) return [IDLE_AXIS_X, 0.45 * Math.sin(t * 3.7 + side * 1.3)];
+  if (/Hand(Index|Middle|Thumb)\d$/.test(name)) return [IDLE_AXIS_Z, side * 0.35 * Math.max(0, Math.sin(t * 7.5 + side))];
+  if (/UpLeg$/.test(name)) return [IDLE_AXIS_X, 0.28 * Math.sin(t * 6.2 + (side > 0 ? 0 : Math.PI))];
+  if (/^(Left|Right)Leg$/.test(name)) return [IDLE_AXIS_X, 0.22 * Math.max(0, Math.sin(t * 6.2 + (side > 0 ? 1.2 : 1.2 + Math.PI)))];
+  if (name === "Spine") return [IDLE_AXIS_Y, 0.14 * Math.sin(t * 1.4)];
+  if (name === "Head") return [IDLE_AXIS_Z, 0.1 * Math.sin(t * 2.3)];
+  return null;
+}
+function poseIdleRig(rig, delta) {
+  rig.t += delta;
+  for (const b of rig.bones) {
+    const turn = idleTurn(b.name, rig.t);
+    if (!turn) continue;
+    b.bone.quaternion.copy(b.rest).multiply(idleQ.setFromAxisAngle(turn[0], turn[1]));
+  }
 }
 
 // The whole-object transform, read the way the whole-model panel reads its own.
@@ -536,7 +606,14 @@ function renderExportFrame(gl, scene, camera, width, height, transparent) {
   gl.shadowMap.needsUpdate = true;
   // Slice C2: a portrait / square frame shows the backdrop photo cover-cropped
   // (not squashed); the crop is put back inside this same synchronous call.
-  withBackdropCrop(scene, width / height, () => gl.render(scene, camera));
+  // Export frames bypass the composer (exportRenderRef) so the PNG carries the
+  // raw render, exactly as the live view shows it before the grade.
+  exportRenderRef.current = true;
+  try {
+    withBackdropCrop(scene, width / height, () => gl.render(scene, camera));
+  } finally {
+    exportRenderRef.current = false;
+  }
   return () => {
     gl.setPixelRatio(prevPixelRatio);
     gl.setSize(prevSize.x, prevSize.y, false);
@@ -809,6 +886,107 @@ function StudioStage({
 }) {
   const { scene, camera, gl, setFrameloop, get } = useThree();
   const controlsRef = useRef(null);
+  // Cinematic Grade (post-processing) — the composer ref, the export-render
+  // guard, and the original gl.render the live loop calls. R3F's loop calls
+  // state.gl.render(scene, camera) internally, so the live route is installed by
+  // overriding gl.render once (below); export frames set the guard and fall
+  // back to the original renderer. A plain JS ref, never React state.
+  const composerRef = useRef(null);
+  const originalRenderRef = useRef(null);
+  const liveGradeIdRef = useRef("raw");
+  const gradeId = useSyncExternalStore(
+    gradeStore.subscribe,
+    gradeStore.getSnapshot,
+    gradeStore.getSnapshot
+  ).gradeId;
+  // Keep the live-grade ref in sync without rebuilding the gl.render override
+  // (the closure reads refs, so it never goes stale).
+  useEffect(() => {
+    liveGradeIdRef.current = gradeId;
+  }, [gradeId]);
+  // Install the gl.render override once. Depends only on gl: the closure
+  // reads composerRef / exportRenderRef / liveGradeIdRef, never stale values.
+  // RenderPass calls renderer.render (this override) again; inside the composer
+  // that nested call must reach the real renderer, or it recurses forever.
+  const inComposerRef = useRef(false);
+  useEffect(() => {
+    originalRenderRef.current = gl.render.bind(gl);
+    gl.render = (s, c) => {
+      if (
+        inComposerRef.current ||
+        exportRenderRef.current ||
+        !composerRef.current ||
+        liveGradeIdRef.current === "raw"
+      ) {
+        originalRenderRef.current(s, c);
+      } else {
+        inComposerRef.current = true;
+        try {
+          composerRef.current.render();
+        } finally {
+          inComposerRef.current = false;
+        }
+      }
+    };
+    return () => {
+      if (originalRenderRef.current) gl.render = originalRenderRef.current;
+    };
+  }, [gl]);
+  // Build / rebuild the composer when the grade or the drawing buffer size
+  // changes. Raw grade disposes the composer (composerRef.current = null) so
+  // the gl.render override falls back to the original renderer.
+  // The Look (fx/lookStore.js), when on, replaces the grade: the same engine the
+  // export uses, so the live view is what exports. Smooth mode = its cheap variant.
+  const lookState = useSyncExternalStore(lookStore.subscribe, lookStore.getSnapshot, lookStore.getSnapshot);
+  const lookOn = lookStore.isLookActive(lookState);
+  const smooth = lookState.smooth;
+  const viewSize = useThree((s) => s.size);
+  const viewDpr = useThree((s) => s.viewport.dpr);
+  useEffect(() => {
+    if (!gl || !scene || !camera || !lookOn) return;
+    const buf = gl.getDrawingBufferSize(new THREE.Vector2());
+    const look = createLook(gl, scene, camera, Math.max(2, buf.x), Math.max(2, buf.y), lookStore.getSnapshot().params, { smooth });
+    composerRef.current = look;
+    return () => {
+      composerRef.current = null;
+      look.dispose();
+    };
+  }, [gl, scene, camera, lookOn, smooth, viewSize.width, viewSize.height, viewDpr]);
+  useEffect(() => {
+    if (lookOn && composerRef.current && composerRef.current.setParams) composerRef.current.setParams(lookState.params);
+  }, [lookOn, lookState.params]);
+  useEffect(() => {
+    if (!gl || !scene || !camera || lookOn) return;
+    const grade = GRADES[gradeId] ?? GRADES.raw;
+    if (gradeId === "raw") {
+      composerRef.current = null;
+      return;
+    }
+    const composer = new EffectComposer(gl);
+    composer.addPass(new RenderPass(scene, camera));
+    if (grade.bloom > 0) {
+      composer.addPass(
+        new UnrealBloomPass(
+          new THREE.Vector2(gl.drawingBufferWidth, gl.drawingBufferHeight),
+          grade.bloom,
+          0.4,
+          0.85
+        )
+      );
+    }
+    if (grade.grain > 0) {
+      composer.addPass(new FilmPass(grade.grain, false));
+    }
+    const gradePass = new ShaderPass(GradeShader);
+    gradePass.uniforms.tint.value = grade.tint;
+    gradePass.uniforms.vigAmt.value = grade.vignette;
+    composer.addPass(gradePass);
+    composerRef.current = composer;
+    return () => {
+      composerRef.current = null;
+      composer.dispose?.();
+    };
+  }, [gl, scene, camera, gradeId, lookOn]);
   // Camera Studio (Phase 16A) — frozen slider baseline of the last applied
   // view, the count of programmatic camera moves in flight, and whether the
   // view has been changed since (mirrored to App as viewLive). None of this is
@@ -832,6 +1010,7 @@ function StudioStage({
   // pivotRef are positioned IMPERATIVELY by refit() (never a declarative JSX
   // prop — see the transform group's JSX below for why).
   const pivotOffsetRef = useRef(null);
+  const grateWorldPosRef = useRef(new THREE.Vector3());
   // Garage G7a — the group added objects hang in (next to the model, inside
   // the pivot offset) and the stage's pool of loaded objects, keyed
   // `${itemId}|${assetId}`: an entry stays in the pool (GPU copies released)
@@ -870,7 +1049,17 @@ function StudioStage({
     environmentRef.current = environment;
   }, [environment]);
 
-  const { scene: modelScene } = useGLTF(product.modelPath);
+  const { scene: modelScene, animations } = useGLTF(product.modelPath);
+  // Play embedded GLB clips (MotionLab exports, etc.) — auto-starts the first
+  // clip when the model carries animations. The mixer advances every frame via
+  // useAnimations' own useFrame hook.
+  const { actions } = useAnimations(animations, modelScene);
+  useEffect(() => {
+    const clips = Object.values(actions ?? {});
+    if (!clips.length) return undefined;
+    clips[0].reset().play();
+    return () => clips[0].stop();
+  }, [actions]);
 
   // Environment background — locked library rule: applying an environment
   // changes ONLY the background (lighting, camera, and model stay untouched).
@@ -880,14 +1069,17 @@ function StudioStage({
   // ("Loading backdrop..."); an environment with no photo is ready at once; a
   // failed load warns and lets exports run without it. An environment or
   // product switch (this effect's cleanup) re-engages the gate.
+  // The "night" stage look paints its own sky (NightStage): no backdrop photo.
+  const look = useSyncExternalStore(stageLook.subscribe, stageLook.getSnapshot, stageLook.getSnapshot).look;
+  const backdropFile = look === "night" ? null : environment.file;
   useEffect(() => {
     let disposed = false;
     let texture = null;
-    const token = backdropGate.begin(environment.file);
-    if (environment.file) {
+    const token = backdropGate.begin(backdropFile);
+    if (backdropFile) {
       const loader = new THREE.TextureLoader();
       loader.load(
-        environment.file,
+        backdropFile,
         (tex) => {
           if (disposed) {
             tex.dispose();
@@ -901,7 +1093,7 @@ function StudioStage({
         undefined,
         (err) => {
           if (disposed) return;
-          console.warn("Backdrop failed to load:", environment.file, err);
+          console.warn("Backdrop failed to load:", backdropFile, err);
           backdropGate.failed(token);
         }
       );
@@ -909,10 +1101,10 @@ function StudioStage({
     return () => {
       disposed = true;
       if (texture) texture.dispose();
-      scene.background = null;
+      if (scene.background === texture) scene.background = null;
       backdropGate.clear(token);
     };
-  }, [scene, environment]);
+  }, [scene, backdropFile]);
 
   // Deterministic framing: measure the loaded model, fit camera + floor to it
   const fit = useMemo(() => {
@@ -999,6 +1191,27 @@ function StudioStage({
       pivotOffsetRef.current.position.set(-c[0], -c[1], -c[2]);
     }
     invalidateShadowMap(gl);
+  }, [fit, gl, modelScene]);
+
+  // Reel framing "product" (reelFraming.js): while a preview or export runs,
+  // the live fit is the main model's alone (measured as refit measures the
+  // whole group). Returns the fit to restore, or null when nothing changed.
+  const swapToProductFit = useCallback(() => {
+    if (reelFraming.mode !== "product" || !modelScene) return null;
+    const u = unionBounds(adaptObject3D(modelScene));
+    if (!u) return null;
+    const prev = liveFitRef.current;
+    const center = new THREE.Vector3().fromArray(u.center);
+    const size = new THREE.Vector3().fromArray(u.size);
+    const aspect = gl.domElement.clientWidth / gl.domElement.clientHeight;
+    liveFitRef.current = {
+      center,
+      size,
+      distance: fitDistance(size, aspect, FOV, 0.7),
+      footprintRadius: Math.hypot(size.x, size.z) / 2,
+      floorY: floorYFor({ homeFloorY: fit.floorY, unionMinY: u.min[1] }),
+    };
+    return prev ?? fit;
   }, [fit, gl, modelScene]);
 
   // Garage G5 (wiring b/c) — the pre-existing whole-model transform panel is
@@ -1089,6 +1302,8 @@ function StudioStage({
       const run = animRunRef.current;
       if (!run) return false;
       animRunRef.current = null;
+      if (run.prevFit) liveFitRef.current = run.prevFit;
+      setPreviewClock(null);
       if (escHandlerRef.current) {
         window.removeEventListener("keydown", escHandlerRef.current);
         escHandlerRef.current = null;
@@ -1148,6 +1363,8 @@ function StudioStage({
           const meshes = index.ok ? index.parts.filter((p) => p.id.startsWith(`${path}/`)).map((p) => p.ref) : [];
           return meshes.length ? meshes : null;
         },
+        // added objects that don't touch the product stay put while it is keyed
+        objectsRoot: objectsRootRef.current,
       }),
     [product.id, product.frontAz, fit, modelScene]
   );
@@ -1233,17 +1450,24 @@ function StudioStage({
     (anim) => {
       const controls = controlsRef.current;
       if (!controls || !pivotRef.current || animRunRef.current) return false;
+      const prevFit = swapToProductFit();
       // Slice C2b camera shots / sequences: each shot's start pose, resolved
       // without moving the visible camera (preView stays the user's view).
       const starts = anim.shot ? resolveReelStarts(anim.reel.shots) : null;
-      if (anim.shot && !starts) return false;
+      if (anim.shot && !starts) {
+        if (prevFit) liveFitRef.current = prevFit;
+        return false;
+      }
+      const startMs = performance.now();
+      setPreviewClock(startMs); // Slice R1: the branding overlay follows this clock
       animRunRef.current = {
         anim,
-        start: performance.now(),
+        start: startMs,
         preView: { position: camera.position.clone(), target: controls.target.clone() },
         starts,
         shotIndex: 0,
         keyed: prepareKeys(anim),
+        prevFit,
       };
       controls.enabled = false;
       setOverlaysHidden(true);
@@ -1254,7 +1478,7 @@ function StudioStage({
       window.addEventListener("keydown", onKey);
       return true;
     },
-    [camera, setOverlaysHidden, stopPreview, resolveReelStarts, prepareKeys]
+    [camera, setOverlaysHidden, stopPreview, resolveReelStarts, prepareKeys, swapToProductFit]
   );
 
   // ---- Deterministic frame stepping (Phase 16B Slice C) ---------------------
@@ -1272,6 +1496,8 @@ function StudioStage({
       const run = exportRunRef.current;
       if (!run) return false;
       exportRunRef.current = null;
+      if (run.prevFit) liveFitRef.current = run.prevFit;
+      if (run.post) run.post.dispose();
       gl.domElement.removeEventListener("webglcontextlost", run.onLost);
       const controls = controlsRef.current;
       if (pivotRef.current) pivotRef.current.rotation.y = 0;
@@ -1323,14 +1549,19 @@ function StudioStage({
       const controls = controlsRef.current;
       if (!controls || !pivotRef.current || !anim) return false;
       if (animRunRef.current || exportRunRef.current) return false;
+      const prevFit = swapToProductFit();
+      const refuse = () => {
+        if (prevFit) liveFitRef.current = prevFit;
+        return false;
+      };
       // Slice C2b camera shots / sequences: each shot's start pose (see
       // resolveReelStarts); the saved camera below stays the user's view.
       const starts = anim.shot ? resolveReelStarts(anim.reel.shots) : null;
-      if (anim.shot && !starts) return false;
+      if (anim.shot && !starts) return refuse();
       const even = (n) => Math.max(2, Math.min(4096, Math.floor(Number(n) / 2) * 2));
       const w = even(width);
       const h = even(height);
-      if (!Number.isFinite(w) || !Number.isFinite(h)) return false;
+      if (!Number.isFinite(w) || !Number.isFinite(h)) return refuse();
       const css = gl.getSize(new THREE.Vector2());
       const buf = gl.getDrawingBufferSize(new THREE.Vector2());
       const run = {
@@ -1343,6 +1574,7 @@ function StudioStage({
         // export, but reading it per step would also feed the Reel pose back.
         pct: cameraStudio.getSnapshot().distancePct,
         resized: false,
+        prevFit,
         saved: {
           position: camera.position.clone(),
           target: controls.target.clone(),
@@ -1368,11 +1600,14 @@ function StudioStage({
       gl.setPixelRatio(1);
       gl.setSize(w, h, false); // ONCE: assigning the size clears the canvas
       setCameraProjection(camera, { aspect: w / h });
+      // With a Look on, frames get exactly the live view's finish, at full quality
+      const ls = lookStore.getSnapshot();
+      if (lookStore.isLookActive(ls)) run.post = createLook(gl, scene, camera, w, h, ls.params);
       // The video path always renders the studio background: it ignores
       // exportOpts.background and never writes it.
       return true;
     },
-    [gl, camera, finishExport, setFrameloop, setOverlaysHidden, resolveReelStarts, prepareKeys]
+    [gl, scene, camera, finishExport, setFrameloop, setOverlaysHidden, resolveReelStarts, prepareKeys, swapToProductFit]
   );
 
   // The Reel framing (Slice E3: shared by stepExport and the portrait PNG export).
@@ -1395,7 +1630,8 @@ function StudioStage({
       const centreArr = lf.center.toArray();
       let pose = null;
       const env = environmentRef.current;
-      if (needsCoverCrop(aspect) && env && env.platform) {
+      // the night stage has no backdrop photo, so no painted platform to stand on
+      if (needsCoverCrop(aspect) && env && env.platform && stageLook.getSnapshot().look !== "night") {
         const imageAspect = backdropImageAspect(scene);
         const frame = imageAspect ? photoToFrame(env.platform, imageAspect, aspect) : null;
         if (frame) {
@@ -1499,6 +1735,12 @@ function StudioStage({
           run.resized = true;
           return { ok: false, resized: true };
         }
+        // The frame loop is stopped during an export: step every useFrame
+        // effect (fire, embers, lid, prop rigs) by one export frame first, so
+        // the camera placed below is the one rendered.
+        const live = get();
+        const dt = 1 / (run.anim.fps || REEL_EXPORT.fps);
+        for (const sub of live.internal.subscribers) sub.ref.current(live, dt);
         const aspect = run.width / run.height;
         // The Reel framing (Slice E2 platform pose, or the plain reelPose),
         // shared with the portrait PNG export through computeReelView.
@@ -1552,7 +1794,16 @@ function StudioStage({
           if (fit0) liveFitRef.current = restFit;
           if (!sv) throw new Error("Reel pose is not valid");
           setCameraProjection(camera, { far: sv.far });
-          if (at.shot.move === "turntable") {
+          if (hasCamKeys(at.shot)) {
+            // Camera director: the shot's own camera path
+            const p = sampleCam(at.shot.cam.keys, at.local);
+            pivotRef.current.rotation.y = 0;
+            setCameraProjection(camera, { far: Math.max(sv.far, 200) });
+            moveGuarded(() => {
+              camera.position.fromArray(p.position);
+              controls.target.fromArray(p.target);
+            });
+          } else if (at.shot.move === "turntable") {
             const spin = makeTurntable({ durationS: at.shot.durationS, fps: run.anim.fps });
             pivotRef.current.rotation.y = sampleAt(spin, at.local).modelSpinRad;
             moveGuarded(() => {
@@ -1581,7 +1832,14 @@ function StudioStage({
         invalidateShadowMap(gl);
         // Slice C2: cover-cropped backdrop for portrait / square frames, restored
         // in the same synchronous call (nothing to undo on abort or unmount).
-        withBackdropCrop(scene, aspect, () => gl.render(scene, camera));
+        // Export frames bypass the composer (exportRenderRef) so the PNG carries
+        // the raw render, exactly as the live view shows it before the grade.
+        exportRenderRef.current = true;
+        try {
+          withBackdropCrop(scene, aspect, () => (run.post ? run.post.render() : gl.render(scene, camera)));
+        } finally {
+          exportRenderRef.current = false;
+        }
         return { ok: true, resized: false };
       } catch (err) {
         console.error("Export step failed:", err);
@@ -1589,7 +1847,7 @@ function StudioStage({
         return { ok: false, resized: false };
       }
     },
-    [gl, scene, camera, computeReelView, moveGuarded, finishExport]
+    [gl, scene, camera, get, computeReelView, moveGuarded, finishExport]
   );
 
   // Slice C3a: the Reel sheet's warning check. Nothing is drawn and nothing
@@ -1655,12 +1913,77 @@ function StudioStage({
   // restoring the old camera; an export still restores the renderer-owned
   // state (pixel ratio, buffer size, camera aspect, frame loop). Only the
   // registering owner unregisters (StrictMode safe).
+  // Shot-sequence export step: renders one frame with the camera placed at the
+  // cinematic position for frameIndex/fps seconds into the sequence. No reel
+  // framing, no pivot spin — direct camera assignment, fully deterministic.
+  const stepExportShotSeq = useCallback(
+    (frameIndex, fps) => {
+      const run = exportRunRef.current;
+      const controls = controlsRef.current;
+      if (!run || !Number.isFinite(frameIndex) || !Number.isFinite(fps)) return { ok: false, resized: false };
+      if (!controls) {
+        finishExport({ restoreCamera: false, render: false });
+        return { ok: false, resized: false };
+      }
+      try {
+        const el = gl.domElement;
+        if (el.width !== run.width || el.height !== run.height) {
+          gl.setPixelRatio(1);
+          gl.setSize(run.width, run.height, false);
+          setCameraProjection(camera, { aspect: run.width / run.height });
+          run.resized = true;
+          return { ok: false, resized: true };
+        }
+        const aspect = run.width / run.height;
+        const t = frameIndex / fps;
+        // Find the shot active at t (mirrors shotStore.advanceFrame accumulation).
+        let accumulated = 0;
+        let activeIndex = shotDefs.length - 1;
+        let localElapsed = shotDefs[activeIndex].duration;
+        for (let k = 0; k < shotDefs.length; k++) {
+          const dur = shotDefs[k].duration;
+          if (t >= accumulated && t < accumulated + dur) {
+            activeIndex = k;
+            localElapsed = t - accumulated;
+            break;
+          }
+          accumulated += dur;
+        }
+        const shot = shotDefs[activeIndex];
+        const f = Math.min(1, localElapsed / shot.duration);
+        const pos3 = new THREE.Vector3().fromArray(shot.pos);
+        const tgt3 = new THREE.Vector3().fromArray(shot.target);
+        const camPos = new THREE.Vector3().copy(pos3).lerp(tgt3, f);
+        const far = Math.max(run.saved.far, pos3.distanceTo(tgt3) * 4 + 10);
+        setCameraProjection(camera, { aspect, far });
+        moveGuarded(() => {
+          camera.position.copy(camPos);
+          controls.target.copy(tgt3);
+        });
+        invalidateShadowMap(gl);
+        exportRenderRef.current = true;
+        try {
+          withBackdropCrop(scene, aspect, () => gl.render(scene, camera));
+        } finally {
+          exportRenderRef.current = false;
+        }
+        return { ok: true, resized: false };
+      } catch (err) {
+        console.error("Shot seq export step failed:", err);
+        finishExport({ restoreCamera: true, render: true });
+        return { ok: false, resized: false };
+      }
+    },
+    [gl, scene, camera, finishExport, moveGuarded]
+  );
+
   useEffect(() => {
     const unregister = animation.registerApi({
       play: startPreview,
       stop: () => stopPreview(),
       beginExport,
       stepExport,
+      stepExportShotSeq,
       endExport: () => finishExport({ restoreCamera: true, render: true }),
       getCanvas: () => gl.domElement,
       checkKeys,
@@ -1673,7 +1996,7 @@ function StudioStage({
       if (finishExport({ restoreCamera: false, render: false })) garageStore.setLocked(false);
       unregister();
     };
-  }, [startPreview, stopPreview, beginExport, stepExport, finishExport, gl.domElement, checkKeys]);
+  }, [startPreview, stopPreview, beginExport, stepExport, stepExportShotSeq, finishExport, gl.domElement, checkKeys]);
 
   // Move the camera to a view and freeze its slider baseline, measured AFTER
   // the move (the controls may adjust it, e.g. the Top preset's pole clamp).
@@ -2006,6 +2329,15 @@ function StudioStage({
     if (!modelScene.visible) modelScene.visible = true;
   });
 
+  // Advance AnimationMixer for any prop that carries rigged GLB animations.
+  useFrame((_, delta) => {
+    for (const entry of objectPoolRef.current.values()) {
+      if (!entry.attached) continue;
+      if (entry.mixer) entry.mixer.update(delta);
+      else if (entry.rig) poseIdleRig(entry.rig, delta);
+    }
+  });
+
   // Turntable preview: while it runs, turn the pivot group and ask for one
   // shadow update so the shadow turns with the model. Returns at once when
   // idle. Nothing here touches React state or the animation store.
@@ -2018,7 +2350,12 @@ function StudioStage({
       // end, stopPreview() puts back the view the user had before Play (as
       // Stop and Esc do).
       const ts = (performance.now() - run.start) / 1000;
-      const at = reelShotAtTime(run.anim, ts);
+      let at = reelShotAtTime(run.anim, ts);
+      // Slice R1: with the end card on, the last frame is held for its 2 s
+      const hold = endHoldS();
+      if (!at && hold > 0 && ts >= run.anim.durationS && ts < run.anim.durationS + hold) {
+        at = reelShotAtTime(run.anim, run.anim.durationS - 1 / run.anim.fps);
+      }
       if (!at) return void stopPreview();
       const changed = at.index !== run.shotIndex;
       if (changed) {
@@ -2031,6 +2368,20 @@ function StudioStage({
         invalidateShadowMap(gl);
       }
       const start = run.starts[at.index];
+      if (hasCamKeys(at.shot)) {
+        // Camera director: the shot's own camera path
+        run.placed = false;
+        if (pivotRef.current.rotation.y !== 0) {
+          pivotRef.current.rotation.y = 0;
+          invalidateShadowMap(gl);
+        }
+        const p = sampleCam(at.shot.cam.keys, at.local);
+        moveGuarded(() => {
+          camera.position.fromArray(p.position);
+          controlsRef.current?.target.fromArray(p.target);
+        });
+        return;
+      }
       if (at.shot.move === "turntable") {
         if (changed || !run.placed) {
           run.placed = true;
@@ -2055,11 +2406,49 @@ function StudioStage({
       });
       return;
     }
-    const t = ((performance.now() - run.start) / 1000) % run.anim.durationS;
+    // Slice R1: a looping Turntable holds its last frame for the end card (hold is 0 without it)
+    let t = ((performance.now() - run.start) / 1000) % (run.anim.durationS + endHoldS());
+    if (t >= run.anim.durationS) t = run.anim.durationS - 1 / run.anim.fps;
     pivotRef.current.rotation.y = sampleAt(run.anim, t).modelSpinRad;
     if (run.keyed) applyKeyed(run.keyed, 0, t); // Slice C3a: a keyed lone Turntable
     invalidateShadowMap(gl);
   });
+
+  // Shot Sequencer — 6 pre-scripted cinematic shots that play end-to-end in the
+  // live viewport. Drives the camera directly from the SHOTS table (no React
+  // state, no store dispatches per frame): advanceFrame writes to the module
+  // store's own setter, and this useFrame only reads the snapshot. Orbit
+  // controls are disabled while the sequence runs so the user cannot interrupt
+  // it; they come back when the sequence finishes or is stopped.
+  useFrame((_, delta) => {
+    shotStore.advanceFrame(delta);
+    const snap = shotStore.getSnapshot();
+    if (snap.status === shotStore.shotStatus.PLAYING) {
+      if (controlsRef.current) controlsRef.current.enabled = false;
+    }
+    if (snap.status !== shotStore.shotStatus.PLAYING) return;
+    const shot = shotDefs[snap.shotIndex];
+    if (!shot) return;
+    const f = snap.elapsed / snap.duration;
+    const pos = new THREE.Vector3().fromArray(shot.pos).lerp(
+      new THREE.Vector3().fromArray(shot.target),
+      f
+    );
+    moveGuarded(() => {
+      camera.position.copy(pos);
+      controlsRef.current?.target.fromArray(shot.target);
+    });
+  });
+
+  useEffect(() => {
+    const unsub = shotStore.subscribe(() => {
+      const snap = shotStore.getSnapshot();
+      if (snap.status === shotStore.shotStatus.IDLE || snap.status === shotStore.shotStatus.DONE) {
+        if (controlsRef.current) controlsRef.enabled = true;
+      }
+    });
+    return unsub;
+  }, []);
 
   // Raycast targets: the model's visible meshes, collected once per model.
   const modelMeshes = useMemo(() => {
@@ -2162,6 +2551,7 @@ function StudioStage({
       if (entry.attached && !live.has(entry.key)) {
         root.remove(entry.anchor);
         entry.attached = false;
+        if (entry.mixer) entry.mixer.stopAllAction();
         releaseObjectGpu(entry.resources);
       }
     }
@@ -2246,6 +2636,16 @@ function StudioStage({
   useEffect(() => {
     lidRef.current = null;
   }, [modelScene, partIndex]);
+  // Compute the Grill_Grate world position for BBQ Bike FX.
+  // Runs after modelScene is available; re-computes on model change.
+  useEffect(() => {
+    if (!modelScene) return;
+    const grate = modelScene.getObjectByName("Grill_Grate");
+    if (grate) {
+      modelScene.updateWorldMatrix(true, true);
+      grate.getWorldPosition(grateWorldPosRef.current);
+    }
+  }, [modelScene]);
   const lidDeltas = useCallback(() => {
     const spec = product.propSurface && product.propSurface.lid;
     if (!spec || !partIndex.ok) return null;
@@ -2306,17 +2706,19 @@ function StudioStage({
         if (!pre.ok) return pre;
       }
       addingObjectRef.current = true;
-      let scene;
+      let loadedScene, loadedAnimations;
       try {
-        scene = await loadObjectScene(asset.modelPath);
+        const loaded = await loadObjectScene(asset.modelPath);
+        loadedScene = loaded.scene;
+        loadedAnimations = loaded.animations;
       } catch (err) {
         console.warn(`Garage: could not load "${asset.name}".`, err);
         return refuse("load-failed", `Could not load "${asset.name}"; nothing was added.`);
       } finally {
         addingObjectRef.current = false;
       }
-      const entry = makeObjectEntry(assetId, asset.modelPath, scene);
-      const discard = () => releaseObjectGpu(entry ? entry.resources : objectResources(scene));
+      const entry = makeObjectEntry(assetId, asset.modelPath, loadedScene, loadedAnimations);
+      const discard = () => releaseObjectGpu(entry ? entry.resources : objectResources(loadedScene));
       if (!stageAliveRef.current) {
         discard();
         return refuse("stage-gone", "The product changed while loading; nothing was added.");
@@ -2340,21 +2742,44 @@ function StudioStage({
         discard();
         return check;
       }
+      // Real-world size: most prop files are normalised to about 1 unit, while the
+      // prop library lists each one's real size (metres). A prop whose file is
+      // more than 25% off is scaled to it; files already at real size keep 1.
+      let autoScale = 1;
+      if (isProp && Array.isArray(asset.size) && entry.size) {
+        const ratio = Math.max(...asset.size) / Math.max(...entry.size);
+        if (Number.isFinite(ratio) && ratio > 0 && (ratio > 1.25 || ratio < 0.8)) autoScale = ratio;
+      }
+      const scaledSize = entry.size.map((v) => v * autoScale);
       let transform;
       if (opts.transform) {
         transform = opts.transform;
+      } else if (Array.isArray(opts.at)) {
+        // the prop shelf's "click the ground": stand it on the floor there
+        transform = { x: opts.at[0], y: fit.floorY, z: opts.at[1], rx: 0, ry: 0, rz: 0, s: autoScale };
       } else {
         let placed;
         if (isProp) {
+          // surfaceFloor props (e.g. coal bed) sit at the bottom of the cooking
+          // chamber rather than on the grate top, so they appear under the food.
+          const assetMeta = getAsset(assetId);
+          const sb = propSurfaceBox();
+          if (assetMeta?.surfaceFloor && sb) {
+            const cx = (sb.min[0] + sb.max[0]) / 2;
+            const cz = (sb.min[2] + sb.max[2]) / 2;
+            const y  = sb.min[1];
+            placed = { ok: true, position: [cx, y, cz], where: "surface" };
+          } else {
           const all = occupiedBoxes(true);
           placed = sceneObjects.placeProp({
             solid: all.solid,
             props: all.props,
-            objectSize: entry.size,
+            objectSize: scaledSize,
             floorY: fit.floorY,
             frontAz: product.frontAz ?? 0,
-            surface: propSurfaceBox(),
+            surface: sb,
           });
+          }
         } else {
           placed = sceneObjects.placeObject({
             occupied: occupiedBoxes(),
@@ -2368,7 +2793,7 @@ function StudioStage({
           return refuse("placement", "Could not find a free place for this object; nothing was added.");
         }
         const [x, y, z] = placed.position;
-        transform = { x, y, z, rx: 0, ry: 0, rz: 0, s: 1 };
+        transform = { x, y, z, rx: 0, ry: 0, rz: 0, s: autoScale };
       }
       const pending = { entry, adopted: false };
       pendingObjectRef.current = pending;
@@ -2387,6 +2812,7 @@ function StudioStage({
       // file) from before an undo, so the fresh copy is surplus.
       if (!pending.adopted) discard();
       if (!r.ok) return refuse(r.reason, "The object could not be added.");
+      recordPlaced(r.itemId, transform);
       return {
         ok: true,
         itemId: r.itemId,
@@ -2570,10 +2996,11 @@ function StudioStage({
       const layout = garageStore.getLayout();
       const item = layout ? layout.items.find((i) => i.itemId === "i0") : null;
       const overrides = item ? item.parts : {};
-      // Slice P2 (review): the lid is open while a visible prop stands on the grate
-      const deltas = lidDeltas();
-      const sb = deltas ? propSurfaceBox() : null;
-      const lidOpen = sceneObjects.lidShouldOpen(layout ? layout.items : [], sb);
+      // Slice P2 (review): lid animation handled by LidAnimator (fx/LidAnimator.jsx)
+      // which applies a smooth rotation per-frame via useFrame, replacing the old
+      // binary open/close that was here. applyOverrides still resets parts to their
+      // base + static-override pose so LidAnimator's next useFrame tick can apply
+      // the correct interpolated rotation on top.
       // eslint-disable-next-line react-hooks/immutability
       for (const part of parts) {
         const mesh = part.ref;
@@ -2584,13 +3011,6 @@ function StudioStage({
           mesh.position.fromArray(pose.pos);
           mesh.quaternion.fromArray(pose.quat);
           mesh.scale.fromArray(pose.scale);
-          const d = lidOpen ? deltas.get(mesh) : null;
-          if (d) {
-            new THREE.Matrix4()
-              .compose(mesh.position, mesh.quaternion, mesh.scale)
-              .premultiply(d)
-              .decompose(mesh.position, mesh.quaternion, mesh.scale);
-          }
         }
         mesh.visible = ov && typeof ov.visible === "boolean" ? ov.visible : base.visible;
         // Garage G6 — same commit, same loop: a part with no material override
@@ -2602,7 +3022,7 @@ function StudioStage({
     };
     applyOverrides();
     return garageStore.subscribe(applyOverrides);
-  }, [partIndex, refit, syncObjects, lidDeltas, propSurfaceBox]);
+  }, [partIndex, refit, syncObjects]);
 
   // Part overlay — imperative, rebuilt from a Garage store subscription (never
   // React state), parented to the same group as the whole-model outline. Hidden
@@ -2857,8 +3277,41 @@ function StudioStage({
           if (!single || single.itemId !== itemId || single.partId !== partId) return null;
           return garageStore.setPartOverride(itemId, partId, { material: patch });
         },
+        // Presets: the part ids under the first node named `name` (its "~n" suffix
+        // ignored), and that node's group path (for group cycles). null if absent.
+        findNamedGroup: (name) => {
+          if (!partIndex.ok) return null;
+          const strip = (seg) => seg.replace(/~\d+$/, "");
+          for (const p of partIndex.parts) {
+            const segs = p.id.split("/");
+            const i = segs.findIndex((s) => strip(s) === name);
+            if (i < 0) continue;
+            const path = segs.slice(0, i + 1).join("/");
+            const ids = partIndex.parts.filter((q) => q.id === path || q.id.startsWith(`${path}/`)).map((q) => q.id);
+            return { path, ids };
+          }
+          return null;
+        },
         // Garage G7a — added objects, as whole objects only (Decision 5).
         addObject,
+        // the ground height in the objects' frame (Snap to ground)
+        getFloorY: () => fit.floorY,
+        // Camera director: the live view, and subject boxes in world space
+        // ({ center, size } arrays). itemId null = the main product; "set" = everything.
+        getView: () => ({ position: camera.position.toArray(), target: (controlsRef.current?.target ?? new THREE.Vector3()).toArray() }),
+        getWorldBox: (itemId) => {
+          let node = null;
+          if (itemId === "set") node = transformRef.current;
+          else if (!itemId) node = modelScene;
+          else {
+            for (const entry of objectPoolRef.current.values()) if (entry.attached && entry.itemId === itemId) node = entry.anchor;
+          }
+          if (!node) return null;
+          node.updateWorldMatrix(true, true);
+          const box = new THREE.Box3().setFromObject(node);
+          if (box.isEmpty()) return null;
+          return { center: box.getCenter(new THREE.Vector3()).toArray(), size: box.getSize(new THREE.Vector3()).toArray() };
+        },
         // Garage G7b — a formatVersion 2 layout's parts + objects, one commit.
         loadObjects,
         // The running triangle counter (Decision 2), plus its level/line.
@@ -2926,7 +3379,7 @@ function StudioStage({
           return r.ok ? { ok: true } : { ok: false, reason: r.reason, message: "The object could not be changed." };
         },
       }),
-    [partIndex, modelScene, addObject, loadObjects, sceneTriangles, propSurfaceBox]
+    [partIndex, modelScene, addObject, loadObjects, sceneTriangles, propSurfaceBox, fit.floorY, camera]
   );
 
   // Garage G11 — the TransformControls gizmo. It exists only while exactly one
@@ -3295,6 +3748,22 @@ function StudioStage({
         -((e.clientY - rect.top) / rect.height) * 2 + 1
       );
       raycaster.setFromCamera(ndc, camera);
+      // Prop shelf: in place mode the click drops the chosen prop on the ground there.
+      const placing = placeMode.getSnapshot().assetId;
+      if (placing) {
+        const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), -fit.floorY);
+        const hit = raycaster.ray.intersectPlane(floor, new THREE.Vector3());
+        const root = objectsRootRef.current;
+        if (!hit || !root) {
+          placeMode.stopPlacing("Click on the ground to place the prop.");
+          return;
+        }
+        root.updateWorldMatrix(true, false);
+        const local = root.worldToLocal(hit.clone());
+        placeMode.stopPlacing("Placing…");
+        addObject(placing, { at: [local.x, local.z] }).then((r) => placeMode.stopPlacing(r.ok ? r.message : r.message || "Could not place it."));
+        return;
+      }
       // Garage M0 — Measure mode: a click picks a surface point on the main
       // product OR any visible added object (regardless of Parts on/off) and
       // never selects a part (Owner decision 7); a miss is simply ignored. A
@@ -3370,13 +3839,16 @@ function StudioStage({
       el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("pointerup", onPointerUp);
     };
-  }, [gl, camera, modelMeshes, modelScene, partIndex, product.name, fit.size, onSelect, onClear, stopPreview]);
+  }, [gl, camera, modelMeshes, modelScene, partIndex, product.name, fit.size, fit.floorY, onSelect, onClear, stopPreview, addObject]);
 
   return (
     <>
       {/* Lighting Foundation — the original three-light setup, now live-driven:
           key from front-above (casts the ground shadow), warm fill from the
           opposite side, cool rim from behind, plus the ambient base. */}
+      {look === "night" && <NightStage floorY={fit.floorY} center={liveFit.center} />}
+      {look !== "night" && (
+      <>
       <ambientLight intensity={lighting.ambient} />
       <directionalLight
         position={[4, 6, 5]}
@@ -3403,6 +3875,8 @@ function StudioStage({
         intensity={lighting.rim}
         color={0xcfd8ff}
       />
+      </>
+      )}
 
       {/* Floor anchored to the model's actual base (was hardcoded at y=-1.2).
           Hidden while a photographic environment is active — its backdrop
@@ -3415,7 +3889,7 @@ function StudioStage({
           whenever fit.floorY is finite, i.e. always — fit.floorY is used here
           directly so that invariant can never drift). */}
       <mesh
-        visible={!environment.file}
+        visible={!environment.file && look !== "night"}
         rotation={[-Math.PI / 2, 0, 0]}
         position={[liveFit.center.x, fit.floorY, liveFit.center.z]}
       >
@@ -3483,9 +3957,25 @@ function StudioStage({
             3), never as a declarative prop: an array-literal position prop is
             a fresh reference every render, so React would silently re-apply
             it (and stomp the live pivot centre) on any unrelated re-render. */}
+        <OccasionFog />
         <group ref={pivotRef}>
           <group ref={pivotOffsetRef}>
             <primitive object={modelScene} />
+            {/* BBQ Ride atmosphere — fire FX + smooth lid animation */}
+            {product.id === "bbq-bike" && (
+              <>
+                <FireRig modelScene={modelScene} />
+                <BbqFx grateWorldPos={grateWorldPosRef.current} />
+                <BatBurst />
+                <LidAnimator
+                  modelScene={modelScene}
+                  product={product}
+                  partIndex={partIndex}
+                  partBasesRef={partBasesRef}
+                  propSurfaceBox={propSurfaceBox}
+                />
+              </>
+            )}
             {/* Garage G7a: added objects hang here (imperatively, syncObjects),
                 beside the model and inside the pivot, so the turntable spins
                 them with it and refit() measures them. */}
@@ -3581,6 +4071,8 @@ export default function StudioCanvas({
     };
   }, [transformApiRef, transform]);
 
+  const smoothLive = useSyncExternalStore(lookStore.subscribe, lookStore.getSnapshot, lookStore.getSnapshot).smooth;
+
   return (
     <>
       <Canvas
@@ -3589,6 +4081,9 @@ export default function StudioCanvas({
         // behavior the renderer already falls back to. Same verified visuals,
         // clean console.
         shadows="percentage"
+        // Smooth mode (lookStore): the live view renders at 1x instead of up to
+        // 2x device pixels. Exports set their own size and are unaffected.
+        dpr={smoothLive ? 1 : [1, 2]}
         camera={{ fov: FOV, near: 0.1, far: 500, position: [0, 2, 5] }}
         // preserveDrawingBuffer keeps the rendered frame readable after the
         // compositor swaps, so Capture Shot can PNG-encode the exact current

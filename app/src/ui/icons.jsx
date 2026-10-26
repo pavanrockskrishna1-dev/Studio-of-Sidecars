@@ -150,6 +150,13 @@ const PATHS = {
   star: (
     <path d="m12 4.2 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 9.9l5.4-.8Z" />
   ),
+  occasions: (
+    <>
+      <path d="M12 3v1.5M12 19.5V21M3 12H4.5M19.5 12H21M5.6 5.6l1 1M17.4 17.4l1 1M18.4 5.6l-1 1M6.6 17.4l-1 1" />
+      <circle cx="12" cy="12" r="4.5" />
+      <path d="M12 8.5a1 1 0 0 1 1 1v1.8l1.2.7" />
+    </>
+  ),
   search: (
     <>
       <circle cx="10.8" cy="10.8" r="6" />
@@ -199,6 +206,16 @@ const PATHS = {
       <path d="M8 3.8v4.6h6.4V3.8M7.6 20.4v-6.2h8.8v6.2" />
     </>
   ),
+  /* Animation Studio / MotionLab launcher — keyframe diamond on a timeline */
+  motion: (
+    <>
+      <path d="M3.6 12h6.2M14.2 12h6.2" />
+      <path d="M12 9.2 14.8 12 12 14.8 9.2 12Z" fill="currentColor" stroke="none" />
+      <path d="M12 5v1.6M12 17.4V19M7.4 6.8l1.1 1.1M15.5 15l1.1 1.1M6.8 16.6l1.1-1.1M15 8.5l1.1-1.1" />
+    </>
+  ),
+  /* Generic close / dismiss */
+  close: <path d="M6 6l12 12M18 6 6 18" />,
 };
 
 export default function Icon({ name, size = 18, stroke = 1.6, className, style, filled = false }) {

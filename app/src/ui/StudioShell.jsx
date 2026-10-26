@@ -16,9 +16,16 @@ import {
   GarageBody,
   PosterBody,
   ReelBody,
+  OccasionBody,
 } from "./SheetContents";
+import OccasionParticles from "./OccasionParticles";
+import OccasionBackground from "./OccasionBackground";
+import PlaceBanner from "./PlaceBanner";
 import useEngineSelection from "./useEngineSelection";
 import { PosterOverlayHost } from "./PosterPanel";
+import { BrandingOverlayHost } from "./BrandingOverlay";
+import MotionLabOverlay from "./MotionLabOverlay";
+import LowerThird from "./LowerThird";
 import { PRODUCTS } from "../products/registry";
 import * as animationStore from "../animation/animationStore";
 import * as garageStore from "../garage/garageStore";
@@ -56,6 +63,7 @@ const SHEETS = {
   garage: { title: "Garage", icon: "frame", tall: true },
   poster: { title: "Poster", icon: "swatch", tall: true },
   reel: { title: "Reel", icon: "film", tall: true },
+  occasions: { title: "Occasions", icon: "occasions", tall: true },
   save: { title: "Save", icon: "save" },
   capture: { title: "Capture", icon: "aperture" },
 };
@@ -91,6 +99,7 @@ export default function StudioShell() {
   // component state, remembered only for this session.
   const [pinnedId, setPinnedId] = useState(null);
   const [normalId, setNormalId] = useState(null);
+  const [motionLabOpen, setMotionLabOpen] = useState(false);
   const idle = useIdleFade();
   // Slice U2: while a Reel plays or exports every open sheet slides out of view
   // (the sheets stay mounted, so they come back exactly as they were).
@@ -99,6 +108,7 @@ export default function StudioShell() {
   const openIds = [pinnedId, normalId].filter(Boolean);
 
   const handleDockSelect = (id) => {
+    if (id === "animate") { setMotionLabOpen((v) => !v); return; }
     if (id === pinnedId) setPinnedId(null);
     else if (id === normalId) setNormalId(null);
     else setNormalId(id);
@@ -151,6 +161,8 @@ export default function StudioShell() {
         return <PosterBody />;
       case "reel":
         return <ReelBody />;
+      case "occasions":
+        return <OccasionBody />;
       case "save":
         return <SaveBody session={session} />;
       case "capture":
@@ -160,8 +172,16 @@ export default function StudioShell() {
     }
   };
 
+  const currentProduct = PRODUCTS.find((p) => p.id === assets.productId);
+
   return (
     <div className="sos-shell" data-sos-shell="">
+      {/* Themed 2D background — sits at z-index -1, behind the Three.js
+          canvas (z-index 0 with alpha: true). Defaults to #050505 when no
+          occasion is active so there is zero visual change from the old
+          canvas background. */}
+      <OccasionBackground />
+      <PlaceBanner />
       {/* Slice U1 - the opening state: capsule + dock, tab order capsule ->
           dock -> open sheets. The old TopHeader, VersionTabs, CreatorSidebar
           and InspectorRail are not rendered (their files are untouched, just
@@ -170,6 +190,16 @@ export default function StudioShell() {
           z-index 1 (below this shell, so the capsule, dock and sheets stack
           above it), pointer-events none; shown while Poster is On */}
       <PosterOverlayHost />
+      <BrandingOverlayHost />
+      <LowerThird />
+      <OccasionParticles />
+      {motionLabOpen && currentProduct && (
+        <MotionLabOverlay
+          modelPath={currentProduct.modelPath}
+          modelName={currentProduct.name}
+          onClose={() => setMotionLabOpen(false)}
+        />
+      )}
       <StudioCapsule productName={assetName} idle={idle} />
       <StudioDock openIds={openIds} onSelect={handleDockSelect} idle={idle} />
       {openIds.map((id) => (

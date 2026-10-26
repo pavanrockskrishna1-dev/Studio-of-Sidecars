@@ -1,7 +1,8 @@
 /* ==========================================================================
    Slice U2 - which Reel sheet section is open (new file, UI ONLY)
    --------------------------------------------------------------------------
-   The Reel sheet has four collapsible sections (Shots, Keys, Cycles, Export);
+   The Reel sheet has five collapsible sections (Shots, Keys, Cycles, Branding
+   (Slice R1), Export);
    only ONE is open at a time (opening one closes the others, clicking the open
    one closes it, so "none" is a state too). The choice is remembered for the
    session: it is held here at module level (the sheet itself unmounts when it
@@ -10,7 +11,9 @@
    holds for this page. Default: Shots.
    ========================================================================== */
 
-export const REEL_SECTIONS = Object.freeze(["shots", "keys", "cycles", "export"]);
+// every <ReelSection id> in the Reel sheet must be listed here, or opening it
+// falls back to Shots
+export const REEL_SECTIONS = Object.freeze(["shots", "director", "keys", "cycles", "branding", "shotseq", "export"]);
 const STORAGE_KEY = "sos-reel-section";
 
 function readStored() {

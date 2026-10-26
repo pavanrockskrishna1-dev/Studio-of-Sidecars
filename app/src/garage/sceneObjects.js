@@ -26,10 +26,11 @@ export const OBJECT_LIMITS = Object.freeze({
   WARN_TRIANGLES: 700000,
   MAX_TRIANGLES: 1000000,
   DEFAULT_GAP: 0.15, // metres between a new object and everything already there
-  // Slice P2: props (the BBQ food models) are ordinary added objects, but they
+  // Slice P2: props (set dressing and food) are ordinary added objects, but they
   // have their own cap and do not count against MAX_ADDED. 1 main + 5 objects +
-  // 12 props = 18 items, inside LAYOUT_LIMITS.MAX_ITEMS (20).
-  MAX_PROPS: 12,
+  // 30 props = 36 items, inside LAYOUT_LIMITS.MAX_ITEMS (40). The triangle
+  // budget above still guards the scene's weight.
+  MAX_PROPS: 30,
   PROP_GAP: 0.02, // metres between a prop and anything else it stands beside
 });
 

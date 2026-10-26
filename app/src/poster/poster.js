@@ -281,10 +281,47 @@ export function truncateToWidth(ctx, text, maxWidth) {
   return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis;
 }
 
+// Splits text into at most maxLines word-wrapped lines that each fit maxWidth.
+// Returns an array of strings (never empty). Falls back to truncation on the
+// last line when the text cannot be wrapped to fit.
+export function wrapToLines(ctx, text, maxWidth, maxLines = 2) {
+  if (!text) return [""];
+  if (!Number.isFinite(maxWidth) || maxWidth <= 0) return [text];
+  if (ctx.measureText(text).width <= maxWidth) return [text];
+  const words = text.split(/\s+/);
+  const lines = [];
+  let current = "";
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) {
+        lines.push(current);
+        current = word;
+      } else {
+        lines.push(truncateToWidth(ctx, word, maxWidth));
+        current = "";
+      }
+      if (lines.length >= maxLines - 1) {
+        const rest = words.slice(i + (current ? 0 : 1));
+        const tail = current
+          ? `${current} ${rest.join(" ")}`.trim()
+          : rest.join(" ");
+        lines.push(truncateToWidth(ctx, tail || word, maxWidth));
+        return lines;
+      }
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [text];
+}
+
 /* ================================== drawing ================================ */
 
-const FONT_HEAD = "Saira Stencil One";
-const FONT_BODY = "Oswald";
+export const FONT_HEAD = "Saira Stencil One";
+export const FONT_BODY = "Oswald";
 
 // Owner click-test fix: canvas fillText with an unloaded @font-face silently
 // falls back to a system font instead of waiting or throwing, and nothing in
@@ -473,7 +510,11 @@ function drawHeadline(ctx, w, h, headline1, headline2, subline, kit) {
     });
     ctx.font = `500 ${s3}px "${FONT_BODY}"`;
     ctx.fillStyle = "#CCCCCC";
-    ctx.fillText(truncateToWidth(ctx, upper, maxW), w - rightPad, y + pct(h, 0.8));
+    const lines = wrapToLines(ctx, upper, maxW, 2);
+    const lineGap = s3 * 1.2;
+    lines.forEach((line, i) => {
+      ctx.fillText(line, w - rightPad, y + pct(h, 0.8) + i * lineGap);
+    });
   }
   ctx.restore();
 }

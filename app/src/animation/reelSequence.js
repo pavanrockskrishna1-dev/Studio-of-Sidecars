@@ -13,11 +13,15 @@
    A shot may carry frameOn: "start" (frame on the keyed product pose at the
    shot's first frame); absent means "end", the default (the last frame).
    Slice C4a: a shot may also carry `cycles` (reelCycles.js), likewise present
-   only when the shot has cycles. */
+   only when the shot has cycles.
+   Slice R1: a shot may also carry `title` ({ text, pos }, shotTitle.js), likewise
+   present only when the shot has a title (or a non-default title position). */
 
 import { SHOT_MOVES, makeShot, makeTurntable } from "./path.js";
 import { keysToSession, sanitizeKeys } from "./reelKeys.js";
 import { cyclesToSession, sanitizeCycles } from "./reelCycles.js";
+import { isTitle, normTitle } from "./shotTitle.js";
+import { sanitizeCam } from "./cameraKeys.js";
 
 export const MAX_SHOTS = 5;
 export const MAX_TOTAL_S = 30;
@@ -33,12 +37,20 @@ const isShot = (s) =>
   REEL_MOVES.includes(s.move) &&
   REEL_START_VIEWS.includes(s.startView) &&
   SHOT_DURATIONS.includes(s.durationS) &&
-  (s.frameOn === undefined || s.frameOn === "start" || s.frameOn === "end");
-// frameOn is stored only as "start" ("end" is the default and is dropped)
-const normFrameOn = (s) => {
-  if (s.frameOn !== "end") return s;
+  (s.frameOn === undefined || s.frameOn === "start" || s.frameOn === "end") &&
+  (s.title === undefined || isTitle(s.title)) &&
+  (s.cam === undefined || s.cam === null || !!sanitizeCam(s.cam));
+// frameOn is stored only as "start" ("end" is the default and is dropped); a
+// title is stored only when it has visible text or a non-default position
+const normShot = (s) => {
+  const title = normTitle(s.title);
   const rest = { ...s };
-  delete rest.frameOn;
+  if (rest.frameOn === "end") delete rest.frameOn;
+  if (title) rest.title = title;
+  else delete rest.title;
+  const cam = sanitizeCam(rest.cam);
+  if (cam) rest.cam = cam;
+  else delete rest.cam;
   return rest;
 };
 
@@ -94,12 +106,12 @@ export function setShot(seq, i, patch) {
     const a = durationAllowed(seq, i, patch.durationS);
     if (!a.ok) return refuse(seq, a.reason);
   }
-  return done(seq.map((s, k) => (k === i ? normFrameOn(next) : s)));
+  return done(seq.map((s, k) => (k === i ? normShot(next) : s)));
 }
 
 // Slice C3a: replaces shot i's keys (an empty list removes the field).
 // Slice C4a: the shot's cycles are kept (and setShotCycles keeps the keys).
-const shotBase = (s) => ({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}) });
+const shotBase = (s) => ({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}), ...(s.title ? { title: s.title } : {}), ...(s.cam ? { cam: s.cam } : {}) });
 const withList = (o, name, list) => (Array.isArray(list) && list.length ? { ...o, [name]: list } : o);
 export function setShotKeys(seq, i, keys) {
   if (!Number.isInteger(i) || i < 0 || i >= seq.length) return refuse(seq, "No such shot.");
@@ -153,7 +165,7 @@ export function buildReelAnim(seq, fps = 30) {
   });
   if (seq.length === 1 && seq[0].move === "turntable") return { ...makeTurntable({ durationS: seq[0].durationS, fps }), ...keysOf(seq[0]) };
   const ranges = shotFrameRanges(seq, fps);
-  const shots = seq.map((s, k) => ({ move: s.move, startView: s.startView, durationS: s.durationS, f0: ranges[k].start, f1: ranges[k].end, t0: ranges[k].start / fps, ...keysOf(s) }));
+  const shots = seq.map((s, k) => ({ move: s.move, startView: s.startView, durationS: s.durationS, f0: ranges[k].start, f1: ranges[k].end, t0: ranges[k].start / fps, ...keysOf(s), ...(s.cam ? { cam: s.cam } : {}) }));
   if (seq.length === 1) return { ...makeShot({ move: seq[0].move, durationS: seq[0].durationS, fps }), reel: { shots } };
   return { v: 1, durationS: totalDuration(seq), fps, loop: false, ease: "linear", model: { spinTurns: 0 }, cam: null, shot: { move: "sequence" }, reel: { shots } };
 }
@@ -189,6 +201,8 @@ export const sequenceToSession = (seq) =>
     startView: s.startView,
     durationS: s.durationS,
     ...(s.frameOn === "start" ? { frameOn: "start" } : {}),
+    ...(s.title ? { title: { text: s.title.text, pos: s.title.pos } } : {}),
+    ...(s.cam ? { cam: { keys: s.cam.keys.map((k) => ({ t: k.t, position: [...k.position], target: [...k.target] })) } } : {}),
     ...(Array.isArray(s.keys) && s.keys.length ? { keys: keysToSession(s.keys) } : {}),
     ...(Array.isArray(s.cycles) && s.cycles.length ? { cycles: cyclesToSession(s.cycles) } : {}),
   }));
@@ -200,10 +214,13 @@ export function sequenceFromSession(raw) {
   const out = [];
   let total = 0;
   for (const s of raw) {
-    if (!isShot(s) || out.length >= MAX_SHOTS || total + s.durationS > MAX_TOTAL_S) continue;
+    // a bad title is dropped, not the shot (sessions saved before R1 have none)
+    if (!s || !isShot({ ...s, title: undefined, cam: undefined }) || out.length >= MAX_SHOTS || total + s.durationS > MAX_TOTAL_S) continue;
+    const title = normTitle(s.title);
     const keys = sanitizeKeys(s.keys);
     const cycles = sanitizeCycles(s.cycles);
-    out.push({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}), ...(keys ? { keys } : {}), ...(cycles ? { cycles } : {}) });
+    const cam = sanitizeCam(s.cam);
+    out.push({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}), ...(title ? { title } : {}), ...(keys ? { keys } : {}), ...(cycles ? { cycles } : {}), ...(cam ? { cam } : {}) });
     total += s.durationS;
   }
   return out.length ? done(out).seq : null;

@@ -16,6 +16,7 @@ import {
   LightingPanel,
 } from "./InspectorRail";
 import { setLightSlot } from "./lightSlot";
+import LookPanel from "./LookPanel";
 import { hydrateRuntimeAssets, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { slotRef } from "./slots";
 
@@ -186,6 +187,8 @@ const lightSlotRef = (el) => setLightSlot(el || null);
 export function LightBody() {
   return (
     <>
+      <LookPanel />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
       <LightingPanel />
       <div className="sos2-sheet-divider" aria-hidden="true" />
       <span className="sos2-sheet-subhead">Fine-tune</span>
@@ -207,3 +210,5 @@ export function PosterBody() {
 export function ReelBody() {
   return <AnimatePanel />;
 }
+
+export { default as OccasionBody } from "./OccasionSheet";

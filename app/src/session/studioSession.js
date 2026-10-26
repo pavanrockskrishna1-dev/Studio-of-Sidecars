@@ -14,10 +14,14 @@
    Slice P2: the props in the scene are saved as `props` (garage/propsSession.js)
    and put back by session/propsRestore.js; a session without `props` (saved
    before the props shelf) leaves the scene's props untouched, and Reset
-   removes them. */
+   removes them.
+   Slice R1: the Reel branding (logo, end card, handle) is saved as `branding`; a
+   session without it leaves the branding alone, and Reset turns it all off. The
+   per-shot titles ride in `reel`. */
 
 import * as materials from "../materials/store";
 import * as animationStore from "../animation/animationStore";
+import { brandingState } from "../poster/branding";
 import { cancelRestore, currentSessionProps, removeAllProps, restoreSessionProps } from "./propsRestore";
 
 const KEY = "sos-studio-session-v1";
@@ -52,6 +56,7 @@ export function saveSession(projectName) {
     engine: engine.snapshot(),
     materials: materials.snapshotOverrides(),
     reel: animationStore.sequenceForSession(),
+    branding: brandingState.forSession(),
     props: currentSessionProps(),
   };
   try {
@@ -89,6 +94,8 @@ export function restoreSession() {
   if (!snap || !engine) return null;
   engine.apply(snap.engine);
   if (snap.reel) animationStore.restoreSequence(snap.reel);
+  // Slice R1: a session saved before branding has none and leaves the state as it is
+  if (snap.branding) brandingState.restore(snap.branding, animationStore.getSnapshot().durationS);
   if (Array.isArray(snap.props)) restoreSessionProps(snap.engine.productId, snap.props);
   if (snap.materials) {
     whenMaterialsReady(snap.materials.modelKey, () => materials.restoreOverrides(snap.materials));
@@ -103,5 +110,6 @@ export function resetSession() {
   removeAllProps();
   materials.resetModel();
   animationStore.resetSequence();
+  brandingState.reset();
   return true;
 }

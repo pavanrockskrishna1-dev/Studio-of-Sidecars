@@ -107,6 +107,56 @@ export const ENVIRONMENTS = [
     file: "/environments/marble_luxury_showroom.jpg",
     mood: "marble · cove light · brass accents",
   },
+
+  // ── BBQ / Street-food environments (ASSETS PENDING) ──────────────────────
+  // For each entry below:
+  //   1. Download the HDR from the Poly Haven URL in the comment
+  //   2. Drop it into app/public/environments/
+  //   3. Run: python app/scripts/build-environment-derivatives.py
+  //      to generate the 1920px JPG derivative (the `file` path below)
+  // Until the JPG exists the environment will fail to load its backdrop
+  // (the HDR-based IBL lighting will still work once the .hdr file is present).
+
+  {
+    id: "bbq-sunset-terrace",
+    name: "BBQ Sunset Terrace",
+    label: "Sunset Terrace",
+    file: "/environments/bbq_sunset_terrace.jpg",
+    hdri: "/environments/sunflowers_puresky_2k.hdr",
+    mood: "outdoor sunset terrace · warm golden hour · long shadows",
+  },
+  {
+    id: "night-street-food-market",
+    name: "Night Street-Food Market",
+    label: "Night Market",
+    file: "/environments/night_street_food_market.jpg",
+    hdri: "/environments/blaubeuren_night_2k.hdr",
+    mood: "night market · warm neon glow · lanterns · street food atmosphere",
+  },
+  {
+    id: "park-festival-lawn",
+    name: "Park Festival Lawn",
+    label: "Festival Lawn",
+    file: "/environments/park_festival_lawn.jpg",
+    hdri: "/environments/meadow_2k.hdr",
+    mood: "bright overcast day · open park lawn · festival vibes",
+  },
+  {
+    id: "industrial-rooftop-bbq",
+    name: "Industrial Rooftop BBQ",
+    label: "Rooftop BBQ",
+    file: "/environments/industrial_rooftop_bbq.jpg",
+    hdri: "/environments/rooftop_night_2k.hdr",
+    mood: "urban rooftop · city skyline at dusk · industrial railings",
+  },
+  {
+    id: "beach-dusk",
+    name: "Beach at Dusk",
+    label: "Beach Dusk",
+    file: "/environments/beach_dusk.jpg",
+    hdri: "/environments/venice_sunset_2k.hdr",
+    mood: "beach at dusk · cool blue horizon · warm sand · last light",
+  },
 ];
 
 export const DEFAULT_ENVIRONMENT_ID = "propeller-pistons-loft";

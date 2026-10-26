@@ -8,5 +8,6 @@ export default defineConfig({
     // Dev-only: sandbox preview proxy reaches the dev server via a non-localhost
     // hostname. Safe to remove when running locally on your own machine.
     allowedHosts: true,
+    open: true,
   },
 })

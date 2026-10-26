@@ -35,6 +35,7 @@ import { frameTimeOf, isPartKey, keysByTarget, PRODUCT_TARGET, sampleKeys } from
 import { partDeltaMatrix, pivotPoint } from "./partKeys.js";
 import { makeTurntable, projectToPixels, REEL_SAFE_AREA, sampleAt } from "./path.js";
 import { cycleAxis, cycleDeltaMatrix, isCycle, isGroupCycle, rollAngle, rollAt, rollTable, wheelRadius } from "./reelCycles.js";
+import { reelTime } from "./reelTime.js";
 
 export const PLATFORM_TOLERANCE_PX = 40;
 
@@ -67,7 +68,25 @@ function partRecord(meshes, modelNode) {
 // Slice C3b: modelNode (the model root), frontAz (the product's front, for the
 // pivot names) and findParts(ids) -> the part meshes, or null if any is gone.
 // Slice C4a: findGroup(path) -> the meshes under a part group, or null.
-export function prepareKeyed({ anim, productId, productNode, findObject, restFit, modelNode = null, frontAz = 0, findParts = null, findGroup = null }) {
+// Riders: when the product itself is keyed, the transform group it moves also
+// holds every added object. Objects whose centre lies inside the product's box
+// (food on the grate, a rack hung on its side) ride along; every other added
+// object (a crab or barrel standing beside it) is held at its rest place in the
+// world, so a bike can ride into a static set.
+const _centre = new THREE.Vector3();
+function prepareAnchors(productNode, modelNode, objectsRoot) {
+  productNode.updateWorldMatrix(true, true);
+  const productBox = new THREE.Box3().setFromObject(modelNode || productNode).expandByScalar(0.02);
+  const out = [];
+  for (const anchor of objectsRoot.children) {
+    const box = new THREE.Box3().setFromObject(anchor);
+    if (box.isEmpty() || productBox.containsPoint(box.getCenter(_centre))) continue; // a rider
+    out.push({ ...recordNode(anchor), parentRest: anchor.parent.matrixWorld.clone() });
+  }
+  return out;
+}
+
+export function prepareKeyed({ anim, productId, productNode, findObject, restFit, modelNode = null, frontAz = 0, findParts = null, findGroup = null, objectsRoot = null }) {
   if ((!animHasKeys(anim) && !animHasCycles(anim)) || !productNode) return null;
   const lists = shotKeyLists(anim);
   const resolved = new Map();
@@ -111,6 +130,8 @@ export function prepareKeyed({ anim, productId, productNode, findObject, restFit
   // Slice C4a: the cycles (null without live cycles)
   keyed.cycles = animHasCycles(anim) ? prepareCycles({ anim, keyed, shotInfo, productId, productNode, findObject, modelNode, frontAz, findParts, findGroup }) : null;
   if (!targets.size && !keyed.cycles) return null;
+  keyed.productNode = productNode;
+  keyed.anchors = objectsRoot && perShot.some((g) => g[PRODUCT_TARGET]) ? prepareAnchors(productNode, modelNode, objectsRoot) : [];
   return keyed;
 }
 
@@ -238,6 +259,23 @@ const restoreRecord = (c) => (c.kind === "parts" ? c.parts.forEach(restoreOne) :
 export function restoreKeyed(keyed) {
   for (const c of keyed.targets.values()) restoreRecord(c);
   if (keyed.cycles) for (const r of keyed.cycles.rest) restoreOne(r); // Slice C4a
+  for (const r of keyed.anchors || []) restoreOne(r);
+  reelTime.active = false;
+}
+
+// Non-riders keep their rest WORLD pose under the moved product group:
+// local' = parentNow^-1 * parentRest * local (local = their key/cycle pose, or rest).
+const _pa = new THREE.Matrix4();
+const _pb = new THREE.Matrix4();
+function holdAnchors(keyed) {
+  keyed.productNode.updateWorldMatrix(true, true);
+  for (const r of keyed.anchors) {
+    const n = r.node;
+    n.updateMatrix();
+    _pa.copy(n.parent.matrixWorld).invert().multiply(r.parentRest);
+    _pb.multiplyMatrices(_pa, n.matrix);
+    _pb.decompose(n.position, n.quaternion, n.scale);
+  }
 }
 
 // Slice C3b: a part group's relative pose, about its pivot, in the model frame:
@@ -257,6 +295,10 @@ function applyParts(c, keys, pose, frontAz) {
 
 export function applyKeyed(keyed, shotIndex, t) {
   const g = keyed.perShot[shotIndex] || {};
+  reelTime.active = true;
+  reelTime.shot = shotIndex;
+  reelTime.t = t;
+  for (const r of keyed.anchors || []) restoreOne(r); // keys and cycles below may re-pose them
   for (const [target, c] of keyed.targets) {
     const pose = g[target] ? sampleKeys(g[target], t) : null;
     if (!pose) {
@@ -272,6 +314,7 @@ export function applyKeyed(keyed, shotIndex, t) {
     c.node.scale.fromArray(pose.scale);
   }
   if (keyed.cycles) applyCycles(keyed.cycles, shotIndex, t); // Slice C4a: on top of the keys
+  if (keyed.anchors && keyed.anchors.length) holdAnchors(keyed);
 }
 
 const poseMatrix = (pose) =>
