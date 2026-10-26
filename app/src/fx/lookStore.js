@@ -19,8 +19,9 @@ export const LOOK_RANGES = Object.freeze({
   vignette: [0, 0.8],
   warmth: [-1, 1],
   sharpen: [0, 1],
+  focusBlur: [0, 1],
 });
-const NEUTRAL = { exposure: 1, contrast: 1, saturation: 1, bloom: 0, vignette: 0, warmth: 0, sharpen: 0 };
+const NEUTRAL = { exposure: 1, contrast: 1, saturation: 1, bloom: 0, vignette: 0, warmth: 0, sharpen: 0, focusBlur: 0 };
 
 const KEY = "sos.look.v1";
 const lowMemory = typeof navigator !== "undefined" && navigator.deviceMemory && navigator.deviceMemory <= 4;
@@ -69,7 +70,8 @@ export const isLookActive = (s = state) => s.preset !== "off";
 export function setLookPreset(id) {
   if (!LOOK_IDS.includes(id)) return;
   const p = LOOK_PRESETS[id];
-  const params = id === "off" ? { ...state.params } : Object.fromEntries(Object.keys(NEUTRAL).map((k) => [k, p[k]]));
+  // a preset sets its own values; focus blur is the user's and carries over
+  const params = id === "off" ? { ...state.params } : { ...Object.fromEntries(Object.keys(NEUTRAL).map((k) => [k, p[k] ?? NEUTRAL[k]])), focusBlur: state.params.focusBlur ?? 0 };
   set({ ...state, preset: id, params });
 }
 

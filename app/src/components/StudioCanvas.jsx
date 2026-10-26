@@ -18,6 +18,8 @@ import * as stageLook from "../fx/stageLook";
 import { recordPlaced } from "../garage/placedPoses";
 import * as placeMode from "../garage/placeMode";
 import { hasCamKeys, sampleCam } from "../animation/cameraKeys";
+import EffectsLayer from "../fx/EffectsLayer";
+import * as effectsStore from "../fx/effectsStore";
 import { createLook } from "../fx/exportLook";
 import * as lookStore from "../fx/lookStore";
 import LidAnimator from "../fx/LidAnimator";
@@ -942,10 +944,15 @@ function StudioStage({
   const smooth = lookState.smooth;
   const viewSize = useThree((s) => s.size);
   const viewDpr = useThree((s) => s.viewport.dpr);
+  // focus blur: keep sharp whatever the camera is looking at (the orbit target)
+  const focusDistance = useCallback(() => {
+    const t = controlsRef.current?.target;
+    return t ? camera.position.distanceTo(t) : 5;
+  }, [camera]);
   useEffect(() => {
     if (!gl || !scene || !camera || !lookOn) return;
     const buf = gl.getDrawingBufferSize(new THREE.Vector2());
-    const look = createLook(gl, scene, camera, Math.max(2, buf.x), Math.max(2, buf.y), lookStore.getSnapshot().params, { smooth });
+    const look = createLook(gl, scene, camera, Math.max(2, buf.x), Math.max(2, buf.y), lookStore.getSnapshot().params, { smooth, getFocus: focusDistance });
     composerRef.current = look;
     return () => {
       composerRef.current = null;
@@ -1602,7 +1609,7 @@ function StudioStage({
       setCameraProjection(camera, { aspect: w / h });
       // With a Look on, frames get exactly the live view's finish, at full quality
       const ls = lookStore.getSnapshot();
-      if (lookStore.isLookActive(ls)) run.post = createLook(gl, scene, camera, w, h, ls.params);
+      if (lookStore.isLookActive(ls)) run.post = createLook(gl, scene, camera, w, h, ls.params, { getFocus: focusDistance });
       // The video path always renders the studio background: it ignores
       // exportOpts.background and never writes it.
       return true;
@@ -3758,6 +3765,12 @@ function StudioStage({
           placeMode.stopPlacing("Click on the ground to place the prop.");
           return;
         }
+        if (placing.startsWith("fx:")) {
+          // an effect lives in world space, on the ground where it was clicked
+          const r = effectsStore.addEffect(placing.slice(3), hit.toArray());
+          placeMode.stopPlacing(r.message);
+          return;
+        }
         root.updateWorldMatrix(true, false);
         const local = root.worldToLocal(hit.clone());
         placeMode.stopPlacing("Placing…");
@@ -3958,6 +3971,7 @@ function StudioStage({
             a fresh reference every render, so React would silently re-apply
             it (and stomp the live pivot centre) on any unrelated re-render. */}
         <OccasionFog />
+        <EffectsLayer />
         <group ref={pivotRef}>
           <group ref={pivotOffsetRef}>
             <primitive object={modelScene} />

@@ -1666,6 +1666,7 @@ button.sos-pchip[data-testid="ui-camera-lock"]:disabled {
 /* Garage quick placement: label, slider and value on one row */
 .sos-field.sos-slider-field { display: grid; grid-template-columns: 78px minmax(0, 1fr) 52px; align-items: center; gap: 8px; }
 .sos-field.sos-slider-field input[type="range"] { padding: 0; border: 0; background: none; accent-color: #f97316; }
+.sos-field.sos-slider-field.sos-fx-row { grid-template-columns: 96px minmax(0, 1fr) auto; }
 .sos-slider-value { font-size: 10.5px; text-align: right; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, 0.75); }
 .sos-lib-tools { display: flex; flex-direction: column; gap: 5px; margin-bottom: 6px; }
 .sos-search::placeholder { color: rgba(255, 255, 255, 0.35); }

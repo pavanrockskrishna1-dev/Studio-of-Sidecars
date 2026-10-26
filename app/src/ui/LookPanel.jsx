@@ -11,6 +11,7 @@ const SLIDERS = [
   { key: "warmth", label: "Warmth", step: 0.01, fmt: (v) => (v === 0 ? "neutral" : v > 0 ? `warm ${Math.round(v * 100)}` : `cool ${Math.round(-v * 100)}`) },
   { key: "vignette", label: "Vignette", step: 0.01, fmt: (v) => v.toFixed(2) },
   { key: "sharpen", label: "Sharpness", step: 0.01, fmt: (v) => v.toFixed(2) },
+  { key: "focusBlur", label: "Focus blur", step: 0.01, fmt: (v) => (v > 0 ? v.toFixed(2) : "off") },
 ];
 
 export default function LookPanel() {
@@ -60,6 +61,9 @@ export default function LookPanel() {
         );
       })}
       {!on ? <p className="sos2-look-hint">Pick a preset to start; the sliders then fine-tune it.</p> : null}
+      {s.params.focusBlur > 0 && s.smooth ? (
+        <p className="sos2-look-hint">Focus blur shows in the exported video. Smooth mode skips it while you edit; turn Smooth mode off to preview it.</p>
+      ) : null}
 
       <div className="sos2-sheet-divider" aria-hidden="true" />
       <label className="sos2-look-toggle">

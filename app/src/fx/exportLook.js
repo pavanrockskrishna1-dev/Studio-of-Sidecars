@@ -4,6 +4,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { BokehPass } from "three/examples/jsm/postprocessing/BokehPass.js";
 import { warmthTint } from "./lookStore";
 
 /* The Look engine: ONE finish shared by the live view and the Reel export, so
@@ -55,13 +56,18 @@ const LookShader = {
 };
 
 // { render(), setParams(params), dispose() } drawing the look onto the canvas
-// at w x h. params: lookStore params. opts.smooth: the cheaper live variant.
-export function createLook(gl, scene, camera, w, h, params, { smooth = false } = {}) {
+// at w x h. params: lookStore params. opts.smooth: the cheaper live variant
+// (no focus blur: it renders the scene's depth a second time).
+// opts.getFocus(): metres from the camera to what it looks at (focus blur).
+export function createLook(gl, scene, camera, w, h, params, { smooth = false, getFocus = null } = {}) {
   const target = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: smooth ? 0 : 4 });
   const composer = new EffectComposer(gl, target);
   composer.setPixelRatio(1);
   composer.setSize(w, h);
   composer.addPass(new RenderPass(scene, camera));
+  // focus blur: sharp where the camera looks, softer in front and behind
+  const bokeh = smooth ? null : new BokehPass(scene, camera, { focus: 5, aperture: 0, maxblur: 0 });
+  if (bokeh) composer.addPass(bokeh);
   const bloomRes = smooth ? new THREE.Vector2(w / 2, h / 2) : new THREE.Vector2(w, h);
   const bloom = new UnrealBloomPass(bloomRes, params.bloom, BLOOM_RADIUS, BLOOM_THRESHOLD);
   composer.addPass(bloom);
@@ -81,12 +87,25 @@ export function createLook(gl, scene, camera, w, h, params, { smooth = false } =
     grade.uniforms.tint.value.fromArray(warmthTint(p.warmth));
     grade.uniforms.vignette.value = p.vignette;
     grade.uniforms.sharpen.value = p.sharpen;
+    if (bokeh) {
+      const b = p.focusBlur ?? 0;
+      bokeh.enabled = b > 0.001;
+      bokeh.uniforms.aperture.value = 0.004 * b;
+      bokeh.uniforms.maxblur.value = 0.012 * b;
+    }
   };
   setParams(params);
 
   return {
     render() {
       gl.toneMappingExposure = exposure;
+      if (bokeh && bokeh.enabled) {
+        // the Reel changes the camera's aspect and far plane between shots
+        bokeh.uniforms.aspect.value = camera.aspect;
+        bokeh.uniforms.nearClip.value = camera.near;
+        bokeh.uniforms.farClip.value = camera.far;
+        if (getFocus) bokeh.uniforms.focus.value = Math.max(0.2, getFocus());
+      }
       composer.render();
     },
     setParams,

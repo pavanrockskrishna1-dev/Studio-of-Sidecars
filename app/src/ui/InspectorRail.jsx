@@ -28,6 +28,7 @@ import * as sceneObjects from "../garage/sceneObjects";
 import * as gizmo from "../garage/gizmo";
 import { placedPose } from "../garage/placedPoses";
 import * as placeMode from "../garage/placeMode";
+import * as effectsStore from "../fx/effectsStore";
 import CameraDirector from "./CameraDirector";
 import { hasCamKeys } from "../animation/cameraKeys";
 import { PROPS } from "../products/props";
@@ -1033,6 +1034,62 @@ function GaragePropShelf({ busy, propCount }) {
   );
 }
 
+// Effects shelf: 3D effects placed like props (click one, click the ground).
+function GarageEffectsShelf({ busy }) {
+  const place = useSyncExternalStore(placeMode.subscribe, placeMode.getSnapshot, placeMode.getSnapshot);
+  const { effects } = useSyncExternalStore(effectsStore.subscribe, effectsStore.getSnapshot, effectsStore.getSnapshot);
+  const counts = {};
+  return (
+    <>
+      <span className="sos-label">
+        Effects · {effects.length} / {effectsStore.MAX_EFFECTS}
+      </span>
+      <div className="sos-shelf">
+        {Object.entries(effectsStore.EFFECT_TYPES).map(([type, info]) => {
+          const id = `fx:${type}`;
+          return (
+            <button
+              key={type}
+              type="button"
+              className="sos-pchip"
+              data-on={place.assetId === id || undefined}
+              aria-pressed={place.assetId === id}
+              disabled={busy || effects.length >= effectsStore.MAX_EFFECTS}
+              title={`${info.label}: ${info.hint}. Click it, then click the ground.`}
+              onClick={() => (place.assetId === id ? placeMode.stopPlacing("") : placeMode.startPlacing(id))}
+            >
+              {info.label}
+            </button>
+          );
+        })}
+      </div>
+      {effects.map((e) => {
+        counts[e.type] = (counts[e.type] || 0) + 1;
+        const name = `${effectsStore.EFFECT_TYPES[e.type].label} ${counts[e.type]}`;
+        return (
+          <div key={e.id} className="sos-field sos-slider-field sos-fx-row">
+            <em>{name}</em>
+            <input
+              type="range"
+              id={`fx-size-${e.id}`}
+              aria-label={`${name} size`}
+              min={0.25}
+              max={4}
+              step={0.05}
+              value={e.size}
+              disabled={busy}
+              onChange={(ev) => effectsStore.setEffectSize(e.id, Number(ev.target.value))}
+            />
+            <button type="button" className="sos-btn sos-btn-ghost" disabled={busy} title={`Remove ${name}`} onClick={() => effectsStore.removeEffect(e.id)}>
+              Remove
+            </button>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 // Garage G7a — "Add object" (a built-in product or an imported asset from
 // the Asset Library, both listed in the live PRODUCTS registry), the running
 // triangle counter (Decision 2) and one row per added object (select / remove).
@@ -1315,6 +1372,7 @@ function GarageSection({ pickMode, garageState, busy }) {
   return (
     <>
       <GaragePropShelf busy={busy} propCount={propCount} />
+      <GarageEffectsShelf busy={busy} />
       <span className="sos-label">Parts</span>
       <div className="sos-frow">
         <button
