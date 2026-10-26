@@ -1,5 +1,9 @@
 # ☕🔥 Premium GLB Commercial Studio — Handoff
 
+> **New session? Read `NEXT_SESSION.md` first.** It covers the latest work (occasion
+> sets, Look, set builder, camera director, effects, projects), the owner's rules and
+> the feature queue. This file is the long history.
+
 ## Start here (updated through Phase 16B Slice E3, the Cessna swap, the Phase 17A audit, the Garage design and slices G1-G8 (G7 in two parts, G7a and G7b) and G11 (3D gizmo), the Cleanup slice (G9, the export lock, the backdrop gate, the Coffee Bike chip fix, scale max 100), Garage M0 (real size and the measure tool), the THE KOP MAIN product, and the move of the Blender working files out of the repo; HEAD `2a6cd74`, "M0: measure and real size (sizes, calibration, file-in-metres, cm/in, measure tool)"; all work through M0 is committed; this HANDOFF.md edit itself is uncommitted until the owner commits it)
 
 - **What the app is:** the canonical app is the React 19 / Vite / three.js
