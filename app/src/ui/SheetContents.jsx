@@ -7,6 +7,7 @@ import MaterialsManager from "./MaterialsManager";
 import AssetPreview from "./AssetPreview";
 import PropsShelf from "./PropsShelf";
 import PosterPanel from "./PosterPanel";
+import PosterMakerPanel from "./PosterMakerPanel";
 import {
   AnimatePanel,
   CameraFraming,
@@ -17,6 +18,7 @@ import {
 } from "./InspectorRail";
 import { setLightSlot } from "./lightSlot";
 import LookPanel from "./LookPanel";
+import StagePanel from "./StagePanel";
 import ProjectsPanel from "./ProjectsPanel";
 import { hydrateRuntimeAssets, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { slotRef } from "./slots";
@@ -190,6 +192,8 @@ const lightSlotRef = (el) => setLightSlot(el || null);
 export function LightBody() {
   return (
     <>
+      <StagePanel />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
       <LookPanel />
       <div className="sos2-sheet-divider" aria-hidden="true" />
       <LightingPanel />
@@ -208,6 +212,13 @@ export function GarageBody() {
 // PosterPanel.jsx), so nothing here - and no sheet ancestor - can contain it.
 export function PosterBody() {
   return <PosterPanel />;
+}
+
+// Poster Maker — a one-click high-res PNG export of the live view, separate
+// from the branding Poster overlay above (logo/end-card settings for the
+// Reel/Capture export). See ui/PosterMakerPanel.jsx.
+export function PosterMakerBody() {
+  return <PosterMakerPanel />;
 }
 
 export function ReelBody() {

@@ -1621,6 +1621,17 @@ button.sos-pchip[data-testid="ui-camera-lock"]:disabled {
   border-radius: 8px; padding: 5px 8px; width: 100%;
 }
 .sos-meta-actions { display: flex; gap: 6px; justify-content: flex-end; }
+/* Light sheet → Stage */
+.sos2-stage { display: flex; flex-direction: column; gap: 8px; }
+.sos2-ground-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sos2-ground-chip {
+  font: inherit; font-size: 11.5px; padding: 4px 10px 4px 6px; border-radius: 999px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  color: rgba(255, 255, 255, 0.85); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.sos2-ground-chip[aria-pressed="true"] { color: #fdba74; background: rgba(249, 115, 22, 0.16); border-color: rgba(249, 115, 22, 0.6); }
+.sos2-ground-swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.25); flex: none; }
+
 /* Light sheet → Look */
 .sos2-look { display: flex; flex-direction: column; gap: 8px; }
 .sos2-look-hint { margin: 0; font-size: 11px; line-height: 1.45; color: var(--sos-text-2, #8b93a4); }

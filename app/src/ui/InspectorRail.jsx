@@ -29,6 +29,7 @@ import * as gizmo from "../garage/gizmo";
 import { placedPose } from "../garage/placedPoses";
 import * as placeMode from "../garage/placeMode";
 import * as effectsStore from "../fx/effectsStore";
+import * as lightsStore from "../fx/lightsStore";
 import CameraDirector from "./CameraDirector";
 import { hasCamKeys } from "../animation/cameraKeys";
 import { PROPS } from "../products/props";
@@ -1222,6 +1223,98 @@ function GarageObjectsSection({ garageState, busy }) {
   );
 }
 
+// Placeable Lights — add/remove coloured point, spot and area lights (up to
+// MAX_LIGHTS), each with a colour swatch and an intensity slider. Dragging
+// one into position happens in the view, with its own small gizmo
+// (StudioCanvas's light-drag effect); this section only adds, edits and
+// removes.
+function GarageLightsSection({ busy }) {
+  const { lights } = useSyncExternalStore(lightsStore.subscribe, lightsStore.getSnapshot, lightsStore.getSnapshot);
+  const counts = {};
+  return (
+    <>
+      <span className="sos-label">
+        Lights · {lights.length} / {lightsStore.MAX_LIGHTS}
+      </span>
+      <div className="sos-frow">
+        {Object.entries(lightsStore.LIGHT_TYPES).map(([type, info]) => (
+          <button
+            key={type}
+            type="button"
+            className="sos-pchip"
+            data-testid={`ui-lights-add-${type}`}
+            disabled={busy || lights.length >= lightsStore.MAX_LIGHTS}
+            title={`${info.label}: ${info.hint}`}
+            onClick={() => lightsStore.addLight(type)}
+          >
+            + {info.label}
+          </button>
+        ))}
+      </div>
+      {lights.length === 0 ? (
+        <p className="sos-hint">
+          <span>No lights placed (up to {lightsStore.MAX_LIGHTS}).</span>
+        </p>
+      ) : (
+        lights.map((l) => {
+          counts[l.type] = (counts[l.type] || 0) + 1;
+          const name = `${lightsStore.LIGHT_TYPES[l.type].label} ${counts[l.type]}`;
+          return (
+            <div key={l.id} className="sos-frow" data-testid="ui-lights-row">
+              <span className="sos-mat-color-row">
+                <input
+                  type="color"
+                  aria-label={`${name} colour`}
+                  data-testid={`ui-lights-color-${l.id}`}
+                  disabled={busy}
+                  value={l.color}
+                  onChange={(e) => lightsStore.setLightColor(l.id, e.target.value)}
+                />
+              </span>
+              <div className="sos-field sos-slider-field sos-fx-row">
+                <em>{name}</em>
+                <input
+                  type="range"
+                  aria-label={`${name} intensity`}
+                  min={0.1}
+                  max={5}
+                  step={0.1}
+                  value={l.intensity}
+                  disabled={busy}
+                  onChange={(e) => lightsStore.setLightIntensity(l.id, Number(e.target.value))}
+                />
+                <button
+                  type="button"
+                  className="sos-btn sos-btn-ghost"
+                  data-testid={`ui-lights-remove-${l.id}`}
+                  disabled={busy}
+                  title={`Remove ${name}`}
+                  onClick={() => lightsStore.removeLight(l.id)}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          );
+        })
+      )}
+      {lights.length > 0 ? (
+        <button
+          type="button"
+          className="sos-btn sos-btn-ghost"
+          data-testid="ui-lights-clear"
+          disabled={busy}
+          title="Remove every placed light"
+          onClick={lightsStore.clearLights}
+        >
+          Clear all
+        </button>
+      ) : null}
+      <Hint>Drag a placed light in the view to move it, the same way a placed prop moves.</Hint>
+    </>
+  );
+}
+
 // Garage G11 — the 3D gizmo's settings: Move / Rotate / Scale, World / Local
 // axes and Snap (0.05 m, 15 degrees, 0.1). The gizmo itself lives in the
 // stage; these only write the gizmo settings store it follows.
@@ -1481,6 +1574,7 @@ function GarageSection({ pickMode, garageState, busy }) {
         <Hint>Select exactly one part to edit it.</Hint>
       )}
       <GarageObjectsSection garageState={garageState} busy={busy} />
+      <GarageLightsSection busy={busy} />
       <span className="sos-label">History</span>
       <div className="sos-frow">
         <button

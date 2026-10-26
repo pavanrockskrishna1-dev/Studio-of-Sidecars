@@ -26,6 +26,7 @@ import { PROPS, MAX_PROPS, isPropId } from "../src/products/props.js";
 import { EFFECT_TYPES, MAX_EFFECTS } from "../src/fx/effectsStore.js";
 import { LOOK_IDS } from "../src/fx/lookStore.js";
 import * as stageLook from "../src/fx/stageLook.js";
+import { GROUND_IDS, isGroundId } from "../src/fx/groundSurfaces.js";
 import { MAX_SHOTS, MAX_TOTAL_S, SHOT_DURATIONS, REEL_MOVES, REEL_START_VIEWS } from "../src/animation/reelSequence.js";
 import { MAX_KEYS_PER_SHOT, KEY_FPS } from "../src/animation/reelKeys.js";
 
@@ -64,9 +65,11 @@ for (const id of SET_IDS) {
   check(`${id}: has a name, emoji and blurb`, !!s.name && !!s.emoji && typeof s.blurb === "string" && s.blurb.length > 20);
 
   // stage and Look
-  stageLook.setStageLook(s.stage);
+  check(`${id}: stage "${s.stage}" is studio, night or day`, ["studio", "night", "day"].includes(s.stage));
+  stageLook.setStageLook(s.stage, s.ground);
   check(`${id}: stage look "${s.stage}" is a real stage`, stageLook.getSnapshot().look === s.stage);
   check(`${id}: Look preset "${s.look}" is a real preset`, LOOK_IDS.includes(s.look), LOOK_IDS.join(" "));
+  if (s.ground !== undefined) check(`${id}: ground "${s.ground}" is a real ground surface`, isGroundId(s.ground), GROUND_IDS.join(" "));
 
   // props
   check(`${id}: at most ${MAX_SET_PROPS} props`, s.props.length <= MAX_SET_PROPS, `${s.props.length} props`);

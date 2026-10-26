@@ -14,14 +14,17 @@ import BatBurst from "../fx/BatBurst";
 import OccasionFog from "../fx/OccasionFog";
 import { reelFraming } from "../animation/reelFraming";
 import NightStage from "../fx/NightStage";
+import DayStage from "../fx/DayStage";
 import * as stageLook from "../fx/stageLook";
 import { recordPlaced } from "../garage/placedPoses";
 import * as placeMode from "../garage/placeMode";
 import { hasCamKeys, sampleCam } from "../animation/cameraKeys";
 import EffectsLayer from "../fx/EffectsLayer";
 import * as effectsStore from "../fx/effectsStore";
+import PlacedLights from "../fx/PlacedLights";
 import { createLook } from "../fx/exportLook";
 import * as lookStore from "../fx/lookStore";
+import { posterCapture, registerPosterApi } from "../utils/posterCapture";
 import LidAnimator from "../fx/LidAnimator";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -739,6 +742,32 @@ function CaptureBridge({ captureRef, reelViewRef }) {
   return null;
 }
 
+// Poster Maker (utils/posterCapture.js) — registers { gl, scene, camera }
+// through posterApiRef so the Poster Maker panel (a sibling UI tree, not a
+// child of the Canvas) can trigger a capture. The gizmo/outline/ring/measure
+// overlays are hidden for the capture only, exactly like CaptureBridge above;
+// every Garage edit is refused while it runs, for the same reason.
+function PosterBridge() {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    const capture = ({ format, quality }) => {
+      const hidden = [];
+      for (const name of EXPORT_HIDDEN_NAMES) {
+        const obj = scene.getObjectByName(name);
+        if (obj) {
+          hidden.push([obj, obj.visible]);
+          obj.visible = false;
+        }
+      }
+      return posterCapture({ gl, scene, camera, format, quality }).finally(() => {
+        for (const [obj, wasVisible] of hidden) obj.visible = wasVisible;
+      });
+    };
+    return registerPosterApi({ capture: (opts) => withExportLock(garageStore, () => capture(opts)) });
+  }, [gl, scene, camera]);
+  return null;
+}
+
 // Imperative renderer configuration lives in module-level helpers: three.js
 // mutates these objects by design (shadow map flags, tone-mapping exposure,
 // mesh shadow flags), so the writes happen away from React render scope.
@@ -1076,9 +1105,11 @@ function StudioStage({
   // ("Loading backdrop..."); an environment with no photo is ready at once; a
   // failed load warns and lets exports run without it. An environment or
   // product switch (this effect's cleanup) re-engages the gate.
-  // The "night" stage look paints its own sky (NightStage): no backdrop photo.
-  const look = useSyncExternalStore(stageLook.subscribe, stageLook.getSnapshot, stageLook.getSnapshot).look;
-  const backdropFile = look === "night" ? null : environment.file;
+  // The "night" and "day" stage looks paint their own sky (NightStage,
+  // DayStage): no backdrop photo.
+  const stageLookSnap = useSyncExternalStore(stageLook.subscribe, stageLook.getSnapshot, stageLook.getSnapshot);
+  const look = stageLookSnap.look;
+  const backdropFile = stageLook.isOutdoor(look) ? null : environment.file;
   useEffect(() => {
     let disposed = false;
     let texture = null;
@@ -1637,8 +1668,8 @@ function StudioStage({
       const centreArr = lf.center.toArray();
       let pose = null;
       const env = environmentRef.current;
-      // the night stage has no backdrop photo, so no painted platform to stand on
-      if (needsCoverCrop(aspect) && env && env.platform && stageLook.getSnapshot().look !== "night") {
+      // the night and day stages have no backdrop photo, so no painted platform to stand on
+      if (needsCoverCrop(aspect) && env && env.platform && !stageLook.isOutdoor(stageLook.getSnapshot().look)) {
         const imageAspect = backdropImageAspect(scene);
         const frame = imageAspect ? photoToFrame(env.platform, imageAspect, aspect) : null;
         if (frame) {
@@ -3861,8 +3892,9 @@ function StudioStage({
       {/* Lighting Foundation — the original three-light setup, now live-driven:
           key from front-above (casts the ground shadow), warm fill from the
           opposite side, cool rim from behind, plus the ambient base. */}
-      {look === "night" && <NightStage floorY={fit.floorY} center={liveFit.center} />}
-      {look !== "night" && (
+      {look === "night" && <NightStage floorY={fit.floorY} center={liveFit.center} ground={stageLookSnap.ground} />}
+      {look === "day" && <DayStage floorY={fit.floorY} center={liveFit.center} ground={stageLookSnap.ground} />}
+      {!stageLook.isOutdoor(look) && (
       <>
       <ambientLight intensity={lighting.ambient} />
       <directionalLight
@@ -3893,6 +3925,11 @@ function StudioStage({
       </>
       )}
 
+      {/* Placeable Lights (fx/lightsStore.js, fx/PlacedLights.jsx): coloured
+          point/spot/area lights the owner drags into position, alongside this
+          fixed studio rig but toggled and removed independently of it. */}
+      <PlacedLights controlsRef={controlsRef} />
+
       {/* Floor anchored to the model's actual base (was hardcoded at y=-1.2).
           Hidden while a photographic environment is active — its backdrop
           already contains the circular display platform. Garage G5: the
@@ -3904,7 +3941,7 @@ function StudioStage({
           whenever fit.floorY is finite, i.e. always — fit.floorY is used here
           directly so that invariant can never drift). */}
       <mesh
-        visible={!environment.file && look !== "night"}
+        visible={!environment.file && !stageLook.isOutdoor(look)}
         rotation={[-Math.PI / 2, 0, 0]}
         position={[liveFit.center.x, fit.floorY, liveFit.center.z]}
       >
@@ -4138,6 +4175,7 @@ export default function StudioCanvas({
           />
         </Suspense>
         <CaptureBridge captureRef={captureRef} reelViewRef={reelViewRef} />
+        <PosterBridge />
       </Canvas>
       {selection && (
         <SelectionInspector

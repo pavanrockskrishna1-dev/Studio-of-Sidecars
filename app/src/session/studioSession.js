@@ -31,19 +31,26 @@ import * as stageLook from "../fx/stageLook";
 import { reelFraming, setReelFraming } from "../animation/reelFraming";
 import * as lookStore from "../fx/lookStore";
 import * as effectsStore from "../fx/effectsStore";
+import * as lightsStore from "../fx/lightsStore";
 
 /* Projects: the set's finish beyond the engine - occasion and its caption, the
-   stage look, Reel framing, the Look and the placed 3D effects. A snapshot
-   saved before these existed has no `set` and leaves them as they are. */
+   stage look (and, for Night/Day, its ground surface), Reel framing, the Look
+   and the placed 3D effects. A snapshot saved before these existed has no
+   `set` and leaves them as they are; one saved before Day stage / ground
+   surfaces existed has `stageLook` but no `ground`, and setStageLook falls
+   back to that stage's own default (groundSurfaces.js DEFAULT_GROUND). */
 function setForSession() {
   const lt = lowerThird.getSnapshot();
+  const sl = stageLook.getSnapshot();
   return {
     occasionId: occasionStore.getSnapshot().occasionId,
     lowerThird: { enabled: lt.enabled, title: lt.title, subtitle: lt.subtitle },
-    stageLook: stageLook.getSnapshot().look,
+    stageLook: sl.look,
+    ground: sl.ground,
     reelFraming: reelFraming.mode,
     look: lookStore.lookForSession(),
     effects: effectsStore.effectsForSession(),
+    lights: lightsStore.lightsForSession(),
   };
 }
 
@@ -58,10 +65,11 @@ function applySet(s) {
     lowerThird.setContent(String(s.lowerThird.title ?? ""), String(s.lowerThird.subtitle ?? ""));
     lowerThird.setEnabled(!!s.lowerThird.enabled);
   }
-  if (s.stageLook) stageLook.setStageLook(s.stageLook);
+  if (s.stageLook) stageLook.setStageLook(s.stageLook, s.ground);
   if (s.reelFraming) setReelFraming(s.reelFraming);
   if (s.look) lookStore.restoreLook(s.look);
   if (Array.isArray(s.effects)) effectsStore.loadEffects(s.effects);
+  if (Array.isArray(s.lights)) lightsStore.loadLights(s.lights);
 }
 
 function resetSet() {
@@ -71,6 +79,7 @@ function resetSet() {
   stageLook.setStageLook("studio");
   setReelFraming("scene");
   effectsStore.clearEffects();
+  lightsStore.clearLights();
 }
 
 const KEY = "sos-studio-session-v1";

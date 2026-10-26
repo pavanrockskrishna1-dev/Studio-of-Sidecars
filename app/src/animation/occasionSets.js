@@ -34,10 +34,11 @@ export async function buildOccasionSet(occasionId, { productId, onProgress = () 
   const warnings = [];
   const shots = set.shots || DEFAULT_SHOTS;
 
-  // 0. The set's stage (the night stage has its own sky, ground, mist and
-  // moonlight; no backdrop photo) and its Look, with Reels framed on the bike
-  // rather than on the whole set.
-  setStageLook(set.stage);
+  // 0. The set's stage (the night and day stages each have their own sky,
+  // ground and lights; no backdrop photo) and its Look, with Reels framed on
+  // the bike rather than on the whole set. `ground` is optional - left out,
+  // the stage keeps/falls back to its own default ground surface.
+  setStageLook(set.stage, set.ground);
   setReelFraming("product");
   setLookPreset(set.look);
 

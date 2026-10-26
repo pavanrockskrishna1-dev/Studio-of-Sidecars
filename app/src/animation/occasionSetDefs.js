@@ -4,7 +4,11 @@
 
    One entry per occasion id in animation/occasionDefs.js (except "none"):
      name, emoji, blurb  what the Occasions sheet shows on the button
-     stage               fx/stageLook.js: "night" (its own sky/ground/moon) or "studio"
+     stage               fx/stageLook.js: "night" (its own sky/ground/moon),
+                         "day" (its own sky/ground/sun) or "studio"
+     ground              optional fx/groundSurfaces.js surface id for a
+                         night/day stage; left out keeps/falls back to that
+                         stage's own default (soil for night, grass for day)
      look                fx/lookStore.js preset: moonlit | sunset | studio
      props               [assetId, x, y, z, turnDeg, scale] - at most MAX_SET_PROPS.
                          Coordinates are the stage's model frame (metres, Y up, the
@@ -131,7 +135,7 @@ export const OCCASION_SETS = Object.freeze({
   },
 
   holi: {
-    name: "Holi Colours", emoji: "🌈", stage: "studio", look: "studio",
+    name: "Holi Colours", emoji: "🌈", stage: "day", ground: "grass", look: "studio",
     blurb: "Bright daylight: the bike rides out of a cloud of colour powder, past a food table and a half barrel, and shakes the colour off.",
     props: [
       ["prop-bbqsmith-barrel-table", -1.9, 0, 1.3, 0, 0.9],
@@ -187,7 +191,7 @@ export const OCCASION_SETS = Object.freeze({
   },
 
   republic: {
-    name: "Republic Day", emoji: "🇮🇳", stage: "studio", look: "studio",
+    name: "Republic Day", emoji: "🇮🇳", stage: "day", ground: "cobblestone", look: "studio",
     blurb: "Clean daylight, proudly plain: the smoker to one side, one laid table, BBQ letters, and saffron-white-green confetti over the whole stage.",
     props: [
       ["prop-bbqsmith-smoker-wagon", -2.5, 0, -1.3, 35, 1.2],

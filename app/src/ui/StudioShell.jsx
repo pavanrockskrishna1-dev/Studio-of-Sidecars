@@ -15,6 +15,7 @@ import {
   CaptureBody,
   GarageBody,
   PosterBody,
+  PosterMakerBody,
   ReelBody,
   OccasionBody,
 } from "./SheetContents";
@@ -63,6 +64,7 @@ const SHEETS = {
   garage: { title: "Garage", icon: "frame", tall: true },
   poster: { title: "Poster", icon: "swatch", tall: true },
   reel: { title: "Reel", icon: "film", tall: true },
+  posterMaker: { title: "Poster Maker", icon: "render" },
   occasions: { title: "Occasions", icon: "occasions", tall: true },
   save: { title: "Save", icon: "save" },
   capture: { title: "Capture", icon: "aperture" },
@@ -161,6 +163,8 @@ export default function StudioShell() {
         return <PosterBody />;
       case "reel":
         return <ReelBody />;
+      case "posterMaker":
+        return <PosterMakerBody />;
       case "occasions":
         return <OccasionBody />;
       case "save":

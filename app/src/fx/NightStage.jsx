@@ -3,11 +3,14 @@ import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import * as lookStore from "./lookStore";
 import * as animation from "../animation/animationStore";
+import GroundSurface from "./GroundSurface";
 
-// The "night" stage look: its own sky, a wide soil ground the props stand on
-// (it takes their shadows), cold moonlight from behind, a soft key on the
-// product. No backdrop photo or HDRI. The moon itself is drawn by the occasion
-// overlay (live and in the Reel export), so it is not repeated here.
+// The "night" stage look: its own sky, a wide ground the props stand on (it
+// takes their shadows; the selectable surface - soil by default - is the
+// same GroundSurface the Day stage uses), cold moonlight from behind, a soft
+// key on the product. No backdrop photo or HDRI. The moon itself is drawn by
+// the occasion overlay (live and in the Reel export), so it is not repeated
+// here.
 
 function skyTexture() {
   const c = document.createElement("canvas");
@@ -26,26 +29,27 @@ function skyTexture() {
   return t;
 }
 
-export default function NightStage({ floorY = 0, center }) {
+export default function NightStage({ floorY = 0, center, ground = "soil" }) {
   const scene = useThree((s) => s.scene);
   const sky = useMemo(skyTexture, []);
-  const ground = useMemo(() => new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.88, metalness: 0 }), []);
 
   useEffect(() => {
     const prevBg = scene.background;
     const prevEnv = scene.environmentIntensity;
+    const prevFog = scene.fog;
     scene.background = sky;
     scene.environmentIntensity = 0.12; // the studio's HDRI/probe barely reaches a night set
+    // a dark, short fog fades the ground and far props into the night sky
+    // near the edge of the ground disc, so its texture tiling is never obvious
+    scene.fog = new THREE.Fog(0x0a1230, 16, 40);
     return () => {
       if (scene.background === sky) scene.background = prevBg;
       scene.environmentIntensity = prevEnv ?? 1;
+      scene.fog = prevFog ?? null;
     };
   }, [scene, sky]);
 
-  useEffect(() => () => {
-    sky.dispose();
-    ground.dispose();
-  }, [sky, ground]);
+  useEffect(() => () => sky.dispose(), [sky]);
 
   // Smooth mode: a 1024 moon shadow map while editing; exports always get 2048.
   const smooth = useSyncExternalStore(lookStore.subscribe, lookStore.getSnapshot, lookStore.getSnapshot).smooth;
@@ -88,9 +92,7 @@ export default function NightStage({ floorY = 0, center }) {
       <directionalLight position={[cx + 5, floorY + 4, cz - 6]} intensity={1.8} color={0xa8c0ff} />
       <directionalLight position={[cx - 4, floorY + 3, cz + 6]} intensity={0.9} color={0x6a80d8} />
       <directionalLight position={[cx + 4, floorY + 4, cz + 5]} intensity={1.8} color={0xd6dcff} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[cx, floorY - 0.001, cz]} receiveShadow material={ground}>
-        <circleGeometry args={[40, 96]} />
-      </mesh>
+      <GroundSurface surface={ground} floorY={floorY} center={center} radius={40} />
     </>
   );
 }
