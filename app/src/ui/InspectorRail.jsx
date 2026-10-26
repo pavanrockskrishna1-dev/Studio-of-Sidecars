@@ -43,6 +43,7 @@ import { checkExportSupport, exportReel, exportShotSequence, saveBlob } from "..
 import { exportPng } from "./engineCapture";
 import PosterPanel from "./PosterPanel";
 import AiScenePanel from "./AiScenePanel.jsx";
+import ReelTemplates from "./ReelTemplates.jsx";
 import * as shotStore from "../animation/shotStore";
 import * as lowerThirdStore from "../animation/lowerThirdStore.js";
 import { shotStatus } from "../animation/shotStore";
@@ -2992,6 +2993,7 @@ export function AnimatePanel() {
                 ? "Spins the model about its own centre; the camera stays put. Loops."
                 : `${seq.length === 1 ? "One shot" : `${seq.length} shots with hard cuts`}, ${total} s, each easing in and out. The camera returns to your view afterwards.`}
       </Hint>
+      <ReelTemplates busy={animBusy} onApplied={() => setSelected(0)} />
       <ReelSection id="shots" title="Shots" summary={`${seq.length} of 5 · ${total} s`}>
         <div className="sos-reel-sec">
           <div className="sos-reel-head">

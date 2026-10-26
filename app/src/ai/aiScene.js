@@ -5,6 +5,7 @@ import * as occasionStore from "../animation/occasionStore.js";
 import * as gradeStore from "../fx/gradeStore.js";
 import * as effectsStore from "../fx/effectsStore.js";
 import * as garageStore from "../garage/garageStore.js";
+import * as garageMode from "../garage/garageMode.js";
 import * as stageLook from "../fx/stageLook.js";
 import * as lookStore from "../fx/lookStore.js";
 import * as animationStore from "../animation/animationStore.js";
@@ -157,9 +158,20 @@ export async function buildScene(prompt, apiKey, context = {}) {
       }
     }
 
+    // Clear any existing non-primary items so each build starts fresh and
+    // doesn't accumulate phantom props that cause slow loading later.
+    const existingLayout = garageStore.getLayout();
+    if (existingLayout) {
+      for (const item of existingLayout.items.slice()) {
+        if (!item.primary) garageStore.removeItem(item.itemId);
+      }
+    }
+
     const placedItems = [];
     let propsPlaced = 0;
-    if (Array.isArray(config.props)) {
+    const stageApi = garageMode.apiRef.current;
+    const floorY = stageApi && typeof stageApi.getFloorY === "function" ? stageApi.getFloorY() : 0;
+    if (Array.isArray(config.props) && stageApi && typeof stageApi.addObject === "function") {
       for (const prop of config.props.slice(0, 6)) {
         if (!prop || !prop.assetId || !isPropId(prop.assetId)) {
           placedItems.push(null);
@@ -167,10 +179,9 @@ export async function buildScene(prompt, apiKey, context = {}) {
         }
         const pos = Array.isArray(prop.position) ? prop.position : [0, 0, 0];
         const rot = Array.isArray(prop.rotation) ? prop.rotation : [0, 0, 0];
-        const r = garageStore.addItem({
-          assetId: prop.assetId,
+        const r = await stageApi.addObject(prop.assetId, {
           transform: {
-            x: pos[0] ?? 0, y: pos[1] ?? 0, z: pos[2] ?? 0,
+            x: pos[0] ?? 0, y: floorY + (pos[1] ?? 0), z: pos[2] ?? 0,
             rx: rot[0] ?? 0, ry: rot[1] ?? 0, rz: rot[2] ?? 0,
             s: prop.scale ?? 1,
           },
