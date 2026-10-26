@@ -6,6 +6,7 @@ import AssetGrid from "./AssetLibrary";
 import MaterialsManager from "./MaterialsManager";
 import AssetPreview from "./AssetPreview";
 import PropsShelf from "./PropsShelf";
+import PropGroupShelf from "./PropGroupShelf";
 import PosterPanel from "./PosterPanel";
 import PosterMakerPanel from "./PosterMakerPanel";
 import {
@@ -87,6 +88,8 @@ export function CreatorBody({ selection, onSelect }) {
           {group.kind === "product" ? <BbqReference /> : null}
           {group.kind === "product" ? (
             <>
+              <div className="sos2-sheet-divider" aria-hidden="true" />
+              <PropGroupShelf />
               <div className="sos2-sheet-divider" aria-hidden="true" />
               <span className="sos2-sheet-subhead">Props</span>
               <PropsShelf />

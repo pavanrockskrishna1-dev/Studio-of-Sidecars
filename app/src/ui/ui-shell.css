@@ -3653,3 +3653,38 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
 }
 .sos2-mood-icon { font-size: 16px; flex-shrink: 0; }
 .sos2-mood-name { line-height: 1.2; }
+
+/* Prop group shelf */
+.sos2-propgroup-loading { font-size: 10px; font-weight: 400; color: var(--sos2-text-2); margin-left: 6px; }
+.sos2-propgroup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 6px;
+}
+.sos2-propgroup-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--sos2-line);
+  background: transparent;
+  color: var(--sos2-text);
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.sos2-propgroup-chip:hover:not(:disabled) {
+  background: var(--sos2-brass);
+  border-color: var(--sos2-brass-ink);
+  color: var(--sos2-brass-ink);
+}
+.sos2-propgroup-chip:disabled { opacity: 0.5; cursor: default; }
+.sos2-propgroup-icon { font-size: 20px; }
+.sos2-propgroup-name { font-size: 11px; font-weight: 600; }
+.sos2-propgroup-count { font-size: 9px; color: var(--sos2-text-2); }
+.sos2-propgroup-clear { border-style: dashed; }
+.sos2-propgroup-clear:hover:not(:disabled) { background: rgba(220,60,60,0.12); border-color: rgba(220,60,60,0.5); color: inherit; }
