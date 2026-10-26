@@ -1009,7 +1009,7 @@ function GaragePropShelf({ busy, propCount }) {
               <button
                 key={p.id}
                 type="button"
-                className="sos-pchip"
+                className="sos-pchip sos-pthumb"
                 data-testid={`ui-garage-shelf-${p.id}`}
                 data-on={place.assetId === p.id || undefined}
                 aria-pressed={place.assetId === p.id}
@@ -1017,7 +1017,14 @@ function GaragePropShelf({ busy, propCount }) {
                 title={`Place "${p.name}": click it, then click the ground`}
                 onClick={() => (place.assetId === p.id ? placeMode.stopPlacing("") : placeMode.startPlacing(p.id))}
               >
-                {p.name}
+                {p.thumbUrl ? (
+                  <img className="sos-pthumb-img" src={p.thumbUrl} alt="" loading="lazy" draggable={false} />
+                ) : (
+                  <span className="sos-pthumb-img sos-pthumb-none" aria-hidden="true">
+                    {p.name.slice(0, 1)}
+                  </span>
+                )}
+                <span className="sos-pthumb-name">{p.name}</span>
               </button>
             ))}
           </div>
