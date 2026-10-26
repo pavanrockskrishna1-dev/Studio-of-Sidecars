@@ -23,6 +23,55 @@ import * as materials from "../materials/store";
 import * as animationStore from "../animation/animationStore";
 import { brandingState } from "../poster/branding";
 import { cancelRestore, currentSessionProps, removeAllProps, restoreSessionProps } from "./propsRestore";
+import * as occasionStore from "../animation/occasionStore";
+import { getOccasion } from "../animation/occasionDefs";
+import * as lowerThird from "../animation/lowerThirdStore";
+import { setGrade } from "../fx/gradeStore";
+import * as stageLook from "../fx/stageLook";
+import { reelFraming, setReelFraming } from "../animation/reelFraming";
+import * as lookStore from "../fx/lookStore";
+import * as effectsStore from "../fx/effectsStore";
+
+/* Projects: the set's finish beyond the engine - occasion and its caption, the
+   stage look, Reel framing, the Look and the placed 3D effects. A snapshot
+   saved before these existed has no `set` and leaves them as they are. */
+function setForSession() {
+  const lt = lowerThird.getSnapshot();
+  return {
+    occasionId: occasionStore.getSnapshot().occasionId,
+    lowerThird: { enabled: lt.enabled, title: lt.title, subtitle: lt.subtitle },
+    stageLook: stageLook.getSnapshot().look,
+    reelFraming: reelFraming.mode,
+    look: lookStore.lookForSession(),
+    effects: effectsStore.effectsForSession(),
+  };
+}
+
+function applySet(s) {
+  if (!s || typeof s !== "object") return;
+  if (typeof s.occasionId === "string") {
+    const occ = getOccasion(s.occasionId);
+    occasionStore.setOccasion(occ.id);
+    setGrade(occ.grade);
+  }
+  if (s.lowerThird) {
+    lowerThird.setContent(String(s.lowerThird.title ?? ""), String(s.lowerThird.subtitle ?? ""));
+    lowerThird.setEnabled(!!s.lowerThird.enabled);
+  }
+  if (s.stageLook) stageLook.setStageLook(s.stageLook);
+  if (s.reelFraming) setReelFraming(s.reelFraming);
+  if (s.look) lookStore.restoreLook(s.look);
+  if (Array.isArray(s.effects)) effectsStore.loadEffects(s.effects);
+}
+
+function resetSet() {
+  occasionStore.setOccasion("none");
+  setGrade("raw");
+  lowerThird.setEnabled(false);
+  stageLook.setStageLook("studio");
+  setReelFraming("scene");
+  effectsStore.clearEffects();
+}
 
 const KEY = "sos-studio-session-v1";
 const VERSION = 1;
@@ -46,10 +95,10 @@ export function readSavedSession() {
   }
 }
 
-/** @param {string|null} projectName the user's override (null = follow asset name) */
-export function saveSession(projectName) {
-  if (!engine) return { ok: false };
-  const snap = {
+/** The whole studio as plain data (null while the engine is not mounted). */
+export function buildSnapshot(projectName) {
+  if (!engine) return null;
+  return {
     version: VERSION,
     savedAt: Date.now(),
     projectName,
@@ -58,7 +107,14 @@ export function saveSession(projectName) {
     reel: animationStore.sequenceForSession(),
     branding: brandingState.forSession(),
     props: currentSessionProps(),
+    set: setForSession(),
   };
+}
+
+/** @param {string|null} projectName the user's override (null = follow asset name) */
+export function saveSession(projectName) {
+  const snap = buildSnapshot(projectName);
+  if (!snap) return { ok: false };
   try {
     localStorage.setItem(KEY, JSON.stringify(snap));
   } catch {
@@ -90,9 +146,14 @@ function whenMaterialsReady(modelKey, fn, timeoutMs = 20000) {
 
 /** @returns the applied snapshot (so the caller can restore the project name), or null */
 export function restoreSession() {
-  const snap = readSavedSession();
-  if (!snap || !engine) return null;
+  return applySnapshot(readSavedSession());
+}
+
+/** Puts the studio into a snapshot (the saved session or a project). */
+export function applySnapshot(snap) {
+  if (!snap || snap.version !== VERSION || !snap.engine || !engine) return null;
   engine.apply(snap.engine);
+  if (snap.set) applySet(snap.set);
   if (snap.reel) animationStore.restoreSequence(snap.reel);
   // Slice R1: a session saved before branding has none and leaves the state as it is
   if (snap.branding) brandingState.restore(snap.branding, animationStore.getSnapshot().durationS);
@@ -111,5 +172,6 @@ export function resetSession() {
   materials.resetModel();
   animationStore.resetSequence();
   brandingState.reset();
+  resetSet();
   return true;
 }

@@ -17,6 +17,7 @@ import {
 } from "./InspectorRail";
 import { setLightSlot } from "./lightSlot";
 import LookPanel from "./LookPanel";
+import ProjectsPanel from "./ProjectsPanel";
 import { hydrateRuntimeAssets, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { slotRef } from "./slots";
 
@@ -167,6 +168,8 @@ export function SaveBody({ session }) {
       <p className="sos2-note" role="status" aria-live="polite" data-testid="ui2-session-status">
         {session.flash ? `Session ${session.flash}` : "Saved on this device only — not an export."}
       </p>
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <ProjectsPanel session={session} />
     </>
   );
 }

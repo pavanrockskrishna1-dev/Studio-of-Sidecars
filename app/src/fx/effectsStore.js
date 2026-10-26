@@ -36,3 +36,16 @@ export const removeEffect = (id) => set(state.effects.filter((e) => e.id !== id)
 export const setEffectSize = (id, size) =>
   set(state.effects.map((e) => (e.id === id ? { ...e, size: Math.min(4, Math.max(0.25, size)) } : e)));
 export const clearEffects = () => set([]);
+
+// projects: the placed effects as plain data, and back (bad entries dropped)
+export const effectsForSession = () => state.effects.map(({ type, position, size }) => ({ type, position: [...position], size }));
+export function loadEffects(list) {
+  if (!Array.isArray(list)) return;
+  const ok = (v) => Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
+  set(
+    list
+      .filter((e) => e && EFFECT_TYPES[e.type] && ok(e.position))
+      .slice(0, MAX_EFFECTS)
+      .map((e) => ({ id: `fx${nextId++}`, type: e.type, position: e.position.slice(0, 3), size: Math.min(4, Math.max(0.25, Number(e.size) || 1)) }))
+  );
+}

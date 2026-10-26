@@ -82,6 +82,19 @@ export function setLookParam(key, value) {
   set({ ...state, preset: "custom", params: { ...state.params, [key]: Math.min(hi, Math.max(lo, value)) } });
 }
 
+// projects: the look (not Smooth mode, which belongs to this laptop)
+export const lookForSession = () => ({ preset: state.preset, params: { ...state.params } });
+export function restoreLook(saved) {
+  if (!saved || typeof saved !== "object") return;
+  const preset = LOOK_IDS.includes(saved.preset) || saved.preset === "custom" ? saved.preset : "off";
+  const params = { ...NEUTRAL };
+  for (const k of Object.keys(LOOK_RANGES)) {
+    const v = saved.params?.[k];
+    if (typeof v === "number" && Number.isFinite(v)) params[k] = Math.min(LOOK_RANGES[k][1], Math.max(LOOK_RANGES[k][0], v));
+  }
+  set({ ...state, preset, params });
+}
+
 export function setSmooth(on) {
   if (!!on === state.smooth) return;
   set({ ...state, smooth: !!on });

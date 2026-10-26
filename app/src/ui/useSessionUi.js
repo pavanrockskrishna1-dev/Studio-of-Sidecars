@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { readSavedSession, restoreSession, resetSession, saveSession } from "../session/studioSession";
+import { detachCurrent } from "../session/projects";
 
 /* ==========================================================================
    Slice U1, Stage B1 — Save sheet state (new file, UI ONLY)
@@ -41,6 +42,7 @@ export default function useSessionUi(assetName) {
     if (!window.confirm("Reset the entire studio session? Camera, lighting, environment, materials, transforms and viewer controls return to their defaults, and the Reel shots go back to one Orbit shot (3/4, 8 s).")) return;
     if (resetSession()) {
       setNameOverride(null);
+      detachCurrent(); // a fresh set: the next project save makes a new one
       setFlash("reset");
     }
   };
