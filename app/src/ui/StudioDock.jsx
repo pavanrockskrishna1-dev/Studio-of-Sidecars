@@ -29,6 +29,7 @@ const TOOLS = [
   { id: "posterMaker", label: "Poster Maker", icon: "render" },
   { id: "animate", label: "Animate", icon: "motion" },
   { id: "occasions", label: "Occasions", icon: "occasions" },
+  { id: "ai", label: "AI Builder", icon: "star" },
 ];
 
 export default function StudioDock({ openIds = [], onSelect, idle }) {

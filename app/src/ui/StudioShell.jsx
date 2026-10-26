@@ -19,6 +19,7 @@ import {
   ReelBody,
   OccasionBody,
 } from "./SheetContents";
+import AiScenePanel from "./AiScenePanel.jsx";
 import OccasionParticles from "./OccasionParticles";
 import OccasionBackground from "./OccasionBackground";
 import PlaceBanner from "./PlaceBanner";
@@ -66,6 +67,7 @@ const SHEETS = {
   reel: { title: "Reel", icon: "film", tall: true },
   posterMaker: { title: "Poster Maker", icon: "render" },
   occasions: { title: "Occasions", icon: "occasions", tall: true },
+  ai: { title: "AI Builder", icon: "star" },
   save: { title: "Save", icon: "save" },
   capture: { title: "Capture", icon: "aperture" },
 };
@@ -167,6 +169,8 @@ export default function StudioShell() {
         return <PosterMakerBody />;
       case "occasions":
         return <OccasionBody />;
+      case "ai":
+        return <AiScenePanel />;
       case "save":
         return <SaveBody session={session} />;
       case "capture":
