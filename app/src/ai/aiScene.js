@@ -64,7 +64,10 @@ export async function buildScene(prompt, apiKey) {
       body: JSON.stringify({
         model: "qwen/qwen3.8-27b",
         max_tokens: 1024,
-        messages: [{ role: "user", content: buildPrompt(prompt) }],
+        messages: [
+          { role: "system", content: "You are a JSON-only API. Output only a single valid JSON object. No markdown, no prose, no thinking tags." },
+          { role: "user", content: buildPrompt(prompt) },
+        ],
       }),
     });
 
@@ -74,8 +77,11 @@ export async function buildScene(prompt, apiKey) {
     }
 
     const data = await res.json();
-    const text = data?.choices?.[0]?.message?.content;
+    let text = data?.choices?.[0]?.message?.content;
     if (typeof text !== "string") throw new Error("Unexpected response format from API.");
+
+    // Strip Qwen3 thinking blocks before parsing
+    text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
     let config;
     try {
