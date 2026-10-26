@@ -203,6 +203,7 @@ function cleanItem(raw, index, warnings) {
     assetId: cap(assetId, LAYOUT_LIMITS.MAX_ID),
     primary: false,
     hidden: own(raw, "hidden") === true,
+    locked: own(raw, "locked") === true,
     transform: cleanTransform(own(raw, "transform"), warnAt),
     splits: [],
     parts: {},

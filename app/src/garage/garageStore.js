@@ -502,11 +502,12 @@ export function createGarageStore() {
     for (const o of objects) {
       if (!isObj(o) || typeof o.assetId !== "string" || o.assetId === "" || !isObj(o.transform)) return fail("bad-input");
       if (o.hidden !== undefined && typeof o.hidden !== "boolean") return fail("bad-input");
+      if (o.locked !== undefined && typeof o.locked !== "boolean") return fail("bad-input");
       const t = pickTransform(o.transform);
       if (!t) return fail("bad-input");
       while (used.has(`i${n}`)) n += 1;
       used.add(`i${n}`);
-      rawItems.push({ itemId: `i${n}`, assetId: o.assetId, transform: t, hidden: o.hidden === true });
+      rawItems.push({ itemId: `i${n}`, assetId: o.assetId, transform: t, hidden: o.hidden === true, locked: o.locked === true });
     }
     const v = validateLayout({ version: 1, name: "x", items: rawItems });
     if (!v.ok || v.layout.items.length !== rawItems.length) return fail("invalid");
@@ -537,6 +538,7 @@ export function createGarageStore() {
   function setItemTransform(itemId, transform) {
     const p = prep(itemId);
     if (p.err) return p.err;
+    if (p.item.locked) return fail("item-locked");
     if (!isObj(transform)) return fail("bad-input");
     const given = pickTransform(transform);
     if (!given) return fail("bad-input");
@@ -554,6 +556,16 @@ export function createGarageStore() {
     if (typeof hidden !== "boolean") return fail("bad-input");
     if (p.item.hidden === hidden) return noop();
     commit(withItem(p.idx, { ...p.item, hidden }), { type: "item", itemId: p.item.itemId });
+    return { ok: true, changed: true, revision };
+  }
+
+  function setItemLocked(itemId, locked) {
+    const p = prep(itemId);
+    if (p.err) return p.err;
+    if (p.item.primary) return fail("not-primary");
+    if (typeof locked !== "boolean") return fail("bad-input");
+    if (p.item.locked === locked) return noop();
+    commit(withItem(p.idx, { ...p.item, locked }), { type: "item", itemId: p.item.itemId });
     return { ok: true, changed: true, revision };
   }
 
@@ -581,7 +593,7 @@ export function createGarageStore() {
     const v = validateLayout({
       version: 1,
       name: "x",
-      items: [{ itemId, assetId: spec.assetId, primary: true, transform: given, hidden: spec.hidden === true }],
+      items: [{ itemId, assetId: spec.assetId, primary: true, transform: given, hidden: spec.hidden === true, locked: spec.locked === true }],
     });
     if (!v.ok) return fail("invalid");
     const item = deepFreeze({ ...v.layout.items[0], primary: false });
@@ -594,6 +606,7 @@ export function createGarageStore() {
     const p = prep(itemId);
     if (p.err) return p.err;
     if (p.item.primary) return fail("not-primary");
+    if (p.item.locked) return fail("item-locked");
     const items = Object.freeze(layout.items.filter((i) => i !== p.item));
     const frontRef = layout.frontRef === itemId ? items[0].itemId : layout.frontRef;
     const kept = selection.filter((e) => e.itemId !== itemId);
@@ -692,6 +705,7 @@ export function createGarageStore() {
     loadLayoutItems: command(loadLayoutItems),
     setItemTransform: command(setItemTransform),
     setItemHidden: command(setItemHidden),
+    setItemLocked: command(setItemLocked),
     addItem: command(addItem),
     removeItem: command(removeItem),
     setFrontRef: command(setFrontRef),
@@ -712,7 +726,7 @@ const defaultStore = createGarageStore();
 export const {
   subscribe, getSnapshot, apiRef, registerApi, setLocked,
   startLayout, loadLayout, loadLayoutJson, getLayout, exportJson, markSaved,
-  setPartOverride, resetPart, loadPartsOverrides, loadLayoutItems, setItemTransform, setItemHidden,
+  setPartOverride, resetPart, loadPartsOverrides, loadLayoutItems, setItemTransform, setItemHidden, setItemLocked,
   addItem, removeItem, setFrontRef,
   select, toggle, clearSelection,
   beginGesture, endGesture, cancelGesture, undo, redo,

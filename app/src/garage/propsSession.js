@@ -26,6 +26,7 @@ export function propsForSession(layout) {
       assetId: i.assetId,
       transform: Object.fromEntries(TRANSFORM_KEYS.map((k) => [k, i.transform[k]])),
       hidden: i.hidden === true,
+      locked: i.locked === true,
     }));
 }
 
@@ -49,6 +50,7 @@ export function parseSessionProps(raw) {
       assetId: e.assetId,
       transform: Object.fromEntries(TRANSFORM_KEYS.map((k) => [k, t[k]])),
       hidden: e.hidden === true,
+      locked: e.locked === true,
     });
   }
   return out;

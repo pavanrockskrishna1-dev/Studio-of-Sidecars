@@ -114,7 +114,7 @@ const randPatch = (R) => {
   // The default (singleton) instance and its named exports.
   const names = [
     "subscribe", "getSnapshot", "registerApi", "setLocked", "startLayout", "loadLayout", "loadLayoutJson", "getLayout", "exportJson",
-    "markSaved", "setPartOverride", "resetPart", "setItemTransform", "setItemHidden", "addItem", "removeItem", "setFrontRef",
+    "markSaved", "setPartOverride", "resetPart", "setItemTransform", "setItemHidden", "setItemLocked", "addItem", "removeItem", "setFrontRef",
     "select", "toggle", "clearSelection", "beginGesture", "endGesture", "cancelGesture", "undo", "redo",
   ];
   check("singleton exports every function", names.every((n) => typeof defaultStore[n] === "function"));
@@ -807,6 +807,32 @@ const randPatch = (R) => {
   check("garageStore.js uses LF line endings", !src.includes("\r"));
   const me = readFileSync(join(HERE, "test-garage-store.mjs"), "utf8");
   check("test-garage-store.mjs uses LF line endings", !me.includes("\r"));
+}
+
+/* ===================== 11b. item lock (lock props) ===================== */
+{
+  const s = fresh();
+  s.addItem({ assetId: "b" });
+  const l1 = s.setItemLocked("i1", true);
+  check("setItemLocked locks an added item", l1.ok && l1.changed && s.getLayout().items[1].locked === true);
+  check("setItemLocked rejects bad input, unknown items and the primary item",
+    s.setItemLocked("i1", "x").reason === "bad-input" && s.setItemLocked("zz", true).reason === "unknown-item" && s.setItemLocked("i0", true).reason === "not-primary");
+  const before = J(s.getLayout().items[1].transform);
+  check("a locked item refuses setItemTransform and nothing changes", s.setItemTransform("i1", { x: 2 }).reason === "item-locked" && J(s.getLayout().items[1].transform) === before);
+  check("a locked item refuses removeItem and stays", s.removeItem("i1").reason === "item-locked" && s.getLayout().items.length === 2);
+  check("a locked item can still be hidden and selected", s.setItemHidden("i1", true).ok && s.select([{ itemId: "i1", partId: "object~0" }]).ok);
+  s.undo();
+  s.undo();
+  check("undo of a lock unlocks", s.getLayout().items[1].locked === false);
+  s.redo();
+  check("redo of a lock locks again", s.getLayout().items[1].locked === true);
+  s.setItemLocked("i1", false);
+  check("unlocking allows moving and removing again", s.setItemTransform("i1", { x: 2 }).ok && s.removeItem("i1").ok);
+  const r = fresh();
+  const lr = r.loadLayoutItems("i0", {}, [{ assetId: "b", transform: { x: 1 }, locked: true }, { assetId: "c", transform: {} }]);
+  const items = r.getLayout().items;
+  check("loadLayoutItems keeps locked: true and defaults to unlocked", lr.ok && items[1].locked === true && items[2].locked === false, J(lr));
+  check("loadLayoutItems rejects a non-boolean locked", r.loadLayoutItems("i0", {}, [{ assetId: "b", transform: {}, locked: "yes" }]).reason === "bad-input");
 }
 
 /* ============================ 12. summary ============================ */

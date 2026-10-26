@@ -60,6 +60,7 @@ export function restoreSessionProps(productId, raw, { timeoutMs = 20000 } = {}) 
             transform: p.transform,
             itemId: p.itemId,
             hidden: p.hidden,
+            locked: p.locked,
           });
           if (r && r.ok) restored += 1;
         }

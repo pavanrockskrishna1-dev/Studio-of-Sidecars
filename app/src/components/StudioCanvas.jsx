@@ -2811,6 +2811,7 @@ function StudioStage({
           transform,
           ...(opts.itemId ? { itemId: opts.itemId } : {}),
           ...(opts.hidden === true ? { hidden: true } : {}),
+          ...(opts.locked === true ? { locked: true } : {}),
         });
       } finally {
         pendingObjectRef.current = null;
@@ -3348,6 +3349,7 @@ function StudioStage({
                 assetId: i.assetId,
                 name: asset ? asset.name : i.assetId,
                 hidden: i.hidden === true,
+                locked: i.locked === true,
                 triangles: entry ? entry.triangles : null,
                 transform: { ...i.transform },
               };
@@ -3569,7 +3571,7 @@ function StudioStage({
       if (!entry || !entry.anchor.parent) return null;
       const layout = garageStore.getLayout();
       const item = layout ? layout.items.find((i) => i.itemId === t.itemId) : null;
-      if (!item || item.hidden === true) return null;
+      if (!item || item.hidden === true || item.locked === true) return null;
       return { ...t, obj: entry.anchor };
     };
 

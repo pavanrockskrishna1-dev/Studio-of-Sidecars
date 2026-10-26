@@ -1189,9 +1189,20 @@ function GarageObjectsSection({ garageState, busy }) {
               <button
                 type="button"
                 className="sos-btn sos-btn-ghost"
-                data-testid="ui-garage-object-remove"
+                data-testid="ui-garage-object-lock"
+                aria-pressed={o.locked === true}
                 disabled={busy}
-                title={`Remove "${o.name}" (one undo step)`}
+                title={o.locked ? `Unlock "${o.name}"` : `Lock "${o.name}": it can't be moved or removed`}
+                onClick={() => garageStore.setItemLocked(o.itemId, !o.locked)}
+              >
+                {o.locked ? "Locked" : "Lock"}
+              </button>
+              <button
+                type="button"
+                className="sos-btn sos-btn-ghost"
+                data-testid="ui-garage-object-remove"
+                disabled={busy || o.locked === true}
+                title={o.locked ? `"${o.name}" is locked. Unlock it to remove it` : `Remove "${o.name}" (one undo step)`}
                 onClick={() => remove(o)}
               >
                 Remove
