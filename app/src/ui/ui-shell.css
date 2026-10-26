@@ -3688,3 +3688,23 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
 .sos2-propgroup-count { font-size: 9px; color: var(--sos2-text-2); }
 .sos2-propgroup-clear { border-style: dashed; }
 .sos2-propgroup-clear:hover:not(:disabled) { background: rgba(220,60,60,0.12); border-color: rgba(220,60,60,0.5); color: inherit; }
+
+/* Export format chips row */
+.sos-reel-export-formats { margin-bottom: 8px; gap: 4px; }
+
+/* Caption generator */
+.sos-reel-caption-box { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.sos-reel-caption-text {
+  width: 100%;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--sos2-line);
+  border-radius: 6px;
+  color: var(--sos2-text);
+  padding: 8px;
+  resize: none;
+  box-sizing: border-box;
+  cursor: pointer;
+}

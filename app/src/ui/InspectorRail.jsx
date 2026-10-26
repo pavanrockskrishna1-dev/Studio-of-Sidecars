@@ -40,6 +40,10 @@ import * as currentProduct from "../products/currentProduct";
 import { CAMERA_PRESETS } from "../camera/presets";
 import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { checkExportSupport, exportReel, exportShotSequence, saveBlob } from "../animation/exporter";
+import { generateCaption } from "../ai/captionGen.js";
+import * as occasionStore from "../animation/occasionStore.js";
+import * as stageLookStore from "../fx/stageLook.js";
+import * as lookStore from "../fx/lookStore.js";
 import { exportPng } from "./engineCapture";
 import PosterPanel from "./PosterPanel";
 import AiScenePanel from "./AiScenePanel.jsx";
@@ -2892,8 +2896,19 @@ export function AnimatePanel() {
   const gateBlocked = !exportsAllowed(gate);
   const animBusy = animState.mode !== "idle";
   const [useShotSeqExport, setUseShotSeqExport] = useState(false);
-  const handleExportClick = useCallback(async (shotSeq) => {
-    const r = await withExportLock(garageStore, () => shotSeq ? exportShotSequence() : exportReel());
+  const [reelFormat, setReelFormat] = useState("9:16");
+  const REEL_FORMAT_DIMS = Object.freeze({
+    "9:16": { w: 1080, h: 1920 },
+    "1:1":  { w: 1080, h: 1080 },
+    "4:5":  { w: 1080, h: 1350 },
+  });
+  const [caption, setCaption] = useState("");
+  const [captionBusy, setCaptionBusy] = useState(false);
+  const [captionError, setCaptionError] = useState("");
+  const handleExportClick = useCallback(async (shotSeq, w, h) => {
+    const r = await withExportLock(garageStore, () =>
+      shotSeq ? exportShotSequence() : exportReel({ width: w ?? 1080, height: h ?? 1920 })
+    );
     if (r.ok) saveBlob(r.blob, r.filename);
   }, []);
   const [hasCustomView, setHasCustomView] = useState(false);
@@ -2935,7 +2950,39 @@ export function AnimatePanel() {
   };
   const handleExport = async () => {
     if (blockedReason) return;
-    await handleExportClick(useShotSeqExport);
+    const dims = REEL_FORMAT_DIMS[reelFormat] ?? REEL_FORMAT_DIMS["9:16"];
+    await handleExportClick(useShotSeqExport, dims.w, dims.h);
+  };
+  const handleGenerateCaption = async () => {
+    const apiKey = (() => { try { return localStorage.getItem("sos_groq_key") || ""; } catch { return ""; } })();
+    if (!apiKey) { setCaptionError("Add your Groq key in the AI Builder first."); return; }
+    setCaptionBusy(true);
+    setCaptionError("");
+    try {
+      const stageLookState = stageLookStore.getSnapshot();
+      const lookState = lookStore.getSnapshot();
+      const occasionState = occasionStore.getSnapshot();
+      const snap = animationStore.getSnapshot();
+      const productId = currentProduct.getSnapshot();
+      const product = getProduct(productId);
+      const productName = product?.name ?? "BBQ Bike";
+      const layout = garageStore.getLayout();
+      const propCount = layout?.items?.filter((i) => !i.primary).length ?? 0;
+      const text = await generateCaption({
+        productName,
+        stageLook: stageLookState.look,
+        lookPreset: lookState.preset,
+        occasion: occasionState.occasionId,
+        propCount,
+        shotCount: snap.sequence?.length ?? 0,
+        apiKey,
+      });
+      setCaption(text);
+    } catch (e) {
+      setCaptionError(e.message ?? "Caption failed");
+    } finally {
+      setCaptionBusy(false);
+    }
   };
   const handleShotPlay = () => {
     if (shotSnap.status === shotStatus.PLAYING) return;
@@ -3252,6 +3299,21 @@ export function AnimatePanel() {
       </ReelSection>
       <ReelSection id="export" title="Export" summary={exportSummary}>
         <div className="sos-reel-sec">
+          <div className="sos-frow sos-reel-export-formats" role="group" aria-label="Export format">
+            {Object.keys(REEL_FORMAT_DIMS).map((fmt) => (
+              <button
+                key={fmt}
+                type="button"
+                className="sos-pchip"
+                data-on={reelFormat === fmt || undefined}
+                aria-pressed={reelFormat === fmt}
+                disabled={animExporting}
+                onClick={() => setReelFormat(fmt)}
+              >
+                {fmt}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             className="sos-btn sos-btn-ghost sos-rail-export"
@@ -3262,7 +3324,7 @@ export function AnimatePanel() {
                 ? "Exporting: Cancel is in the capsule at the top"
                 : gateBlocked
                   ? "Waiting for the environment backdrop to load"
-                  : `Render the Reel (${total} s) at 1080x1920 and save it as one MP4`
+                  : `Render the Reel (${total} s) at ${REEL_FORMAT_DIMS[reelFormat]?.w ?? 1080}×${REEL_FORMAT_DIMS[reelFormat]?.h ?? 1920} and save it as one MP4`
             }
             onClick={handleExport}
           >
@@ -3277,8 +3339,33 @@ export function AnimatePanel() {
                   ? `${exportSupport.reason} MP4 export needs a current Edge or Chrome on localhost or https.`
                   : animState.message
                     ? animState.message
-                    : "1080x1920 - 30 fps - silent. On this PC an export can take a while: keep this tab visible."}
+                    : `${REEL_FORMAT_DIMS[reelFormat]?.w ?? 1080}x${REEL_FORMAT_DIMS[reelFormat]?.h ?? 1920} - 30 fps - silent. On this PC an export can take a while: keep this tab visible.`}
           </Hint>
+          <div className="sos-reel-caption-box">
+            <button
+              type="button"
+              className="sos-btn sos-btn-ghost"
+              data-testid="ui-caption-gen"
+              disabled={captionBusy || animExporting}
+              onClick={handleGenerateCaption}
+            >
+              {captionBusy ? "Writing…" : "✦ Generate Caption"}
+            </button>
+            {captionError ? <p className="sos-reel-why" style={{ color: "var(--sos2-accent-err, #e05)" }}>{captionError}</p> : null}
+            {caption ? (
+              <>
+                <textarea
+                  className="sos-reel-caption-text"
+                  readOnly
+                  value={caption}
+                  rows={5}
+                  onClick={(e) => e.currentTarget.select()}
+                  title="Click to select all — then copy"
+                />
+                <p className="sos-reel-why">Click the box to select · then Ctrl+C to copy</p>
+              </>
+            ) : null}
+          </div>
         </div>
       </ReelSection>
     </div>
