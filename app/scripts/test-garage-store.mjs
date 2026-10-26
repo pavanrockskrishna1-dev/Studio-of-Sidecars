@@ -114,7 +114,7 @@ const randPatch = (R) => {
   // The default (singleton) instance and its named exports.
   const names = [
     "subscribe", "getSnapshot", "registerApi", "setLocked", "startLayout", "loadLayout", "loadLayoutJson", "getLayout", "exportJson",
-    "markSaved", "setPartOverride", "resetPart", "setItemTransform", "setItemHidden", "setItemLocked", "addItem", "removeItem", "setFrontRef",
+    "markSaved", "setPartOverride", "resetPart", "setItemTransform", "setItemHidden", "setItemLocked", "setItemAnimation", "addItem", "removeItem", "setFrontRef",
     "select", "toggle", "clearSelection", "beginGesture", "endGesture", "cancelGesture", "undo", "redo",
   ];
   check("singleton exports every function", names.every((n) => typeof defaultStore[n] === "function"));
@@ -833,6 +833,41 @@ const randPatch = (R) => {
   const items = r.getLayout().items;
   check("loadLayoutItems keeps locked: true and defaults to unlocked", lr.ok && items[1].locked === true && items[2].locked === false, J(lr));
   check("loadLayoutItems rejects a non-boolean locked", r.loadLayoutItems("i0", {}, [{ assetId: "b", transform: {}, locked: "yes" }]).reason === "bad-input");
+}
+
+/* ===================== 11c. animation clip ===================== */
+{
+  const s = fresh();
+  s.addItem({ assetId: "b" });
+  // default: no animationClip field
+  check("new item has no animationClip", !has(s.getLayout().items[1], "animationClip"));
+  const r1 = s.setItemAnimation("i1", "idle");
+  check("setItemAnimation sets animationClip", r1.ok && r1.changed && s.getLayout().items[1].animationClip === "idle");
+  const r2 = s.setItemAnimation("i1", "idle");
+  check("setItemAnimation same value is a no-op", r2.ok && r2.changed === false);
+  const r3 = s.setItemAnimation("i1", null);
+  check("setItemAnimation(null) removes animationClip", r3.ok && r3.changed && !has(s.getLayout().items[1], "animationClip"));
+  check("setItemAnimation null again is a no-op", s.setItemAnimation("i1", null).changed === false);
+  check("setItemAnimation rejects bad input", s.setItemAnimation("i1", "").reason === "bad-input" && s.setItemAnimation("i1", 42).reason === "bad-input");
+  check("setItemAnimation rejects unknown item and primary", s.setItemAnimation("zz", "run").reason === "unknown-item" && s.setItemAnimation("i0", "run").reason === "not-primary");
+  s.setItemAnimation("i1", "run");
+  s.undo();
+  check("undo of setItemAnimation restores previous state", !has(s.getLayout().items[1], "animationClip"));
+  s.redo();
+  check("redo of setItemAnimation re-applies", s.getLayout().items[1].animationClip === "run");
+  // addItem preserves animationClip
+  const ai = fresh();
+  ai.addItem({ assetId: "c", animationClip: "walk" });
+  check("addItem stores animationClip", ai.getLayout().items[1].animationClip === "walk");
+  ai.addItem({ assetId: "d", animationClip: "" });
+  check("addItem rejects empty string animationClip (treats as none)", !has(ai.getLayout().items[2], "animationClip"));
+  // loadLayoutItems passes animationClip through
+  const li = fresh();
+  const lr = li.loadLayoutItems("i0", {}, [
+    { assetId: "b", transform: {}, animationClip: "trot" },
+    { assetId: "c", transform: {} },
+  ]);
+  check("loadLayoutItems stores animationClip for items that have one", lr.ok && li.getLayout().items[1].animationClip === "trot" && !has(li.getLayout().items[2], "animationClip"), J(lr));
 }
 
 /* ============================ 12. summary ============================ */

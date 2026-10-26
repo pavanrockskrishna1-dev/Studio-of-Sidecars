@@ -493,7 +493,7 @@ function releaseObjectGpu(res) {
 // CENTRE: anchor (the item transform: metres, degrees XYZ, uniform scale) >
 // inner (moves the model's own local box so its bottom-centre sits at the
 // anchor's origin) > the parsed scene. Measured with bounds.js's own union.
-function makeObjectEntry(assetId, modelPath, scene, animations = []) {
+function makeObjectEntry(assetId, modelPath, scene, animations = [], clipName = null) {
   scene.updateMatrixWorld(true);
   const u = unionBounds(adaptObject3D(scene));
   if (!u) return null;
@@ -504,9 +504,16 @@ function makeObjectEntry(assetId, modelPath, scene, animations = []) {
   const anchor = new THREE.Group();
   anchor.add(inner);
   let mixer = null;
+  const animClips = animations.map((a) => a.name);
+  let activeClip = null;
   if (animations.length > 0) {
     mixer = new THREE.AnimationMixer(scene);
-    for (const clip of animations) mixer.clipAction(clip).play();
+    const requested = clipName ? animations.find((a) => a.name === clipName) : null;
+    const toPlay = requested ?? animations[0];
+    if (toPlay) {
+      mixer.clipAction(toPlay).play();
+      activeClip = toPlay.name;
+    }
   }
   // A rig that ships without clips (e.g. the pumpkin crab) gets a procedural idle.
   let rig = null;
@@ -527,11 +534,25 @@ function makeObjectEntry(assetId, modelPath, scene, animations = []) {
     scene,
     mixer,
     rig,
+    animClips,
+    activeClip,
+    _clips: animations,
     size: u.size.slice(),
     triangles: countTriangles(scene, false),
     resources: objectResources(scene),
     attached: false,
   };
+}
+
+// Stops every action, then starts the named clip on loop. No-op if the entry
+// has no mixer or the clip name is not in the entry's clip list.
+function playClip(entry, clipName) {
+  if (!entry || !entry.mixer || !entry._clips.length) return;
+  entry.mixer.stopAllAction();
+  const clip = entry._clips.find((c) => c.name === clipName);
+  if (!clip) return;
+  entry.mixer.clipAction(clip).setLoop(THREE.LoopRepeat, Infinity).play();
+  entry.activeClip = clipName;
 }
 
 // Claws raise and snap, fingers pinch, legs scuttle, body sways (Mixamo bone names).
@@ -2580,6 +2601,12 @@ function StudioStage({
       if (!entry) continue;
       live.add(key);
       poseObject(entry, item);
+      // Sync animation clip: keep the entry in step with what the layout says,
+      // so undo/redo replay the right clip automatically.
+      if (entry.animClips.length > 0) {
+        const wantedClip = item.animationClip && entry.animClips.includes(item.animationClip) ? item.animationClip : entry.animClips[0];
+        if (wantedClip !== entry.activeClip) playClip(entry, wantedClip);
+      }
       if (!entry.attached) {
         root.add(entry.anchor);
         entry.attached = true;
@@ -2755,7 +2782,7 @@ function StudioStage({
       } finally {
         addingObjectRef.current = false;
       }
-      const entry = makeObjectEntry(assetId, asset.modelPath, loadedScene, loadedAnimations);
+      const entry = makeObjectEntry(assetId, asset.modelPath, loadedScene, loadedAnimations, opts.animationClip ?? null);
       const discard = () => releaseObjectGpu(entry ? entry.resources : objectResources(loadedScene));
       if (!stageAliveRef.current) {
         discard();
@@ -2843,6 +2870,7 @@ function StudioStage({
           ...(opts.itemId ? { itemId: opts.itemId } : {}),
           ...(opts.hidden === true ? { hidden: true } : {}),
           ...(opts.locked === true ? { locked: true } : {}),
+          ...(opts.animationClip ? { animationClip: opts.animationClip } : {}),
         });
       } finally {
         pendingObjectRef.current = null;
@@ -2961,13 +2989,13 @@ function StudioStage({
             skipped.push({ assetId: spec.assetId, name: label, reason: "load-failed" });
             continue;
           }
-          const entry = makeObjectEntry(spec.assetId, asset.modelPath, scene);
+          const entry = makeObjectEntry(spec.assetId, asset.modelPath, scene.scene, scene.animations, spec.animationClip ?? null);
           if (gone()) {
-            releaseObjectGpu(entry ? entry.resources : objectResources(scene));
+            releaseObjectGpu(entry ? entry.resources : objectResources(scene.scene));
             return aborted();
           }
           if (!entry) {
-            releaseObjectGpu(objectResources(scene));
+            releaseObjectGpu(objectResources(scene.scene));
             skipped.push({ assetId: spec.assetId, name: label, reason: "empty" });
             continue;
           }
@@ -2991,7 +3019,12 @@ function StudioStage({
           r = garageStore.loadLayoutItems(
             primary.itemId,
             parts,
-            loaded.map((l) => ({ assetId: l.spec.assetId, transform: l.spec.transform, hidden: l.spec.hidden === true }))
+            loaded.map((l) => ({
+              assetId: l.spec.assetId,
+              transform: l.spec.transform,
+              hidden: l.spec.hidden === true,
+              ...(l.spec.animationClip ? { animationClip: l.spec.animationClip } : {}),
+            }))
           );
         } finally {
           pendingListRef.current = null;
@@ -3417,6 +3450,25 @@ function StudioStage({
           }
           const r = garageStore.setItemHidden(itemId, hidden === true);
           return r.ok ? { ok: true } : { ok: false, reason: r.reason, message: "The object could not be changed." };
+        },
+        // Animation clips available for this item (from the loaded pool entry).
+        getAnimClips: (itemId) => {
+          const layout = garageStore.getLayout();
+          const item = layout ? layout.items.find((i) => i.itemId === itemId && !i.primary) : null;
+          if (!item) return [];
+          const entry = objectPoolRef.current.get(`${item.itemId}|${item.assetId}`);
+          return entry ? entry.animClips.slice() : [];
+        },
+        // Switch the active clip immediately and persist the choice in the store.
+        setAnimClip: (itemId, clipName) => {
+          const layout = garageStore.getLayout();
+          const item = layout ? layout.items.find((i) => i.itemId === itemId && !i.primary) : null;
+          if (!item) return { ok: false, reason: "unknown-item" };
+          const entry = objectPoolRef.current.get(`${item.itemId}|${item.assetId}`);
+          if (!entry) return { ok: false, reason: "not-loaded" };
+          playClip(entry, clipName);
+          garageStore.setItemAnimation(itemId, clipName);
+          return { ok: true };
         },
       }),
     [partIndex, modelScene, addObject, loadObjects, sceneTriangles, propSurfaceBox, fit.floorY, camera]

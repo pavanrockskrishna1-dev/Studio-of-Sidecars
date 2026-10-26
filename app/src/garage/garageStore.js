@@ -498,6 +498,7 @@ export function createGarageStore() {
     if (objects.length + 1 > LAYOUT_LIMITS.MAX_ITEMS) return fail("limit");
     const rawItems = [{ itemId: p.item.itemId, assetId: p.item.assetId, transform: p.item.transform, parts }];
     const used = new Set([p.item.itemId]);
+    const clips = []; // parallel to objects, for animationClip (stripped by validateLayout)
     let n = 0;
     for (const o of objects) {
       if (!isObj(o) || typeof o.assetId !== "string" || o.assetId === "" || !isObj(o.transform)) return fail("bad-input");
@@ -505,6 +506,7 @@ export function createGarageStore() {
       if (o.locked !== undefined && typeof o.locked !== "boolean") return fail("bad-input");
       const t = pickTransform(o.transform);
       if (!t) return fail("bad-input");
+      clips.push(typeof o.animationClip === "string" && o.animationClip ? o.animationClip : null);
       while (used.has(`i${n}`)) n += 1;
       used.add(`i${n}`);
       rawItems.push({ itemId: `i${n}`, assetId: o.assetId, transform: t, hidden: o.hidden === true, locked: o.locked === true });
@@ -512,7 +514,11 @@ export function createGarageStore() {
     const v = validateLayout({ version: 1, name: "x", items: rawItems });
     if (!v.ok || v.layout.items.length !== rawItems.length) return fail("invalid");
     const primary = Object.freeze({ ...p.item, parts: deepFreeze(v.layout.items[0].parts) });
-    const added = v.layout.items.slice(1).map((it) => deepFreeze({ ...it, primary: false }));
+    const added = v.layout.items.slice(1).map((it, i) => {
+      const base = { ...it, primary: false };
+      if (clips[i]) base.animationClip = clips[i];
+      return deepFreeze(base);
+    });
     const current = layout.items.filter((i) => i !== p.item);
     if (deepEqual(primary.parts, p.item.parts) && deepEqual(added, current)) return noop();
     const items = Object.freeze([primary, ...added]);
@@ -569,6 +575,21 @@ export function createGarageStore() {
     return { ok: true, changed: true, revision };
   }
 
+  // clipName: null = play first clip (default), non-empty string = play that clip.
+  function setItemAnimation(itemId, clipName) {
+    const p = prep(itemId);
+    if (p.err) return p.err;
+    if (p.item.primary) return fail("not-primary");
+    if (clipName !== null && (typeof clipName !== "string" || clipName === "")) return fail("bad-input");
+    const current = hasOwn(p.item, "animationClip") ? p.item.animationClip : null;
+    if (current === clipName) return noop();
+    const next = Object.assign({}, p.item);
+    if (clipName === null) delete next.animationClip;
+    else next.animationClip = clipName;
+    commit(withItem(p.idx, next), { type: "item", itemId: p.item.itemId });
+    return { ok: true, changed: true, revision };
+  }
+
   function addItem(spec) {
     if (locked) return fail("locked");
     if (!layout) return fail("no-layout");
@@ -596,7 +617,10 @@ export function createGarageStore() {
       items: [{ itemId, assetId: spec.assetId, primary: true, transform: given, hidden: spec.hidden === true, locked: spec.locked === true }],
     });
     if (!v.ok) return fail("invalid");
-    const item = deepFreeze({ ...v.layout.items[0], primary: false });
+    const baseItem = { ...v.layout.items[0], primary: false };
+    const clip = typeof spec.animationClip === "string" && spec.animationClip ? spec.animationClip : null;
+    if (clip) baseItem.animationClip = clip;
+    const item = deepFreeze(baseItem);
     const items = Object.freeze([...layout.items, item]);
     commit(Object.freeze({ ...layout, items }), { type: "add-item", itemId });
     return { ok: true, changed: true, revision, itemId };
@@ -706,6 +730,7 @@ export function createGarageStore() {
     setItemTransform: command(setItemTransform),
     setItemHidden: command(setItemHidden),
     setItemLocked: command(setItemLocked),
+    setItemAnimation: command(setItemAnimation),
     addItem: command(addItem),
     removeItem: command(removeItem),
     setFrontRef: command(setFrontRef),
@@ -726,7 +751,7 @@ const defaultStore = createGarageStore();
 export const {
   subscribe, getSnapshot, apiRef, registerApi, setLocked,
   startLayout, loadLayout, loadLayoutJson, getLayout, exportJson, markSaved,
-  setPartOverride, resetPart, loadPartsOverrides, loadLayoutItems, setItemTransform, setItemHidden, setItemLocked,
+  setPartOverride, resetPart, loadPartsOverrides, loadLayoutItems, setItemTransform, setItemHidden, setItemLocked, setItemAnimation,
   addItem, removeItem, setFrontRef,
   select, toggle, clearSelection,
   beginGesture, endGesture, cancelGesture, undo, redo,

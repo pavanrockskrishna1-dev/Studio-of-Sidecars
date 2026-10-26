@@ -27,6 +27,7 @@ export function propsForSession(layout) {
       transform: Object.fromEntries(TRANSFORM_KEYS.map((k) => [k, i.transform[k]])),
       hidden: i.hidden === true,
       locked: i.locked === true,
+      ...(typeof i.animationClip === "string" && i.animationClip ? { animationClip: i.animationClip } : {}),
     }));
 }
 
@@ -51,6 +52,7 @@ export function parseSessionProps(raw) {
       transform: Object.fromEntries(TRANSFORM_KEYS.map((k) => [k, t[k]])),
       hidden: e.hidden === true,
       locked: e.locked === true,
+      ...(typeof e.animationClip === "string" && e.animationClip ? { animationClip: e.animationClip } : {}),
     });
   }
   return out;

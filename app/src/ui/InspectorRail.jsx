@@ -23,6 +23,7 @@ import { brandingSummary, useBranding } from "./useBranding";
 import { PIVOT_IDS, PIVOT_LABELS } from "../animation/partKeys";
 import * as garageStore from "../garage/garageStore";
 import * as garageMode from "../garage/garageMode";
+import { cleanClipName } from "./cleanClipName";
 import * as layoutLibrary from "../garage/layoutLibrary";
 import * as sceneObjects from "../garage/sceneObjects";
 import * as gizmo from "../garage/gizmo";
@@ -56,6 +57,7 @@ import {
 } from "../capture/exportGate";
 import * as gradeStore from "../fx/gradeStore.js";
 import { GRADES, GRADE_IDS } from "../fx/gradeShader.js";
+import * as propThumb from "./propThumb";
 
 /* ==========================================================================
    Right inspector rail (Agent #2 · UI ONLY)
@@ -960,6 +962,39 @@ function GarageObjectFields({ itemId, busy }) {
         Remove object
       </button>
       <Hint>Added objects move, turn, scale and hide as whole objects; their parts are not editable.</Hint>
+      <GarageAnimSection itemId={itemId} busy={busy} api={api} />
+    </>
+  );
+}
+
+// Animation clip picker — shown below the object controls when the object has
+// clips. One chip button per clip; the currently active one is aria-pressed.
+function GarageAnimSection({ itemId, busy, api }) {
+  if (!api || typeof api.getAnimClips !== "function") return null;
+  const clips = api.getAnimClips(itemId);
+  if (!clips || clips.length === 0) return null;
+  const layout = garageStore.getLayout();
+  const item = layout ? layout.items.find((i) => i.itemId === itemId) : null;
+  const stored = item && typeof item.animationClip === "string" ? item.animationClip : null;
+  const activeClip = stored && clips.includes(stored) ? stored : clips[0];
+  return (
+    <>
+      <span className="sos-label">Animation</span>
+      <div className="sos-chips" data-testid="ui-garage-anim-clips">
+        {clips.map((clip) => (
+          <button
+            key={clip}
+            type="button"
+            className="sos-chip"
+            aria-pressed={clip === activeClip}
+            disabled={busy}
+            title={clip}
+            onClick={() => api.setAnimClip(itemId, clip)}
+          >
+            {cleanClipName(clip)}
+          </button>
+        ))}
+      </div>
     </>
   );
 }
@@ -967,16 +1002,24 @@ function GarageObjectFields({ itemId, busy }) {
 // Prop shelf: every prop by group; click one, then click the ground to place it
 // there (real-world size, standing on the floor). Esc cancels.
 const SHELF_GROUPS = [
-  { label: "Halloween", test: (p) => p.seasonal === "halloween" },
-  { label: "Trees, barrels & wood", test: (p) => /tree|barrel|firewood/.test(p.id) },
-  { label: "BBQ & smoker", test: (p) => /smoker|utensils|letters|venue|box|coal/.test(p.id) },
-  { label: "Food", test: () => true },
+  { label: "Christmas",         test: (p) => p.seasonal === "christmas" },
+  { label: "Halloween",         test: (p) => p.seasonal === "halloween" },
+  { label: "People",            test: (p) => /^prop-human/.test(p.id) },
+  { label: "Animals",           test: (p) => /^prop-dog/.test(p.id) },
+  { label: "BBQ Smith",         test: (p) => /^prop-bbqsmith/.test(p.id) },
+  { label: "Trees",             test: (p) => /tree/.test(p.id) },
+  { label: "Outdoor & fire",    test: (p) => /fire|campfire|barrel|firewood|street-light/.test(p.id) },
+  { label: "Furniture & scene", test: (p) => /table|chair|blackboard|bin|log|shovel|stone|balloons|lemon|bbqride-logo/.test(p.id) },
+  { label: "Workshop",          test: (p) => /milling|lathe/.test(p.id) },
+  { label: "BBQ & smoker",      test: (p) => /smoker|utensils|letters|venue|box|coal/.test(p.id) },
+  { label: "Food",              test: () => true },
 ];
 
 function GaragePropShelf({ busy, propCount }) {
   const max = sceneObjects.OBJECT_LIMITS.MAX_PROPS;
   const full = propCount >= max;
   const place = useSyncExternalStore(placeMode.subscribe, placeMode.getSnapshot, placeMode.getSnapshot);
+  const thumbCache = useSyncExternalStore(propThumb.subscribe, propThumb.getSnapshot, propThumb.getSnapshot);
   useEffect(() => {
     if (!place.assetId) return undefined;
     const onKey = (e) => {
@@ -991,6 +1034,13 @@ function GaragePropShelf({ busy, propCount }) {
     for (const it of items) left.splice(left.indexOf(it), 1);
     return { label: g.label, items };
   }).filter((g) => g.items.length);
+  useEffect(() => {
+    for (const g of groups) {
+      for (const p of g.items) {
+        if (!p.thumbUrl) propThumb.requestThumb(p.id, p.modelPath);
+      }
+    }
+  }, [groups]);
   const placingName = place.assetId ? (PROPS.find((p) => p.id === place.assetId) || {}).name : "";
   return (
     <>
@@ -1006,28 +1056,31 @@ function GaragePropShelf({ busy, propCount }) {
         <div key={g.label} className="sos-shelf-group">
           <em className="sos-shelf-head">{g.label}</em>
           <div className="sos-shelf">
-            {g.items.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className="sos-pchip sos-pthumb"
-                data-testid={`ui-garage-shelf-${p.id}`}
-                data-on={place.assetId === p.id || undefined}
-                aria-pressed={place.assetId === p.id}
-                disabled={busy || full}
-                title={`Place "${p.name}": click it, then click the ground`}
-                onClick={() => (place.assetId === p.id ? placeMode.stopPlacing("") : placeMode.startPlacing(p.id))}
-              >
-                {p.thumbUrl ? (
-                  <img className="sos-pthumb-img" src={p.thumbUrl} alt="" loading="lazy" draggable={false} />
-                ) : (
-                  <span className="sos-pthumb-img sos-pthumb-none" aria-hidden="true">
-                    {p.name.slice(0, 1)}
-                  </span>
-                )}
-                <span className="sos-pthumb-name">{p.name}</span>
-              </button>
-            ))}
+            {g.items.map((p) => {
+              const thumbSrc = p.thumbUrl ?? thumbCache[p.id] ?? null;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="sos-pchip sos-pthumb"
+                  data-testid={`ui-garage-shelf-${p.id}`}
+                  data-on={place.assetId === p.id || undefined}
+                  aria-pressed={place.assetId === p.id}
+                  disabled={busy || full}
+                  title={`Place "${p.name}": click it, then click the ground`}
+                  onClick={() => (place.assetId === p.id ? placeMode.stopPlacing("") : placeMode.startPlacing(p.id))}
+                >
+                  {thumbSrc ? (
+                    <img className="sos-pthumb-img" src={thumbSrc} alt="" loading="lazy" draggable={false} />
+                  ) : (
+                    <span className="sos-pthumb-img sos-pthumb-none" aria-hidden="true">
+                      {p.name.slice(0, 1)}
+                    </span>
+                  )}
+                  <span className="sos-pthumb-name">{p.name}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       ))}

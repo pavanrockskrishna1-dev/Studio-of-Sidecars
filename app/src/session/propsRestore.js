@@ -61,6 +61,7 @@ export function restoreSessionProps(productId, raw, { timeoutMs = 20000 } = {}) 
             itemId: p.itemId,
             hidden: p.hidden,
             locked: p.locked,
+            ...(p.animationClip ? { animationClip: p.animationClip } : {}),
           });
           if (r && r.ok) restored += 1;
         }
