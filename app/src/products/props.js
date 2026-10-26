@@ -43,6 +43,38 @@ export const PROPS = Object.freeze([
 
   // ── Halloween seasonal ───────────────────────────────────────────────────────
   { id: "prop-halloween-pumpkin-crab",  name: "Pumpkin Crab",      label: "Pumpkin Crab 🦀",   modelPath: "/models/props/halloween-pumpkin-crab.glb", thumbUrl: "/models/props/thumbs/prop-halloween-pumpkin-crab.jpg", size: [0.60, 0.45, 0.55], seasonal: "halloween" },
+
+  // ── scene dressing (pack A) ─────────────────────────────────────────────────
+  { id: "prop-log",             name: "Log",             label: "Log",             modelPath: "/models/props/prop-log.glb",             thumbUrl: null, size: [1.128, 0.589, 1.216] },
+  { id: "prop-blackboard",      name: "Blackboard",      label: "Blackboard",      modelPath: "/models/props/prop-blackboard.glb",      thumbUrl: null, size: [3.634, 1.63, 0.065] },
+  { id: "prop-bin",             name: "Bin",             label: "Bin",             modelPath: "/models/props/prop-bin.glb",             thumbUrl: null, size: [0.604, 1.118, 0.591] },
+  { id: "prop-shovel",          name: "Shovel",          label: "Shovel",          modelPath: "/models/props/prop-shovel.glb",          thumbUrl: null, size: [0.328, 1.505, 0.136] },
+  { id: "prop-balloons",        name: "Balloons",        label: "Balloons",        modelPath: "/models/props/prop-balloons.glb",        thumbUrl: null, size: [1.093, 1.789, 0.973] },
+  { id: "prop-table-chairs",    name: "Table & Chairs",  label: "Table & Chairs",  modelPath: "/models/props/prop-table-chairs.glb",    thumbUrl: null, size: [0.88, 0.80, 1.305] },
+  { id: "prop-street-light",    name: "Street Light",    label: "Street Light",    modelPath: "/models/props/prop-street-light.glb",    thumbUrl: null, size: [1.458, 2.394, 2.135] },
+  { id: "prop-lemon",           name: "Lemon",           label: "Lemon",           modelPath: "/models/props/prop-lemon.glb",           thumbUrl: null, size: [0.106, 0.087, 0.118] },
+  { id: "prop-stone",           name: "Stone",           label: "Stone",           modelPath: "/models/props/prop-stone.glb",           thumbUrl: null, size: [1.155, 1.135, 1.261] },
+  { id: "prop-pumpkin",         name: "Pumpkin",         label: "Pumpkin",         modelPath: "/models/props/prop-pumpkin.glb",         thumbUrl: null, size: [0.345, 0.303, 0.343], seasonal: "halloween" },
+  { id: "prop-oak-tree",        name: "Oak Tree",        label: "Oak Tree",        modelPath: "/models/props/prop-oak-tree.glb",        thumbUrl: null, size: [4.336, 3.63, 3.312] },
+  { id: "prop-jack-o-lantern",  name: "Jack-o-Lantern",  label: "Jack-o-Lantern",  modelPath: "/models/props/prop-jack-o-lantern.glb",  thumbUrl: null, size: [2.397, 2.546, 2.028], seasonal: "halloween" },
+  { id: "prop-spider",          name: "Spider",          label: "Spider",          modelPath: "/models/props/prop-spider.glb",          thumbUrl: null, size: [0.172, 0.03, 0.148],  seasonal: "halloween" },
+  { id: "prop-bbqride-logo",    name: "BBQ Ride Logo",   label: "BBQ Ride Logo",   modelPath: "/models/props/prop-bbqride-logo.glb",    thumbUrl: null, size: [0.1, 0.1, 0.003] },
+
+  // ── scene dressing (pack B) ─────────────────────────────────────────────────
+  { id: "prop-christmas-tree",     name: "Christmas Tree",   label: "Christmas Tree",   modelPath: "/models/props/prop-christmas-tree.glb",     thumbUrl: null, size: [1.254, 1.78, 1.212],   seasonal: "christmas" },
+  { id: "prop-fire-barrel",        name: "Fire Barrel",      label: "Fire Barrel",      modelPath: "/models/props/prop-fire-barrel.glb",         thumbUrl: null, size: [0.966, 1.192, 0.966] },
+  { id: "prop-campfire",           name: "Campfire",         label: "Campfire",         modelPath: "/models/props/prop-campfire.glb",            thumbUrl: null, size: [0.671, 0.614, 0.753] },
+  { id: "prop-stylized-tree",      name: "Stylized Tree",    label: "Stylized Tree",    modelPath: "/models/props/prop-stylized-tree.glb",       thumbUrl: null, size: [5.886, 7.273, 4.794] },
+  { id: "prop-milling-machine",    name: "Milling Machine",  label: "Milling Machine",  modelPath: "/models/props/prop-milling-machine.glb",     thumbUrl: null, size: [1.504, 1.792, 1.55] },
+  { id: "prop-lathe",              name: "Lathe",            label: "Lathe",            modelPath: "/models/props/prop-lathe.glb",               thumbUrl: null, size: [2.653, 1.976, 1.08] },
+  { id: "prop-dog",                name: "Dog",              label: "Dog",              modelPath: "/models/props/prop-dog.glb",                 thumbUrl: null, size: [0.291, 0.71, 1.023] },
+  { id: "prop-human-dance",        name: "Dancer",           label: "Dancer",           modelPath: "/models/props/prop-human-dance.glb",         thumbUrl: null, size: [1.547, 0.253, 1.72] },
+  { id: "prop-human-walk-f",       name: "Woman Walking",    label: "Woman Walking",    modelPath: "/models/props/prop-human-walk-f.glb",        thumbUrl: null, size: [1.547, 0.253, 1.72] },
+  { id: "prop-human-wave",         name: "Person Waving",    label: "Person Waving",    modelPath: "/models/props/prop-human-wave.glb",          thumbUrl: null, size: [1.828, 0.326, 1.821] },
+  { id: "prop-human-phone",        name: "On The Phone",     label: "On The Phone",     modelPath: "/models/props/prop-human-phone.glb",         thumbUrl: null, size: [1.828, 0.326, 1.821] },
+  { id: "prop-human-walk-m",       name: "Man Walking",      label: "Man Walking",      modelPath: "/models/props/prop-human-walk-m.glb",        thumbUrl: null, size: [1.828, 0.326, 1.821] },
+  { id: "prop-human-walk-phone",   name: "Walking & Talking",label: "Walking & Talking",modelPath: "/models/props/prop-human-walk-phone.glb",    thumbUrl: null, size: [1.828, 0.326, 1.821] },
+  { id: "prop-human-riverdance",   name: "River Dance",      label: "River Dance",      modelPath: "/models/props/prop-human-riverdance.glb",    thumbUrl: null, size: [1.828, 0.326, 1.821] },
 ]);
 
 export const isPropId = (id) => PROPS.some((p) => p.id === id);
