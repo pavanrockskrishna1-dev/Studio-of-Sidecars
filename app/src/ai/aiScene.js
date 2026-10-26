@@ -234,11 +234,19 @@ export async function buildScene(prompt, apiKey, context = {}) {
 
     const placedItems = [];
     let propsPlaced = 0;
-    const stageApi = garageMode.apiRef.current;
-    const floorY = stageApi && typeof stageApi.getFloorY === "function" ? stageApi.getFloorY() : 0;
-    if (Array.isArray(config.props) && stageApi && typeof stageApi.addObject === "function") {
+    // Capture floorY once before the async loop using the current API.
+    const _initApi = garageMode.apiRef.current;
+    const floorY = _initApi && typeof _initApi.getFloorY === "function" ? _initApi.getFloorY() : 0;
+    if (Array.isArray(config.props)) {
       for (const prop of config.props.slice(0, 6)) {
         if (!prop || !prop.assetId || !isPropId(prop.assetId)) {
+          placedItems.push(null);
+          continue;
+        }
+        // Re-read apiRef on each await boundary — registerApi re-runs after each
+        // garageStore change (refit → setLiveFit → re-render → new addObject closure).
+        const stageApi = garageMode.apiRef.current;
+        if (!stageApi || typeof stageApi.addObject !== "function") {
           placedItems.push(null);
           continue;
         }
