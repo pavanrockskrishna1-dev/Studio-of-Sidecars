@@ -9,6 +9,8 @@
 
 export const TITLE_POSITIONS = Object.freeze(["top", "middle", "bottom"]);
 export const DEFAULT_TITLE_POS = "bottom";
+export const TITLE_ANIM_STYLES = Object.freeze(["fade", "slide-up", "flash"]);
+export const DEFAULT_TITLE_ANIM = "fade";
 export const MAX_TITLE_LINES = 2;
 export const MAX_TITLE_LINE_CHARS = 60;
 
@@ -35,13 +37,14 @@ export function titleLines(text) {
 export const isTitle = (t) =>
   !!t && typeof t === "object" && typeof t.text === "string" && TITLE_POSITIONS.includes(t.pos);
 
-// A clean { text, pos } or undefined (no visible text and the default position).
+// A clean { text, pos, animStyle } or undefined (no visible text and the defaults).
 export function normTitle(t) {
   if (!t || typeof t !== "object") return undefined;
   const text = clampTitleText(t.text);
   const pos = TITLE_POSITIONS.includes(t.pos) ? t.pos : DEFAULT_TITLE_POS;
-  if (!titleLines(text).length && pos === DEFAULT_TITLE_POS) return undefined;
-  return { text, pos };
+  const animStyle = TITLE_ANIM_STYLES.includes(t.animStyle) ? t.animStyle : DEFAULT_TITLE_ANIM;
+  if (!titleLines(text).length && pos === DEFAULT_TITLE_POS && animStyle === DEFAULT_TITLE_ANIM) return undefined;
+  return { text, pos, animStyle };
 }
 
 export const hasTitle = (shot) => !!shot && !!shot.title && titleLines(shot.title.text).length > 0;

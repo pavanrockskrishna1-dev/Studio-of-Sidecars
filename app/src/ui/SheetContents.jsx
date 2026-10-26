@@ -18,6 +18,7 @@ import {
 } from "./InspectorRail";
 import { setLightSlot } from "./lightSlot";
 import LookPanel from "./LookPanel";
+import MoodPanel from "./MoodPanel";
 import StagePanel from "./StagePanel";
 import ProjectsPanel from "./ProjectsPanel";
 import { hydrateRuntimeAssets, useRuntimeAssets } from "../assets/runtimeRegistry";
@@ -192,6 +193,8 @@ const lightSlotRef = (el) => setLightSlot(el || null);
 export function LightBody() {
   return (
     <>
+      <MoodPanel />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
       <StagePanel />
       <div className="sos2-sheet-divider" aria-hidden="true" />
       <LookPanel />

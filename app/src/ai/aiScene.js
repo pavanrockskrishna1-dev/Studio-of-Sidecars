@@ -10,6 +10,60 @@ import * as stageLook from "../fx/stageLook.js";
 import * as lookStore from "../fx/lookStore.js";
 import * as animationStore from "../animation/animationStore.js";
 
+const PRODUCT_PROP_HINTS = {
+  "bbq-bike": {
+    family: "BBQ / Street Food",
+    tip: "Prioritise BBQ food items, smoke/fire props and rustic barrel furniture near the bike.",
+    preferred: [
+      "prop-bbq-chicken-burger", "prop-bbq-box-open", "prop-bbqsmith-barrel-table",
+      "prop-bbqsmith-smoker-wagon", "prop-fire-barrel", "prop-bbq-chicken-wing",
+      "prop-bbqsmith-whisky-barrel", "prop-bbqsmith-firewood", "prop-campfire",
+      "prop-bbqsmith-bbq-letters",
+    ],
+  },
+  "coffee-bike": {
+    family: "Café / Coffee",
+    tip: "Prioritise café atmosphere — blackboard, seating, friendly characters. Light, welcoming tone.",
+    preferred: [
+      "prop-blackboard", "prop-table-chairs", "prop-balloons", "prop-lemon",
+      "prop-human-wave", "prop-human-walk-f", "prop-dog",
+    ],
+  },
+  "the-kop-main": {
+    family: "Café / Coffee",
+    tip: "Prioritise café atmosphere — blackboard, seating, friendly characters. Light, welcoming tone.",
+    preferred: [
+      "prop-blackboard", "prop-table-chairs", "prop-balloons", "prop-lemon",
+      "prop-human-wave", "prop-human-walk-f", "prop-dog",
+    ],
+  },
+};
+
+function validateAndClamp(config) {
+  const skippedIds = [];
+
+  if (Array.isArray(config.props)) {
+    config.props = config.props.slice(0, 6).map((p) => {
+      if (!p || !isPropId(p.assetId)) {
+        skippedIds.push(p?.assetId ?? "?");
+        return null;
+      }
+      const pos = Array.isArray(p.position) ? [...p.position] : [0, 0, 0];
+      pos[2] = Math.max(-4.5, Math.min(3, pos[2] ?? 0));
+      const x = pos[0] ?? 0;
+      if (Math.abs(x) < 1.5) pos[0] = (x >= 0 ? 1 : -1) * 2.2;
+      p.position = pos;
+      return p;
+    }).filter(Boolean);
+  }
+
+  if (Array.isArray(config.effects)) config.effects = config.effects.slice(0, 5);
+  if (Array.isArray(config.propCycles)) config.propCycles = config.propCycles.slice(0, 4);
+  if (Array.isArray(config.reel?.shots)) config.reel.shots = config.reel.shots.slice(0, 4);
+
+  return { config, skippedIds };
+}
+
 let state = { busy: false, error: null, result: null };
 const listeners = new Set();
 export const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
@@ -18,6 +72,11 @@ function set(patch) { state = { ...state, ...patch }; for (const fn of listeners
 
 function buildPrompt(userText, context = {}) {
   const productName = context.productName ?? "BBQ Bike";
+  const productId = context.productId ?? "";
+  const hints = PRODUCT_PROP_HINTS[productId];
+  const productFamilyBlock = hints
+    ? `\nProduct family: ${hints.family}\nPreferred props for this product (use these before others): ${hints.preferred.join(", ")}\nDirector note: ${hints.tip}`
+    : "";
   const occasionList = OCCASIONS.map((o) => `  ${o.id} — ${o.name}`).join("\n");
   const effectList = Object.entries(EFFECT_TYPES).map(([k, v]) => `  ${k} — ${v.label}`).join("\n");
   const propList = PROPS.map((p) => `  ${p.id} — ${p.name}`).join("\n");
@@ -25,6 +84,7 @@ function buildPrompt(userText, context = {}) {
   return `You are configuring a 3D studio scene for a short promotional reel.
 
 The vehicle currently on stage is: "${productName}"
+${productFamilyBlock}
 The user described the scene as: "${userText}"
 
 Your job: build a scene that visually showcases the "${productName}" in the described setting. Choose props, effects, stage look, and reel shots that complement this specific vehicle and bring the description to life.
@@ -71,7 +131,7 @@ Constraints:
 - Keep props at least 2 m from origin (bike is at [0,0,0])
 - at most 6 effects, at most 6 props, at most 4 propCycles
 - propIndex in propCycles is the 0-based index into the "props" array
-- use 2–4 reel shots that tell a cinematic story: e.g. Low Hero wide → 3/4 orbit → push-in front
+- Use 2–4 reel shots. Start with a wide or low-angle establishing shot (Low Hero or Side), then a character/product reveal (3/4 Orbit), then close with a tighter move (Push-in or Slide). Total duration 16–24 seconds is ideal.
 - IMPORTANT: only use prop assetId values from the list above — do not invent new IDs
 
 Respond ONLY with a single JSON object, no markdown, no prose:
@@ -108,7 +168,9 @@ export async function buildScene(prompt, apiKey, context = {}) {
       },
       body: JSON.stringify({
         model: "qwen/qwen3.8-27b",
-        max_tokens: 1500,
+        temperature: 0.3,
+        max_tokens: 2200,
+        response_format: { type: "json_object" },
         messages: [
           { role: "system", content: "You are a JSON-only API. Output only a single valid JSON object. No markdown, no prose, no thinking tags." },
           { role: "user", content: buildPrompt(prompt, context) },
@@ -135,6 +197,9 @@ export async function buildScene(prompt, apiKey, context = {}) {
       if (!match) throw new Error("No JSON found in response.");
       config = JSON.parse(match[0]);
     }
+
+    const { config: cleanConfig, skippedIds } = validateAndClamp(config);
+    config = cleanConfig;
 
     occasionStore.setOccasion(config.occasion ?? "none");
     gradeStore.setGrade(config.grade ?? "raw");
@@ -229,10 +294,13 @@ export async function buildScene(prompt, apiKey, context = {}) {
       }
     }
 
-    const shotCount = animationStore.getSnapshot().sequence.length;
+    const sequence = animationStore.getSnapshot().sequence;
+    const shotCount = sequence.length;
+    const shotMoves = sequence.map((s) => s.move).join(" → ");
     const stageName = config.stageLook ?? "studio";
     const presetName = config.lookPreset && config.lookPreset !== "off" ? ` · ${config.lookPreset}` : "";
-    const resultText = `✦ Built — ${shotCount} shot${shotCount !== 1 ? "s" : ""} · ${stageName}${presetName} · ${propsPlaced} prop${propsPlaced !== 1 ? "s" : ""}`;
+    const skippedNote = skippedIds.length ? ` · ${skippedIds.length} prop${skippedIds.length !== 1 ? "s" : ""} skipped` : "";
+    const resultText = `✦ Built · ${stageName}${presetName} · ${propsPlaced} props · ${shotMoves}${skippedNote}`;
     set({ busy: false, error: null, result: resultText });
   } catch (err) {
     set({ busy: false, error: err.message ?? "Something went wrong", result: null });

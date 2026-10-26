@@ -3063,6 +3063,14 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
 .sos-reel-title input:disabled {
   opacity: 0.4;
 }
+.sos-reel-title .sos-frow {
+  gap: 4px;
+}
+.sos-reel-title-anim-label {
+  font-size: 10px;
+  color: var(--sos2-text-2);
+  padding: 2px 0 0;
+}
 
 /* ── MotionLab Animation Studio overlay ─────────────────────────────────── */
 .motionlab-overlay {
@@ -3613,3 +3621,35 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
   font-size: 10px;
   color: #666;
 }
+
+/* Mood panel */
+.sos2-mood-panel { padding-bottom: 4px; }
+.sos2-mood-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 6px;
+}
+.sos2-mood-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--sos2-line);
+  background: transparent;
+  color: var(--sos2-text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+.sos2-mood-chip:hover {
+  background: var(--sos2-brass);
+  border-color: var(--sos2-brass-ink);
+  color: var(--sos2-brass-ink);
+}
+.sos2-mood-icon { font-size: 16px; flex-shrink: 0; }
+.sos2-mood-name { line-height: 1.2; }
