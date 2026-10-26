@@ -55,16 +55,14 @@ Respond ONLY with a single JSON object, no markdown, no prose:
 export async function buildScene(prompt, apiKey) {
   set({ busy: true, error: null });
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${apiKey}`,
         "content-type": "application/json",
-        "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-5",
+        model: "llama-3.3-70b-versatile",
         max_tokens: 1024,
         messages: [{ role: "user", content: buildPrompt(prompt) }],
       }),
@@ -76,7 +74,7 @@ export async function buildScene(prompt, apiKey) {
     }
 
     const data = await res.json();
-    const text = data?.content?.[0]?.text;
+    const text = data?.choices?.[0]?.message?.content;
     if (typeof text !== "string") throw new Error("Unexpected response format from API.");
 
     let config;

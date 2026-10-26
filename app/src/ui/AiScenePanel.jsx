@@ -6,12 +6,12 @@ export default function AiScenePanel() {
   const { busy, error } = useSyncExternalStore(aiScene.subscribe, aiScene.getSnapshot);
   const [prompt, setPrompt] = useState("");
   const [apiKey, setApiKey] = useState(() => {
-    try { return localStorage.getItem("sos_anthropic_key") ?? ""; } catch { return ""; }
+    try { return localStorage.getItem("sos_groq_key") ?? ""; } catch { return ""; }
   });
 
   const saveKey = (k) => {
     setApiKey(k);
-    try { localStorage.setItem("sos_anthropic_key", k); } catch {}
+    try { localStorage.setItem("sos_groq_key", k); } catch {}
   };
 
   const handleBuild = () => {
@@ -21,11 +21,11 @@ export default function AiScenePanel() {
 
   return (
     <div className="ai-scene-panel">
-      <div className="inspector-label">Anthropic API key</div>
+      <div className="inspector-label">Groq API key — free at console.groq.com</div>
       <input
         type="password"
         className="ai-key-input"
-        placeholder="sk-ant-..."
+        placeholder="gsk_..."
         value={apiKey}
         onChange={(e) => saveKey(e.target.value)}
         autoComplete="off"
