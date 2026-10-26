@@ -1,5 +1,5 @@
-// Effects placed in the 3D scene (Garage → Effects): fog patches, ember
-// bursts, falling leaves, bat swarms. Each is { id, type, position: [x,y,z]
+// Effects placed in the 3D scene (Garage → Effects): fog, embers, leaves,
+// bats, smoke, sparks, fireflies, ghost lights, snow, rain, confetti, dust. Each is { id, type, position: [x,y,z]
 // (world, on the ground), size (1 = default) }. They live in the scene, so the
 // live view, the Reel preview and the export all show them.
 
@@ -8,8 +8,16 @@ export const EFFECT_TYPES = Object.freeze({
   embers: { label: "Ember burst", hint: "sparks rising from a point" },
   leaves: { label: "Falling leaves", hint: "autumn leaves drifting down" },
   bats: { label: "Bat swarm", hint: "bats circling overhead" },
+  smoke: { label: "Grill smoke", hint: "soft smoke rising and spreading" },
+  sparks: { label: "Spark fountain", hint: "hot sparks shooting up and falling" },
+  fireflies: { label: "Fireflies", hint: "glowing bugs blinking in the dark" },
+  wisps: { label: "Ghost lights", hint: "spooky blue spirit lights floating" },
+  snow: { label: "Snowfall", hint: "snow drifting down" },
+  rain: { label: "Rain", hint: "rain falling" },
+  confetti: { label: "Confetti", hint: "colourful party confetti" },
+  dust: { label: "Magic dust", hint: "golden sparkles swirling up" },
 });
-export const MAX_EFFECTS = 12;
+export const MAX_EFFECTS = 20;
 
 let state = { effects: [] };
 let nextId = 1;
