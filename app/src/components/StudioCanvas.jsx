@@ -73,6 +73,8 @@ import * as gradeStore from "../fx/gradeStore.js";
 import { GRADES, GradeShader } from "../fx/gradeShader.js";
 import * as shotStore from "../animation/shotStore";
 import { SHOTS as shotDefs } from "../animation/shotDefs";
+import { cycleDeltaMatrix, isGroupCycle } from "../animation/reelCycles.js";
+import { isPartKey } from "../animation/reelKeys.js";
 
 // Module-level singleton: export frames bypass the composer (the grade is a
 // live-viewport feature only). renderExportFrame / stepExport live at module
@@ -538,6 +540,10 @@ function makeObjectEntry(assetId, modelPath, scene, animations = [], clipName = 
     activeClip,
     _clips: animations,
     size: u.size.slice(),
+    localBox: {
+      min: [-u.size[0] / 2, 0, -u.size[2] / 2],
+      max: [ u.size[0] / 2, u.size[1],  u.size[2] / 2],
+    },
     triangles: countTriangles(scene, false),
     resources: objectResources(scene),
     attached: false,
@@ -587,6 +593,39 @@ function poseObject(entry, item) {
   entry.anchor.rotation.set(degToRad(t.rx), degToRad(t.ry), degToRad(t.rz), "XYZ");
   entry.anchor.scale.setScalar(t.s);
   entry.anchor.visible = item.hidden !== true;
+  entry.cycleRestPos = entry.anchor.position.clone();
+  entry.cycleRestQuat = entry.anchor.quaternion.clone();
+  entry.cycleRestScale = entry.anchor.scale.clone();
+}
+
+// Paints chalk-style lettering onto a chalkboard-green canvas and returns a
+// THREE.CanvasTexture ready to swap onto the board-face mesh.
+function paintBlackboardTexture(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#2d4a2d";
+  ctx.fillRect(0, 0, 1024, 512);
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  for (let i = 0; i < 2000; i++) {
+    ctx.fillRect(Math.random() * 1024 | 0, Math.random() * 512 | 0, 1, 1);
+  }
+  const lines = String(text).split("\n");
+  const lineHeight = 90;
+  const totalHeight = lines.length * lineHeight;
+  const startY = (512 - totalHeight) / 2 + lineHeight * 0.75;
+  ctx.font = "bold 72px 'Courier New', Courier, monospace";
+  ctx.textAlign = "center";
+  ctx.shadowColor = "rgba(0,0,0,0.3)";
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 2;
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(240,240,220,0.88)";
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], 512, startY + i * lineHeight);
+  }
+  return new THREE.CanvasTexture(canvas);
 }
 
 // The added object (item id) a hit mesh belongs to, or null.
@@ -1061,6 +1100,7 @@ function StudioStage({
   // ring (hidden while it plays) and the Escape listener. Refs only: nothing
   // here is React state, so a playing frame never renders React.
   const animRunRef = useRef(null);
+  const cycleLiveT = useRef(0);
   const pivotRef = useRef(null);
   // Garage G5 — the group that cancels the pivot's translation, so the model
   // renders exactly where it did before the pivot existed. Both this and
@@ -2397,6 +2437,49 @@ function StudioStage({
     }
   });
 
+  // Live cycle preview: while not in preview/export, apply shot-0 cycles to
+  // placed props continuously so the user can see cycles without hitting Play.
+  useFrame((_, delta) => {
+    if (animRunRef.current) return;                   // preview/export running
+    const cycles = animation.getSnapshot().sequence[0]?.cycles ?? [];
+    if (!cycles.length) return;
+
+    cycleLiveT.current += delta;
+    const t = cycleLiveT.current;
+
+    // Restore every attached entry that has a stored rest pose.
+    for (const entry of objectPoolRef.current.values()) {
+      if (!entry.attached || !entry.cycleRestPos) continue;
+      entry.anchor.position.copy(entry.cycleRestPos);
+      entry.anchor.quaternion.copy(entry.cycleRestQuat);
+      entry.anchor.scale.copy(entry.cycleRestScale);
+    }
+
+    // Apply each cycle that targets a placed prop (skip product / parts / groups).
+    const _mat = new THREE.Matrix4();
+    const _rest = new THREE.Matrix4();
+    for (const cycle of cycles) {
+      if (cycle.target === "product") continue;
+      if (isPartKey(cycle) || isGroupCycle(cycle)) continue;
+
+      // Find the attached entry whose itemId matches this cycle's target.
+      let entry = null;
+      for (const e of objectPoolRef.current.values()) {
+        if (e.attached && e.itemId === cycle.target) { entry = e; break; }
+      }
+      if (!entry || !entry.cycleRestPos) continue;
+
+      const delta4x4 = cycleDeltaMatrix(cycle, t, entry.localBox, 0, 0);
+      if (!delta4x4) continue;
+
+      // Apply: newPose = restPose * cycleDelta  (in world space, cycle rides on top)
+      _mat.fromArray(delta4x4);
+      _rest.compose(entry.cycleRestPos, entry.cycleRestQuat, entry.cycleRestScale);
+      _rest.multiply(_mat);
+      _rest.decompose(entry.anchor.position, entry.anchor.quaternion, entry.anchor.scale);
+    }
+  });
+
   // Turntable preview: while it runs, turn the pivot group and ask for one
   // shadow update so the shadow turns with the model. Returns at once when
   // idle. Nothing here touches React state or the animation store.
@@ -2606,6 +2689,43 @@ function StudioStage({
       if (entry.animClips.length > 0) {
         const wantedClip = item.animationClip && entry.animClips.includes(item.animationClip) ? item.animationClip : entry.animClips[0];
         if (wantedClip !== entry.activeClip) playClip(entry, wantedClip);
+      }
+      // Blackboard chalk text — paint a canvas texture onto the board-face mesh.
+      if (item.assetId === "prop-blackboard") {
+        const wantedText = typeof item.blackboardText === "string" && item.blackboardText ? item.blackboardText : null;
+        const storedText = entry.lastBlackboardText ?? null;
+        if (wantedText !== storedText) {
+          let boardMesh = null;
+          let bestScore = -Infinity;
+          entry.scene.traverse((m) => {
+            if (!m.isMesh) return;
+            const box = new THREE.Box3().setFromObject(m);
+            const size = box.getSize(new THREE.Vector3());
+            const score = size.x - size.z;
+            if (score > bestScore) { bestScore = score; boardMesh = m; }
+          });
+          if (!boardMesh) {
+            entry.scene.traverse((m) => {
+              if (!m.isMesh || boardMesh) return;
+              if (m.material && m.material.color) {
+                const c = m.material.color;
+                if (c.r + c.g + c.b < 1.5) boardMesh = m;
+              }
+            });
+          }
+          if (boardMesh) {
+            if (!entry.origBlackboardMaterial) entry.origBlackboardMaterial = boardMesh.material;
+            if (wantedText) {
+              const texture = paintBlackboardTexture(wantedText);
+              boardMesh.material = boardMesh.material.clone();
+              boardMesh.material.map = texture;
+              boardMesh.material.needsUpdate = true;
+            } else {
+              boardMesh.material = entry.origBlackboardMaterial;
+            }
+            entry.lastBlackboardText = wantedText;
+          }
+        }
       }
       if (!entry.attached) {
         root.add(entry.anchor);

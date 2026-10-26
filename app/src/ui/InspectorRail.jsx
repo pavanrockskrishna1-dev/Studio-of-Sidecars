@@ -42,6 +42,7 @@ import { isHydrated, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { checkExportSupport, exportReel, exportShotSequence, saveBlob } from "../animation/exporter";
 import { exportPng } from "./engineCapture";
 import PosterPanel from "./PosterPanel";
+import AiScenePanel from "./AiScenePanel.jsx";
 import * as shotStore from "../animation/shotStore";
 import * as lowerThirdStore from "../animation/lowerThirdStore.js";
 import { shotStatus } from "../animation/shotStore";
@@ -86,6 +87,7 @@ const SECTIONS = [
   { id: "animate", name: "Animate", sub: "turntable preview", icon: "film" },
   { id: "garage", name: "Garage", sub: "pick parts by click", icon: "frame" },
   { id: "poster", name: "Poster", sub: "PNG poster overlay", icon: "swatch" },
+  { id: "ai", name: "AI", sub: "build scene from text", icon: "star" },
 ];
 
 /* --------------------------------------------------------------------------
@@ -963,7 +965,35 @@ function GarageObjectFields({ itemId, busy }) {
       </button>
       <Hint>Added objects move, turn, scale and hide as whole objects; their parts are not editable.</Hint>
       <GarageAnimSection itemId={itemId} busy={busy} api={api} />
+      {obj.assetId === "prop-blackboard" ? (() => {
+        const layout = garageStore.getLayout();
+        const storeItem = layout ? layout.items.find((i) => i.itemId === itemId) : null;
+        const bbText = storeItem && typeof storeItem.blackboardText === "string" ? storeItem.blackboardText : null;
+        return <BlackboardSection itemId={itemId} text={bbText} busy={busy} />;
+      })() : null}
     </>
+  );
+}
+
+// Blackboard chalk-text editor — shown when the selected added object is a
+// prop-blackboard. The draft lives locally; it commits to the store on blur.
+function BlackboardSection({ itemId, text, busy }) {
+  const [draft, setDraft] = useState(text ?? "");
+  useEffect(() => { setDraft(text ?? ""); }, [text]);
+  return (
+    <div className="inspector-section">
+      <span className="sos-label">Chalk text</span>
+      <textarea
+        className="blackboard-textarea"
+        rows={3}
+        maxLength={200}
+        placeholder={"Today's Special\nBBQ Brisket £12\nLoaded Fries £6"}
+        value={draft}
+        disabled={busy}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => garageStore.setBlackboardText(itemId, draft)}
+      />
+    </div>
   );
 }
 
@@ -3399,6 +3429,8 @@ export default function InspectorRail({
               <GaragePanel />
             ) : section.id === "poster" ? (
               <PosterPanel />
+            ) : section.id === "ai" ? (
+              <AiScenePanel />
             ) : (
               <>
                 <span className="sos-label">Format</span>

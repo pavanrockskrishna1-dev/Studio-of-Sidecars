@@ -499,6 +499,7 @@ export function createGarageStore() {
     const rawItems = [{ itemId: p.item.itemId, assetId: p.item.assetId, transform: p.item.transform, parts }];
     const used = new Set([p.item.itemId]);
     const clips = []; // parallel to objects, for animationClip (stripped by validateLayout)
+    const bbTexts = []; // parallel to objects, for blackboardText
     let n = 0;
     for (const o of objects) {
       if (!isObj(o) || typeof o.assetId !== "string" || o.assetId === "" || !isObj(o.transform)) return fail("bad-input");
@@ -507,6 +508,7 @@ export function createGarageStore() {
       const t = pickTransform(o.transform);
       if (!t) return fail("bad-input");
       clips.push(typeof o.animationClip === "string" && o.animationClip ? o.animationClip : null);
+      bbTexts.push(typeof o.blackboardText === "string" && o.blackboardText.trim() ? o.blackboardText.trim().slice(0, 200) : null);
       while (used.has(`i${n}`)) n += 1;
       used.add(`i${n}`);
       rawItems.push({ itemId: `i${n}`, assetId: o.assetId, transform: t, hidden: o.hidden === true, locked: o.locked === true });
@@ -517,6 +519,7 @@ export function createGarageStore() {
     const added = v.layout.items.slice(1).map((it, i) => {
       const base = { ...it, primary: false };
       if (clips[i]) base.animationClip = clips[i];
+      if (bbTexts[i]) base.blackboardText = bbTexts[i];
       return deepFreeze(base);
     });
     const current = layout.items.filter((i) => i !== p.item);
@@ -590,6 +593,22 @@ export function createGarageStore() {
     return { ok: true, changed: true, revision };
   }
 
+  // text: null = clear, non-empty string = chalk text (max 200 chars, trimmed).
+  function setBlackboardText(itemId, text) {
+    const p = prep(itemId);
+    if (p.err) return p.err;
+    if (p.item.primary) return fail("not-primary");
+    if (text !== null && typeof text !== "string") return fail("bad-input");
+    const cleanText = text === null || text === "" ? null : text.trim().slice(0, 200) || null;
+    const current = hasOwn(p.item, "blackboardText") ? p.item.blackboardText : null;
+    if (current === cleanText) return noop();
+    const next = Object.assign({}, p.item);
+    if (cleanText === null) delete next.blackboardText;
+    else next.blackboardText = cleanText;
+    commit(withItem(p.idx, next), { type: "item", itemId: p.item.itemId });
+    return { ok: true, changed: true, revision };
+  }
+
   function addItem(spec) {
     if (locked) return fail("locked");
     if (!layout) return fail("no-layout");
@@ -620,6 +639,8 @@ export function createGarageStore() {
     const baseItem = { ...v.layout.items[0], primary: false };
     const clip = typeof spec.animationClip === "string" && spec.animationClip ? spec.animationClip : null;
     if (clip) baseItem.animationClip = clip;
+    const bbText = typeof spec.blackboardText === "string" && spec.blackboardText.trim() ? spec.blackboardText.trim().slice(0, 200) : null;
+    if (bbText) baseItem.blackboardText = bbText;
     const item = deepFreeze(baseItem);
     const items = Object.freeze([...layout.items, item]);
     commit(Object.freeze({ ...layout, items }), { type: "add-item", itemId });
@@ -731,6 +752,7 @@ export function createGarageStore() {
     setItemHidden: command(setItemHidden),
     setItemLocked: command(setItemLocked),
     setItemAnimation: command(setItemAnimation),
+    setBlackboardText: command(setBlackboardText),
     addItem: command(addItem),
     removeItem: command(removeItem),
     setFrontRef: command(setFrontRef),
@@ -751,7 +773,7 @@ const defaultStore = createGarageStore();
 export const {
   subscribe, getSnapshot, apiRef, registerApi, setLocked,
   startLayout, loadLayout, loadLayoutJson, getLayout, exportJson, markSaved,
-  setPartOverride, resetPart, loadPartsOverrides, loadLayoutItems, setItemTransform, setItemHidden, setItemLocked, setItemAnimation,
+  setPartOverride, resetPart, loadPartsOverrides, loadLayoutItems, setItemTransform, setItemHidden, setItemLocked, setItemAnimation, setBlackboardText,
   addItem, removeItem, setFrontRef,
   select, toggle, clearSelection,
   beginGesture, endGesture, cancelGesture, undo, redo,

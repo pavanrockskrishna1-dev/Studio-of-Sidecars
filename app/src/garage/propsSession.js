@@ -28,6 +28,7 @@ export function propsForSession(layout) {
       hidden: i.hidden === true,
       locked: i.locked === true,
       ...(typeof i.animationClip === "string" && i.animationClip ? { animationClip: i.animationClip } : {}),
+      ...(typeof i.blackboardText === "string" && i.blackboardText ? { blackboardText: i.blackboardText } : {}),
     }));
 }
 
@@ -53,6 +54,7 @@ export function parseSessionProps(raw) {
       hidden: e.hidden === true,
       locked: e.locked === true,
       ...(typeof e.animationClip === "string" && e.animationClip ? { animationClip: e.animationClip } : {}),
+      ...(typeof e.blackboardText === "string" && e.blackboardText.trim() ? { blackboardText: e.blackboardText.trim().slice(0, 200) } : {}),
     });
   }
   return out;
