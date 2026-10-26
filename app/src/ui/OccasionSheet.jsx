@@ -7,6 +7,7 @@ import * as garageMode from '../garage/garageMode';
 import * as animStore from '../animation/animationStore';
 import * as currentProduct from '../products/currentProduct';
 import { buildHalloweenSet, SET_PRODUCT_ID } from '../animation/halloweenSet';
+import { buildOccasionSet, OCCASION_SETS } from '../animation/occasionSets';
 import { setLookPreset } from '../fx/lookStore';
 
 /* ==========================================================================
@@ -197,6 +198,37 @@ export default function OccasionSheet() {
               {reelStatus && (
                 <p className="sos2-occ-scene-note" style={{ color: '#22c55e' }}>{reelStatus}</p>
               )}
+            </div>
+          )}
+
+          {/* Halloween has its own block just above (crab and Reel buttons too) */}
+          {occasionId !== 'halloween' && OCCASION_SETS[occasionId] && (
+            <div className="sos2-occ-scene-tools">
+              <p className="sos2-occ-label">Scene</p>
+              <button
+                type="button"
+                className="sos2-occ-action sos2-occ-action--set"
+                disabled={setStatus.busy || productId !== SET_PRODUCT_ID}
+                onClick={async () => {
+                  setSetStatus({ busy: true, text: 'Building the set…', notes: [] });
+                  const r = await buildOccasionSet(occasionId, {
+                    productId,
+                    onProgress: (text) => setSetStatus((s) => ({ ...s, text })),
+                  });
+                  setSetStatus({ busy: false, text: r.message, notes: r.warnings || [] });
+                }}
+              >
+                {OCCASION_SETS[occasionId].emoji} Build {OCCASION_SETS[occasionId].name} set
+              </button>
+              <p className="sos2-occ-scene-sub">
+                {productId === SET_PRODUCT_ID
+                  ? `Replaces the props and effects in the scene. ${OCCASION_SETS[occasionId].blurb}`
+                  : 'Switch to the BBQ Bike to use this set.'}
+              </p>
+              {setStatus.text && <p className="sos2-occ-scene-note">{setStatus.text}</p>}
+              {setStatus.notes.map((n) => (
+                <p key={n} className="sos2-occ-scene-sub">{n}</p>
+              ))}
             </div>
           )}
         </div>

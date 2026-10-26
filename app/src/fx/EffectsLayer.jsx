@@ -3,10 +3,12 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import * as effectsStore from "./effectsStore";
 
-/* The placed 3D effects (effectsStore.js). Each is a point-sprite system
-   driven by the frame clock, so the export (which steps every frame effect
-   by one export frame) renders them exactly like the live view. Everything is
-   in world space; positions are each effect's ground point. */
+/* The placed 3D effects (effectsStore.js). Almost every one is a point-sprite
+   system driven by the frame clock, so the export (which steps every frame
+   effect by one export frame) renders them exactly like the live view. The one
+   exception is "Snow ground", a still mesh lying on the floor (SnowGround
+   below). Everything is in world space; positions are each effect's ground
+   point. */
 
 function sprite(draw, size = 64) {
   const c = document.createElement("canvas");
@@ -58,12 +60,44 @@ const chip = (ctx, s) => {
   ctx.fillStyle = "#fff";
   ctx.fillRect(s * 0.3, s * 0.15, s * 0.4, s * 0.7);
 };
+const heartShape = (ctx, s) => {
+  ctx.translate(s / 2, s * 0.56);
+  ctx.scale(s / 100, s / 100);
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.moveTo(0, 30);
+  ctx.bezierCurveTo(-44, -2, -30, -42, 0, -18);
+  ctx.bezierCurveTo(30, -42, 44, -2, 0, 30);
+  ctx.fill();
+};
 const CONFETTI = [[1, 0.25, 0.35], [1, 0.8, 0.15], [0.2, 0.75, 1], [0.45, 1, 0.4], [0.85, 0.4, 1], [1, 0.55, 0.15]];
+const TRICOLOUR = [[1, 0.6, 0.1], [1, 1, 1], [0.07, 0.6, 0.25]]; // saffron, white, India green
+const POWDER = [[1, 0.25, 0.5], [1, 0.82, 0.15], [0.25, 0.75, 1], [0.35, 0.9, 0.4], [0.8, 0.3, 1], [1, 0.5, 0.1]];
 // 0..1 through a looping lifetime of min + r * span seconds
 const life01 = (t, r, min, span) => {
   const life = min + r * span;
   return ((t + r * 7.3 * life) % life) / life;
 };
+
+// Confetti chips: one kind per palette. The sprite, the count and the tumbling
+// fall are the same; only the colours the chips are picked from differ.
+const confettiKind = (palette) => ({
+  count: 120,
+  tex: () => sprite(chip, 32),
+  material: { size: 0.09, opacity: 1, blending: THREE.NormalBlending, color: 0xffffff },
+  at(i, t, r, out) {
+    const fall = 0.55 + r[i * 4] * 0.45;
+    const y = 3.6 - ((t * fall + r[i * 4 + 1] * 3.6) % 3.6);
+    out.set((r[i * 4 + 2] - 0.5) * 3 + Math.sin(t * 2.2 + i) * 0.3, y, (r[i * 4 + 3] - 0.5) * 3 + Math.cos(t * 1.8 + i) * 0.2);
+  },
+  look(i, t, r, c) {
+    const col = palette[Math.floor(r[i * 4 + 3] * palette.length) % palette.length];
+    c.r = col[0];
+    c.g = col[1];
+    c.b = col[2];
+    c.s = 0.45 + 0.55 * Math.abs(Math.sin(t * (4 + r[i * 4] * 4) + i)); // tumbling
+  },
+});
 
 // per type: particle count, sprite, look, the motion of particle i at time t
 // (`at`), and optionally its own colour / alpha / size (`look` sets c.r c.g
@@ -197,23 +231,8 @@ const KINDS = {
       out.set((r[i * 4 + 2] - 0.5) * 4, y, (r[i * 4 + 3] - 0.5) * 4);
     },
   },
-  confetti: {
-    count: 120,
-    tex: () => sprite(chip, 32),
-    material: { size: 0.09, opacity: 1, blending: THREE.NormalBlending, color: 0xffffff },
-    at(i, t, r, out) {
-      const fall = 0.55 + r[i * 4] * 0.45;
-      const y = 3.6 - ((t * fall + r[i * 4 + 1] * 3.6) % 3.6);
-      out.set((r[i * 4 + 2] - 0.5) * 3 + Math.sin(t * 2.2 + i) * 0.3, y, (r[i * 4 + 3] - 0.5) * 3 + Math.cos(t * 1.8 + i) * 0.2);
-    },
-    look(i, t, r, c) {
-      const col = CONFETTI[Math.floor(r[i * 4 + 3] * CONFETTI.length) % CONFETTI.length];
-      c.r = col[0];
-      c.g = col[1];
-      c.b = col[2];
-      c.s = 0.45 + 0.55 * Math.abs(Math.sin(t * (4 + r[i * 4] * 4) + i)); // tumbling
-    },
-  },
+  confetti: confettiKind(CONFETTI),
+  tricolor: confettiKind(TRICOLOUR),
   dust: {
     count: 80,
     tex: () => sprite(radial([[0, "rgba(255,255,255,1)"], [0.35, "rgba(255,255,255,0.5)"], [1, "rgba(0,0,0,0)"]]), 32),
@@ -229,6 +248,45 @@ const KINDS = {
       c.a = Math.sin(ph * Math.PI) * (0.4 + 0.6 * Math.abs(Math.sin(t * 7 + i * 3)));
     },
   },
+  powder: {
+    count: 70,
+    linear: true,
+    tex: () => sprite(radial([[0, "rgba(255,255,255,0.95)"], [0.5, "rgba(255,255,255,0.4)"], [1, "rgba(255,255,255,0)"]]), 128),
+    material: { size: 0.75, opacity: 0.9, blending: THREE.NormalBlending, color: 0xffffff },
+    at(i, t, r, out) {
+      // a puff that bursts outwards and upwards, then fades
+      const ph = life01(t, r[i * 4], 2.6, 1.8);
+      const a = r[i * 4 + 1] * Math.PI * 2;
+      const rad = 0.2 + r[i * 4 + 2] * 0.5 + ph * 1.4;
+      out.set(Math.cos(a) * rad, 0.15 + ph * (1.1 + r[i * 4 + 3] * 0.9), Math.sin(a) * rad);
+    },
+    look(i, t, r, c) {
+      const col = POWDER[Math.floor(r[i * 4 + 2] * POWDER.length) % POWDER.length];
+      c.r = col[0];
+      c.g = col[1];
+      c.b = col[2];
+      const ph = life01(t, r[i * 4], 2.6, 1.8);
+      c.s = 0.4 + ph * 1.5;
+      c.a = Math.sin(ph * Math.PI) * 0.85;
+    },
+  },
+  hearts: {
+    count: 28,
+    tex: () => sprite(heartShape, 64),
+    material: { size: 0.22, opacity: 1, blending: THREE.NormalBlending, color: 0xff6b8a },
+    at(i, t, r, out) {
+      const ph = life01(t, r[i * 4], 4, 2.5);
+      const a = r[i * 4 + 1] * Math.PI * 2;
+      const rad = 0.25 + r[i * 4 + 2] * 0.7;
+      out.set(Math.cos(a) * rad + Math.sin(t * 0.8 + i) * 0.18, 0.3 + ph * 2.2, Math.sin(a) * rad + Math.cos(t * 0.6 + i) * 0.15);
+    },
+    look(i, t, r, c) {
+      const ph = life01(t, r[i * 4], 4, 2.5);
+      c.a = Math.sin(ph * Math.PI) * 0.95;
+      c.s = 0.75 + 0.35 * Math.abs(Math.sin(t * 1.4 + i)); // a soft beat
+      c.g = 0.6 + 0.4 * r[i * 4 + 3];
+    },
+  },
 };
 
 function seeded(seed, n) {
@@ -240,6 +298,128 @@ function seeded(seed, n) {
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
   });
 }
+
+/* ---------------------------- the one still effect ---------------------------- */
+
+/* "Snow ground": a blanket of snow lying on the floor, not falling snow. A flat
+   lit mesh (so moonlight and the studio lights shape it), a few mm above the
+   floor and with a polygon offset so it never flickers against it. The patch is
+   an irregular round blanket about 5 m across at size 1, with ragged edges that
+   fade out, a faint uneven surface and a couple of low mounds near the rim.
+   Nothing moves, so the live view and the export match on their own. */
+const SNOW_R = 2.5; // the patch's radius in metres at size 1
+const SNOW_LIFT = 0.004; // metres above the floor
+const MOUNDS = [[0.55, 0.6, 0.38], [-0.66, 0.26, 0.34], [0.12, -0.68, 0.3]]; // x, z, radius in patch units
+
+// white with a faint blue tint, unevenly blotchy: the colour and the bump
+const snowSurface = (ctx, s) => {
+  ctx.fillStyle = "#eef2fb";
+  ctx.fillRect(0, 0, s, s);
+  const rand = seeded(20251226, 512);
+  for (let i = 0; i < 128; i++) {
+    const x = rand[i * 4] * s;
+    const y = rand[i * 4 + 1] * s;
+    const rad = s * (0.02 + rand[i * 4 + 2] * 0.09);
+    const light = rand[i * 4 + 3] > 0.5;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    g.addColorStop(0, light ? "rgba(255,255,255,0.75)" : "rgba(203,214,236,0.6)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+};
+
+// the patch's shape: an irregular disc drawn in shrinking passes, so its edge
+// is ragged and fades out instead of ending on a line
+const snowShape = (ctx, s) => {
+  const c = s / 2;
+  const passes = 26;
+  const lobes = (a) => 1 + 0.12 * Math.sin(a * 3 + 0.7) + 0.08 * Math.sin(a * 5 + 2.1) + 0.05 * Math.sin(a * 9 + 4.3);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, s, s);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = `rgba(255,255,255,${1 / passes})`;
+  for (let p = 0; p < passes; p++) {
+    const k = 0.7 + (0.3 * p) / (passes - 1);
+    ctx.beginPath();
+    for (let i = 0; i <= 72; i++) {
+      const a = (i / 72) * Math.PI * 2;
+      const rad = c * 0.76 * k * lobes(a);
+      const x = c + Math.cos(a) * rad;
+      const y = c + Math.sin(a) * rad;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.fill();
+  }
+};
+
+// the two canvas textures, built once and shared by every patch
+let snowTex = null;
+function snowTextures() {
+  if (!snowTex) {
+    const shape = sprite(snowShape, 512);
+    shape.colorSpace = THREE.NoColorSpace; // a mask, not a colour
+    snowTex = { surface: sprite(snowSurface, 512), shape };
+  }
+  return snowTex;
+}
+
+function SnowGround({ effect }) {
+  const { geometry, material, spin } = useMemo(() => {
+    const g = new THREE.PlaneGeometry(SNOW_R * 2, SNOW_R * 2, 40, 40);
+    // a few low soft mounds, so the blanket is not perfectly flat
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const u = pos.getX(i) / SNOW_R;
+      const v = pos.getY(i) / SNOW_R;
+      let h = 0;
+      for (const [mx, mz, mr] of MOUNDS) {
+        const d = Math.hypot(u - mx, v - mz) / mr;
+        h += 0.055 * Math.exp(-d * d);
+      }
+      pos.setZ(i, h);
+    }
+    g.computeVertexNormals();
+    const { surface, shape } = snowTextures();
+    const m = new THREE.MeshStandardMaterial({
+      map: surface,
+      bumpMap: surface,
+      bumpScale: 0.2,
+      alphaMap: shape,
+      color: 0xffffff,
+      roughness: 0.92,
+      metalness: 0,
+      transparent: true,
+      depthWrite: false, // so overlapping patches blend instead of cutting each other
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const seed = [...effect.id].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7);
+    return { geometry: g, material: m, spin: seeded(seed, 1)[0] * Math.PI * 2 };
+  }, [effect.id]);
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      material.dispose(); // the textures are shared, so they are not disposed
+    },
+    [geometry, material]
+  );
+  const [x, y, z] = effect.position;
+  return (
+    <mesh
+      geometry={geometry}
+      material={material}
+      position={[x, y + SNOW_LIFT, z]}
+      rotation={[-Math.PI / 2, 0, spin]}
+      scale={effect.size}
+      frustumCulled={false}
+    />
+  );
+}
+
+/* ---------------------------- the particle effects ---------------------------- */
 
 function Effect({ effect }) {
   const kind = KINDS[effect.type];
@@ -295,9 +475,9 @@ export default function EffectsLayer() {
   const { effects } = useSyncExternalStore(effectsStore.subscribe, effectsStore.getSnapshot, effectsStore.getSnapshot);
   return (
     <>
-      {effects.map((e) => (
-        <Effect key={e.id} effect={e} />
-      ))}
+      {effects.map((e) =>
+        e.type === "snowground" ? <SnowGround key={e.id} effect={e} /> : <Effect key={e.id} effect={e} />
+      )}
     </>
   );
 }

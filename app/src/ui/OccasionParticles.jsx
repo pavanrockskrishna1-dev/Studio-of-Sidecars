@@ -129,7 +129,7 @@ function drawFirework(ctx, fw, dt) {
     const sy = fw.y + Math.sin(sp.angle) * d;
     ctx.globalAlpha = Math.max(0, sp.life) * 0.9;
     ctx.fillStyle = fw.color;
-    const r = sp.life * 2.5;
+    const r = Math.max(0, sp.life) * 2.5; // life dips below 0 on its last frame
     ctx.beginPath();
     ctx.arc(sx, sy, r, 0, TAU);
     ctx.fill();

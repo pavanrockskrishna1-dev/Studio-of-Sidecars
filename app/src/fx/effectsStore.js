@@ -1,5 +1,6 @@
 // Effects placed in the 3D scene (Garage → Effects): fog, embers, leaves,
-// bats, smoke, sparks, fireflies, ghost lights, snow, rain, confetti, dust. Each is { id, type, position: [x,y,z]
+// bats, smoke, sparks, fireflies, ghost lights, snow, rain, confetti, dust,
+// colour powder, hearts, tricolour confetti, snow ground. Each is { id, type, position: [x,y,z]
 // (world, on the ground), size (1 = default) }. They live in the scene, so the
 // live view, the Reel preview and the export all show them.
 
@@ -16,6 +17,10 @@ export const EFFECT_TYPES = Object.freeze({
   rain: { label: "Rain", hint: "rain falling" },
   confetti: { label: "Confetti", hint: "colourful party confetti" },
   dust: { label: "Magic dust", hint: "golden sparkles swirling up" },
+  powder: { label: "Colour powder", hint: "Holi powder bursting into a colour cloud" },
+  hearts: { label: "Floating hearts", hint: "soft hearts drifting up" },
+  tricolor: { label: "Tricolour confetti", hint: "saffron, white and green confetti" },
+  snowground: { label: "Snow ground", hint: "a blanket of snow on the ground" },
 });
 export const MAX_EFFECTS = 20;
 
