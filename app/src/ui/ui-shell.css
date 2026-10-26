@@ -3529,6 +3529,27 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
   margin-left: auto;
 }
 .ai-error-dismiss:hover { color: rgba(255,255,255,0.9); }
+.ai-product-badge {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #888;
+}
+.ai-product-badge strong {
+  color: #ccc;
+}
+.ai-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 160, 50, 0.12);
+  border: 1px solid rgba(255, 160, 50, 0.35);
+  border-radius: 6px;
+  color: #ffb347;
+  font-size: 12px;
+}
 .ai-hint {
   font-size: 11px;
   color: rgba(255,255,255,0.38);

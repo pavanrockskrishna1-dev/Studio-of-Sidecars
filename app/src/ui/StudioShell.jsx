@@ -170,7 +170,7 @@ export default function StudioShell() {
       case "occasions":
         return <OccasionBody />;
       case "ai":
-        return <AiScenePanel />;
+        return <AiScenePanel productId={assets.productId} />;
       case "save":
         return <SaveBody session={session} />;
       case "capture":

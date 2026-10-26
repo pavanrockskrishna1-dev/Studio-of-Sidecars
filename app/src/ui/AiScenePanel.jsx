@@ -1,13 +1,16 @@
 import React, { useState } from "react";
 import { useSyncExternalStore } from "react";
 import * as aiScene from "../ai/aiScene.js";
+import { PRODUCTS } from "../products/registry";
 
-export default function AiScenePanel() {
-  const { busy, error } = useSyncExternalStore(aiScene.subscribe, aiScene.getSnapshot);
+export default function AiScenePanel({ productId }) {
+  const { busy, error, result } = useSyncExternalStore(aiScene.subscribe, aiScene.getSnapshot);
   const [prompt, setPrompt] = useState("");
   const [apiKey, setApiKey] = useState(() => {
     try { return localStorage.getItem("sos_groq_key") ?? ""; } catch { return ""; }
   });
+
+  const product = PRODUCTS.find((p) => p.id === productId);
 
   const saveKey = (k) => {
     setApiKey(k);
@@ -16,7 +19,10 @@ export default function AiScenePanel() {
 
   const handleBuild = () => {
     if (!prompt.trim() || !apiKey.trim() || busy) return;
-    aiScene.buildScene(prompt.trim(), apiKey.trim());
+    aiScene.buildScene(prompt.trim(), apiKey.trim(), {
+      productName: product?.name ?? "BBQ Bike",
+      productId: productId ?? "",
+    });
   };
 
   return (
@@ -30,11 +36,16 @@ export default function AiScenePanel() {
         onChange={(e) => saveKey(e.target.value)}
         autoComplete="off"
       />
+      {product && (
+        <div className="ai-product-badge">
+          Building for: <strong>{product.name}</strong>
+        </div>
+      )}
       <div className="inspector-label" style={{ marginTop: 12 }}>Describe the scene</div>
       <textarea
         className="ai-prompt-textarea"
         rows={4}
-        placeholder="BBQ bike at a Diwali night market with warm lights and a crowd"
+        placeholder={`e.g. "Diwali night market with warm lights and golden glow"`}
         value={prompt}
         disabled={busy}
         onChange={(e) => setPrompt(e.target.value)}
@@ -53,8 +64,14 @@ export default function AiScenePanel() {
           <button className="ai-error-dismiss" onClick={aiScene.clearError}>&times;</button>
         </div>
       )}
+      {result && !error && (
+        <div className="ai-result">
+          {result}
+          <button className="ai-error-dismiss" onClick={aiScene.clearError}>&times;</button>
+        </div>
+      )}
       <p className="ai-hint">
-        Ctrl+Enter to build. Adds props and effects &mdash; does not remove existing ones.
+        Ctrl+Enter to build. Sets stage, lighting, reel shots and prop animations.
       </p>
     </div>
   );
