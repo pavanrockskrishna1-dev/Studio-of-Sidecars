@@ -62,7 +62,7 @@ export async function buildScene(prompt, apiKey) {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
+        model: "qwen/qwen3.8-27b",
         max_tokens: 1024,
         messages: [{ role: "user", content: buildPrompt(prompt) }],
       }),
