@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D Layers — Snitch</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#07080A;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let t=0,W,H;
+function resize(){c.width=W=innerWidth;c.height=H=innerHeight}
+resize();addEventListener('resize',resize);
+
+const V=[[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]];
+const F=[[0,1,2,3],[4,7,6,5],[0,4,5,1],[1,5,6,2],[2,6,7,3],[3,7,4,0]];
+const FC=['#FF4D26','#CC3D1E','#FF5E3B','#E84522','#B83318','#FF6B47'];
+
+function rX(v,a){return[v[0],v[1]*Math.cos(a)-v[2]*Math.sin(a),v[1]*Math.sin(a)+v[2]*Math.cos(a)]}
+function rY(v,a){return[v[0]*Math.cos(a)+v[2]*Math.sin(a),v[1],-v[0]*Math.sin(a)+v[2]*Math.cos(a)]}
+function pr(p,cx,cy){const z=p[2]+700;const s=Math.min(W,H)*.55/z;return[cx+p[0]*s,cy+p[1]*s]}
+
+function frame(){
+  t+=.009;
+  x.fillStyle='#07080A';x.fillRect(0,0,W,H);
+
+  // grid
+  x.strokeStyle='rgba(255,77,38,.055)';x.lineWidth=1;
+  const gs=Math.min(W,H)/22;
+  for(let i=0;i<H/gs+1;i++){x.beginPath();x.moveTo(0,i*gs);x.lineTo(W,i*gs);x.stroke()}
+  for(let i=0;i<W/gs+1;i++){x.beginPath();x.moveTo(i*gs,0);x.lineTo(i*gs,H);x.stroke()}
+
+  const s=Math.min(W,H)*.22,cx=W/2,cy=H/2;
+  const rv=V.map(v=>{
+    let p=[v[0]*s,v[1]*s,v[2]*s];
+    p=rX(p,t*.35);p=rY(p,t);return p;
+  });
+
+  // sort faces back-to-front
+  F.map((f,i)=>({f,i,z:f.reduce((a,vi)=>a+rv[vi][2],0)/4}))
+   .sort((a,b)=>a.z-b.z)
+   .forEach(({f,i})=>{
+     const pts=f.map(vi=>pr(rv[vi],cx,cy));
+     x.beginPath();
+     pts.forEach((p,j)=>j?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));
+     x.closePath();
+     x.fillStyle=FC[i];x.globalAlpha=.9;x.fill();
+     x.strokeStyle='#07080A';x.lineWidth=Math.min(W,H)*.004;
+     x.globalAlpha=1;x.stroke();
+   });
+
+  // glow behind cube
+  const g=x.createRadialGradient(cx,cy,0,cx,cy,s*.8);
+  g.addColorStop(0,'rgba(255,77,38,.08)');g.addColorStop(1,'rgba(255,77,38,0)');
+  x.globalAlpha=1;x.fillStyle=g;x.beginPath();x.arc(cx,cy,s*.8,0,7);x.fill();
+
+  label('3D LAYERS','PERSPECTIVE ENGINE · DEPTH SORTING · FACE SHADING');
+  requestAnimationFrame(frame);
+}
+
+function label(name,desc){
+  const p=Math.min(W,H)*.038;
+  x.fillStyle='#FF4D26';x.font=`700 ${p*.38}px monospace`;x.textAlign='left';
+  x.fillText(name,p,p*1.1);
+  x.fillStyle='rgba(233,231,225,.38)';x.font=`${p*.26}px monospace`;
+  x.fillText(desc,p,p*1.65);
+}
+
+frame();
+</script>
+</body>
+</html>

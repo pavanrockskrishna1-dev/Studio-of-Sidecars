@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trim Path — Snitch</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#07080A;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let t=0,W,H;
+function resize(){c.width=W=innerWidth;c.height=H=innerHeight}
+resize();addEventListener('resize',resize);
+
+function easeInOut(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2}
+
+function frame(){
+  t+=.009;
+  x.fillStyle='#07080A';x.fillRect(0,0,W,H);
+
+  const progress=easeInOut((.5-.5*Math.cos(t*Math.PI*.5))%1);
+  const r=Math.min(W,H)*.3;
+  const cx=W/2,cy=H/2;
+
+  // ghost path underneath
+  x.strokeStyle='rgba(255,77,38,.08)';x.lineWidth=Math.min(W,H)*.008;x.lineCap='round';
+  x.beginPath();x.arc(cx,cy,r,0,Math.PI*2);x.stroke();
+
+  // inner decorative rings
+  for(let i=1;i<=3;i++){
+    const rr=r*(1-i*.12);
+    x.strokeStyle=`rgba(255,77,38,${.04-i*.01})`;
+    x.lineWidth=1;
+    x.beginPath();x.arc(cx,cy,rr,0,Math.PI*2);x.stroke();
+  }
+
+  // trim path — main circle
+  const startAngle=-Math.PI/2;
+  const endAngle=startAngle+Math.PI*2*progress;
+  const lw=Math.min(W,H)*.018;
+  x.lineCap='round';x.lineWidth=lw;
+
+  // glow under stroke
+  x.strokeStyle='rgba(255,77,38,.2)';
+  x.lineWidth=lw*3;x.beginPath();
+  x.arc(cx,cy,r,startAngle,endAngle);x.stroke();
+
+  // main stroke
+  x.strokeStyle='#FF4D26';x.lineWidth=lw;
+  x.beginPath();x.arc(cx,cy,r,startAngle,endAngle);x.stroke();
+
+  // tip glow dot
+  if(progress>0&&progress<1){
+    const tipX=cx+Math.cos(endAngle)*r,tipY=cy+Math.sin(endAngle)*r;
+    const g=x.createRadialGradient(tipX,tipY,0,tipX,tipY,lw*2.5);
+    g.addColorStop(0,'#FFD0B0');g.addColorStop(.5,'#FF4D26');g.addColorStop(1,'rgba(255,77,38,0)');
+    x.fillStyle=g;x.beginPath();x.arc(tipX,tipY,lw*2.5,0,7);x.fill();
+  }
+
+  // percentage
+  const pct=Math.round(progress*100);
+  x.fillStyle='rgba(255,77,38,.9)';
+  const pfs=Math.min(W,H)*.07;
+  x.font=`700 ${pfs}px monospace`;x.textAlign='center';x.textBaseline='middle';
+  x.fillText(`${pct}%`,cx,cy);
+  x.fillStyle='rgba(233,231,225,.3)';
+  x.font=`600 ${pfs*.25}px monospace`;
+  x.fillText('TRIM',cx,cy+pfs*.65);
+
+  label('TRIM PATH','STROKE ANIMATION · START % · END % · OFFSET');
+  requestAnimationFrame(frame);
+}
+
+function label(name,desc){
+  const p=Math.min(W,H)*.038;
+  x.fillStyle='#FF4D26';x.font=`700 ${p*.38}px monospace`;x.textAlign='left';
+  x.fillText(name,p,p*1.1);
+  x.fillStyle='rgba(233,231,225,.38)';x.font=`${p*.26}px monospace`;
+  x.fillText(desc,p,p*1.65);
+}
+
+frame();
+</script>
+</body>
+</html>

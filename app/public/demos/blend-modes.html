@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blend Modes — Snitch</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#07080A;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let t=0,W,H;
+function resize(){c.width=W=innerWidth;c.height=H=innerHeight}
+resize();addEventListener('resize',resize);
+
+const MODES=['screen','multiply','overlay','color-dodge','hard-light','soft-light','difference','exclusion','lighten'];
+const MODE_NAMES=['SCREEN','MULTIPLY','OVERLAY','COLOR-DODGE','HARD-LIGHT','SOFT-LIGHT','DIFFERENCE','EXCLUSION','LIGHTEN'];
+
+function frame(){
+  t+=.01;
+  x.fillStyle='#07080A';x.fillRect(0,0,W,H);
+
+  const modeIdx=Math.floor(t/3)%MODES.length;
+  const mode=MODES[modeIdx];
+  const r=Math.min(W,H)*.22;
+  const cx=W/2,cy=H*.5;
+  const offset=r*.7;
+  const spin=t*.25;
+
+  // base circle (always normal)
+  x.globalCompositeOperation='source-over';
+  x.globalAlpha=.85;
+  x.fillStyle='#1A1D27';
+  x.beginPath();x.arc(cx,cy,r*1.5,0,7);x.fill();
+
+  const circles=[
+    {col:'#FF4D26',x:cx+Math.cos(spin)*offset,y:cy+Math.sin(spin)*offset},
+    {col:'#4DA6FF',x:cx+Math.cos(spin+2.09)*offset,y:cy+Math.sin(spin+2.09)*offset},
+    {col:'#4DFF8C',x:cx+Math.cos(spin+4.18)*offset,y:cy+Math.sin(spin+4.18)*offset},
+  ];
+
+  circles.forEach((circle,i)=>{
+    x.globalCompositeOperation=i===0?'source-over':mode;
+    x.globalAlpha=.9;
+    x.fillStyle=circle.col;
+    x.beginPath();x.arc(circle.x,circle.y,r,0,7);x.fill();
+  });
+
+  x.globalCompositeOperation='source-over';x.globalAlpha=1;
+
+  // mode label (cycling)
+  const fade=Math.min(1,Math.min(t%3,3-(t%3))*3);
+  x.globalAlpha=fade;
+  x.fillStyle='rgba(233,231,225,.9)';
+  const mfs=Math.min(W,H)*.032;
+  x.font=`700 ${mfs}px monospace`;x.textAlign='center';x.textBaseline='middle';
+  x.fillText(MODE_NAMES[modeIdx],cx,cy+r*1.35);
+  x.globalAlpha=1;
+
+  label('BLEND MODES','SCREEN · MULTIPLY · OVERLAY · DIFFERENCE +5');
+  requestAnimationFrame(frame);
+}
+
+function label(name,desc){
+  const p=Math.min(W,H)*.038;
+  x.fillStyle='#FF4D26';x.font=`700 ${p*.38}px monospace`;x.textAlign='left';
+  x.fillText(name,p,p*1.1);
+  x.fillStyle='rgba(233,231,225,.38)';x.font=`${p*.26}px monospace`;
+  x.fillText(desc,p,p*1.65);
+}
+
+frame();
+</script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Camera Parallax — Snitch</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#07080A;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let t=0,W,H,mx=.5,my=.5;
+function resize(){c.width=W=innerWidth;c.height=H=innerHeight}
+resize();addEventListener('resize',resize);
+addEventListener('mousemove',e=>{mx=e.clientX/W;my=e.clientY/H});
+
+// Layers: z-depth 0 (far) to 1 (close)
+// Each layer drawn with different parallax shift based on depth
+const LAYERS=[
+  // far background stars
+  {z:.05,items:[...Array(60)].map(()=>({x:Math.random(),y:Math.random(),r:.0015+Math.random()*.002,col:'rgba(233,231,225,.2)'}))},
+  // mid stars
+  {z:.15,items:[...Array(30)].map(()=>({x:Math.random(),y:Math.random(),r:.003+Math.random()*.004,col:'rgba(233,231,225,.35)'}))},
+  // geometric shapes mid-far
+  {z:.3,items:[
+    {x:.2,y:.35,shape:'circle',r:.04,col:'rgba(77,166,255,.18)'},
+    {x:.8,y:.65,shape:'circle',r:.05,col:'rgba(77,166,255,.18)'},
+    {x:.5,y:.2,shape:'rect',w:.08,h:.08,col:'rgba(255,77,38,.1)'},
+  ]},
+  // main subject layers
+  {z:.6,items:[
+    {x:.35,y:.5,shape:'hexagon',r:.1,col:'rgba(255,77,38,.22)'},
+    {x:.65,y:.5,shape:'hexagon',r:.1,col:'rgba(77,166,255,.22)'},
+  ]},
+  // foreground dots
+  {z:1,items:[...Array(8)].map(()=>({x:Math.random(),y:Math.random(),r:.012+Math.random()*.018,col:'rgba(255,77,38,.55)'}))},
+];
+
+function hex(ctx,cx,cy,r){
+  ctx.beginPath();
+  for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2-Math.PI/6;ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r)}
+  ctx.closePath();
+}
+
+function frame(){
+  t+=.008;
+  x.fillStyle='rgba(7,8,10,.3)';x.fillRect(0,0,W,H);
+
+  const camX=(mx-.5)*W*.15;
+  const camY=(my-.5)*H*.15;
+
+  LAYERS.forEach(layer=>{
+    const ox=camX*layer.z;
+    const oy=camY*layer.z;
+    layer.items.forEach(item=>{
+      const px=item.x*W+ox;const py=item.y*H+oy;
+      if(item.shape==='circle'||!item.shape){
+        x.fillStyle=item.col;x.globalAlpha=1;
+        x.beginPath();x.arc(px,py,item.r*(item.r<.01?W:Math.min(W,H)),0,7);x.fill();
+      } else if(item.shape==='hexagon'){
+        hex(x,px,py,item.r*Math.min(W,H));
+        x.fillStyle=item.col;x.fill();
+        x.strokeStyle=item.col.replace(/[\d.]+\)$/,'0.6)');x.lineWidth=2;x.stroke();
+      } else if(item.shape==='rect'){
+        x.fillStyle=item.col;
+        x.fillRect(px-item.w*W/2,py-item.h*H/2,item.w*W,item.h*H);
+      }
+    });
+  });
+
+  // depth label lines
+  x.globalAlpha=.15;x.strokeStyle='#FF4D26';x.lineWidth=1;x.setLineDash([4,8]);
+  [.05,.15,.3,.6,1].forEach((z,i)=>{
+    const y2=H*.75+i*H*.04;
+    x.beginPath();x.moveTo(W*.1,y2);x.lineTo(W*.9,y2);x.stroke();
+  });
+  x.setLineDash([]);x.globalAlpha=1;
+
+  // move mouse hint
+  x.fillStyle='rgba(233,231,225,.22)';
+  x.font=`${Math.min(W,H)*.022}px monospace`;x.textAlign='center';
+  x.fillText('MOVE MOUSE TO SHIFT PARALLAX',W/2,H*.92);
+
+  label('CAMERA PARALLAX','Z-DEPTH · FOV · LAYER OFFSET · SCROLL RIG');
+  requestAnimationFrame(frame);
+}
+
+function label(name,desc){
+  const p=Math.min(W,H)*.038;
+  x.fillStyle='#FF4D26';x.font=`700 ${p*.38}px monospace`;x.textAlign='left';
+  x.fillText(name,p,p*1.1);
+  x.fillStyle='rgba(233,231,225,.38)';x.font=`${p*.26}px monospace`;
+  x.fillText(desc,p,p*1.65);
+}
+
+frame();
+</script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Track Matte — Snitch</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#07080A;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let t=0,W,H;
+function resize(){c.width=W=innerWidth;c.height=H=innerHeight}
+resize();addEventListener('resize',resize);
+
+function frame(){
+  t+=.014;
+  x.fillStyle='#07080A';x.fillRect(0,0,W,H);
+
+  // offscreen: animated gradient fill
+  const off=document.createElement('canvas');off.width=W;off.height=H;
+  const ox=off.getContext('2d');
+  const h=((t*22)%360);
+  const g=ox.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,`hsl(${h},90%,55%)`);
+  g.addColorStop(.25,'#FF4D26');
+  g.addColorStop(.5,`hsl(${h+50},85%,60%)`);
+  g.addColorStop(.75,`hsl(${h+120},80%,50%)`);
+  g.addColorStop(1,`hsl(${h+200},90%,55%)`);
+  ox.fillStyle=g;ox.fillRect(0,0,W,H);
+
+  // mask: draw text in white on a second offscreen
+  const mask=document.createElement('canvas');mask.width=W;mask.height=H;
+  const mx=mask.getContext('2d');
+  const fs=Math.min(W,H)*.28;
+  mx.fillStyle='#fff';mx.textAlign='center';mx.textBaseline='middle';
+  mx.font=`900 ${fs}px monospace`;mx.fillText('SNITCH',W/2,H/2-fs*.05);
+  mx.font=`700 ${fs*.18}px monospace`;mx.fillText('TRACK  MATTE',W/2,H/2+fs*.52);
+
+  // apply mask to gradient
+  ox.globalCompositeOperation='destination-in';ox.drawImage(mask,0,0);
+  ox.globalCompositeOperation='source-over';
+
+  // composite onto dark bg
+  x.drawImage(off,0,0);
+
+  // ghost outline hint
+  x.globalAlpha=.08;x.strokeStyle='#E9E7E1';x.lineWidth=1;
+  x.textAlign='center';x.textBaseline='middle';
+  x.font=`900 ${fs}px monospace`;x.strokeText('SNITCH',W/2,H/2-fs*.05);
+  x.globalAlpha=1;
+
+  label('TRACK MATTE','ALPHA MATTE · LUMA MATTE · COMPOSITING');
+  requestAnimationFrame(frame);
+}
+
+function label(name,desc){
+  const p=Math.min(W,H)*.038;
+  x.fillStyle='#FF4D26';x.font=`700 ${p*.38}px monospace`;x.textAlign='left';
+  x.fillText(name,p,p*1.1);
+  x.fillStyle='rgba(233,231,225,.38)';x.font=`${p*.26}px monospace`;
+  x.fillText(desc,p,p*1.65);
+}
+
+frame();
+</script>
+</body>
+</html>

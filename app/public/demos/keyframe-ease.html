@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Keyframe Easing — Snitch</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#07080A;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let t=0,W,H;
+function resize(){c.width=W=innerWidth;c.height=H=innerHeight}
+resize();addEventListener('resize',resize);
+
+// Cubic bezier solver (Newton-Raphson)
+function bezierVal(t,x1,y1,x2,y2){
+  function sampleX(t){return 3*t*(1-t)*(1-t)*x1+3*t*t*(1-t)*x2+t*t*t}
+  function sampleY(t){return 3*t*(1-t)*(1-t)*y1+3*t*t*(1-t)*y2+t*t*t}
+  function derivX(t){return 3*(1-t)*(1-t)*x1+6*(1-t)*t*(x2-x1)+3*t*t*(1-x2)}
+  let u=t;
+  for(let i=0;i<8;i++){const d=derivX(u);if(Math.abs(d)<1e-6)break;u-=(sampleX(u)-t)/d}
+  return sampleY(u);
+}
+
+const EASINGS=[
+  {name:'LINEAR',bz:[0,0,1,1],col:'rgba(233,231,225,.6)'},
+  {name:'EASE OUT',bz:[0,.8,.2,1],col:'#4DA6FF'},
+  {name:'EASE IN OUT',bz:[.42,0,.58,1],col:'#4DFF8C'},
+  {name:'SPRING',bz:[.34,1.56,.64,1],col:'#FF4D26'},
+];
+
+function frame(){
+  t+=.01;
+  x.fillStyle='#07080A';x.fillRect(0,0,W,H);
+
+  const pad=Math.min(W,H)*.1;
+  const cvW=Math.min(W*.38,H*.6),cvH=cvW;
+  const cvX=(W/2)-cvW-Math.min(W,H)*.04;
+  const cvY=(H-cvH)/2;
+
+  // draw easing graph
+  x.strokeStyle='rgba(255,77,38,.12)';x.lineWidth=1;
+  x.strokeRect(cvX,cvY,cvW,cvH);
+  x.fillStyle='rgba(255,77,38,.04)';x.fillRect(cvX,cvY,cvW,cvH);
+
+  // grid lines
+  x.strokeStyle='rgba(255,255,255,.05)';x.lineWidth=1;
+  for(let i=1;i<4;i++){
+    x.beginPath();x.moveTo(cvX+cvW*i/4,cvY);x.lineTo(cvX+cvW*i/4,cvY+cvH);x.stroke();
+    x.beginPath();x.moveTo(cvX,cvY+cvH*i/4);x.lineTo(cvX+cvW,cvY+cvH*i/4);x.stroke();
+  }
+
+  // axis labels
+  x.fillStyle='rgba(233,231,225,.2)';x.font=`${Math.min(W,H)*.018}px monospace`;
+  x.textAlign='center';x.fillText('TIME →',cvX+cvW/2,cvY+cvH+Math.min(W,H)*.04);
+  x.save();x.translate(cvX-Math.min(W,H)*.045,cvY+cvH/2);x.rotate(-Math.PI/2);
+  x.fillText('VALUE ↑',0,0);x.restore();
+
+  // draw each easing curve
+  EASINGS.forEach(e=>{
+    const [x1,y1,x2,y2]=e.bz;
+    x.strokeStyle=e.col;x.lineWidth=Math.min(W,H)*.004;x.lineCap='round';
+    x.beginPath();
+    for(let i=0;i<=80;i++){
+      const s=i/80;
+      const v=bezierVal(s,x1,y1,x2,y2);
+      const px=cvX+s*cvW,py=cvY+cvH-v*cvH;
+      i===0?x.moveTo(px,py):x.lineTo(px,py);
+    }
+    x.globalAlpha=.8;x.stroke();x.globalAlpha=1;
+  });
+
+  // bouncing balls
+  const period=2.2;
+  const lt=(t%period)/period;
+  const bx0=W/2+Math.min(W,H)*.06;
+  const bSpacing=Math.min(W,H)*.13;
+  const bR=Math.min(W,H)*.028;
+  const floorY=H*.78;
+  const ceilY=H*.25;
+
+  EASINGS.forEach((e,i)=>{
+    const [x1,y1,x2,y2]=e.bz;
+    const v=bezierVal(lt,x1,y1,x2,y2);
+    const by=floorY-(floorY-ceilY)*v;
+    const bxi=bx0+i*bSpacing;
+
+    // shadow
+    x.globalAlpha=.2+v*.3;x.fillStyle='#000';
+    const sw=bR*(.8+v*.6);
+    x.beginPath();x.ellipse(bxi,floorY+bR*.4,sw,bR*.2,0,0,7);x.fill();
+
+    // ball
+    const g=x.createRadialGradient(bxi-bR*.2,by-bR*.2,0,bxi,by,bR*1.2);
+    g.addColorStop(0,e.col.replace(/[\d.]+\)$/,'1)'));
+    g.addColorStop(1,e.col.replace(/[\d.]+\)$/,'0.4)'));
+    x.globalAlpha=.95;x.fillStyle=g;
+    x.beginPath();x.arc(bxi,by,bR,0,7);x.fill();
+
+    // label
+    x.fillStyle=e.col;x.globalAlpha=.7;
+    x.font=`600 ${Math.min(W,H)*.016}px monospace`;x.textAlign='center';
+    x.fillText(e.name,bxi,floorY+bR*2.2);
+    x.globalAlpha=1;
+  });
+
+  // playhead line on graph
+  const gx=cvX+lt*cvW;
+  x.strokeStyle='rgba(255,77,38,.5)';x.lineWidth=1;x.setLineDash([3,5]);
+  x.beginPath();x.moveTo(gx,cvY);x.lineTo(gx,cvY+cvH);x.stroke();
+  x.setLineDash([]);
+
+  label('KEYFRAME EASING','BEZIER CURVES · SPRING · EASE IN / OUT / BACK');
+  requestAnimationFrame(frame);
+}
+
+function label(name,desc){
+  const p=Math.min(W,H)*.038;
+  x.fillStyle='#FF4D26';x.font=`700 ${p*.38}px monospace`;x.textAlign='left';
+  x.fillText(name,p,p*1.1);
+  x.fillStyle='rgba(233,231,225,.38)';x.font=`${p*.26}px monospace`;
+  x.fillText(desc,p,p*1.65);
+}
+
+frame();
+</script>
+</body>
+</html>

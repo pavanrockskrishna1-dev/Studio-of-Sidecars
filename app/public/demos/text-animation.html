@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Text Animation — Snitch</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#07080A;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let t=0,W,H;
+function resize(){c.width=W=innerWidth;c.height=H=innerHeight}
+resize();addEventListener('resize',resize);
+
+const WORD='SNITCH';
+function easeOutBack(t){const s=1.7;return t===1?1:(t<.5?2*t*t:(-1+(-s+1)*(-2*t+2)*(-2*t+2)+(s+1)*(-2*t+2)*(-2*t+2)*(-2*t+2)/2+2)/2)}
+function easeOutCubic(t){return 1-Math.pow(1-t,3)}
+
+function frame(){
+  t+=.013;
+  x.fillStyle='rgba(7,8,10,.25)';x.fillRect(0,0,W,H);
+
+  const fs=Math.min(W,H)*.19;
+  const period=3.5,stagger=.14;
+  const totalW=WORD.length;
+
+  x.textBaseline='middle';x.textAlign='center';
+
+  for(let i=0;i<totalW;i++){
+    const delay=i*stagger;
+    const lt=((t-delay)%period+period)%period;
+    const phase=lt/0.55;
+    const prog=Math.min(1,phase);
+    const ep=easeOutBack(prog);
+    const yOff=(1-ep)*H*.2;
+    const alpha=easeOutCubic(prog);
+
+    x.save();
+    x.globalAlpha=alpha;
+    x.translate(W/2+((i-(totalW-1)/2)*fs*.72),H/2+yOff);
+
+    // shadow/glow
+    if(alpha>.3){
+      x.shadowColor='#FF4D26';
+      x.shadowBlur=alpha*30*ep;
+    }
+
+    const hue=i%2===0?'#FF4D26':'#E9E7E1';
+    x.fillStyle=hue;
+    x.font=`700 ${fs}px monospace`;
+    x.fillText(WORD[i],0,0);
+    x.shadowBlur=0;
+
+    // underline
+    if(ep>.4){
+      x.fillStyle=i%2===0?'#FF4D26':'rgba(233,231,225,.5)';
+      x.globalAlpha=alpha*(ep-.4)*1.4;
+      const uw=fs*.48,uh=fs*.025;
+      x.fillRect(-uw/2,fs*.4,uw,uh);
+    }
+    x.restore();
+  }
+
+  x.globalAlpha=1;x.shadowBlur=0;
+  label('TEXT ANIMATION','PER-CHARACTER EASING · SPRING · STAGGER');
+  requestAnimationFrame(frame);
+}
+
+function label(name,desc){
+  const p=Math.min(W,H)*.038;
+  x.fillStyle='#FF4D26';x.font=`700 ${p*.38}px monospace`;x.textAlign='left';
+  x.fillText(name,p,p*1.1);
+  x.fillStyle='rgba(233,231,225,.38)';x.font=`${p*.26}px monospace`;
+  x.fillText(desc,p,p*1.65);
+}
+
+frame();
+</script>
+</body>
+</html>

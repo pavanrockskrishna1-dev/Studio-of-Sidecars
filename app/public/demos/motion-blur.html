@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Motion Blur — Snitch</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#07080A;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let t=0,W,H;
+function resize(){c.width=W=innerWidth;c.height=H=innerHeight}
+resize();addEventListener('resize',resize);
+
+function easeInOut(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2}
+
+function frame(){
+  t+=.016;
+  x.fillStyle='rgba(7,8,10,.22)';x.fillRect(0,0,W,H);
+
+  const cx=W/2,cy=H/2;
+  const r=Math.min(W,H)*.28;
+  const speed=t*3;// fast rotation
+  const SAMPLES=18;// blur samples
+
+  // motion blur: render multiple translucent copies at past positions
+  for(let s=0;s<SAMPLES;s++){
+    const pastT=speed-s*.08;
+    const angle=pastT;
+    const alpha=(1-s/SAMPLES)*.15;
+    const bx=cx+Math.cos(angle)*r;
+    const by=cy+Math.sin(angle)*r;
+    const br=Math.min(W,H)*.055;
+
+    // elongation — stretch in direction of motion
+    const dx=Math.cos(angle+Math.PI/2),dy=Math.sin(angle+Math.PI/2);
+    x.save();x.translate(bx,by);x.rotate(angle+Math.PI/2);
+    const stretch=1+s*.04;
+    x.scale(1,stretch*.5+.5);
+    x.globalAlpha=alpha;x.fillStyle='#FF4D26';
+    x.beginPath();x.arc(0,0,br,0,7);x.fill();
+    x.restore();
+  }
+
+  // sharp leading edge
+  const angle=speed;
+  const bx=cx+Math.cos(angle)*r;
+  const by=cy+Math.sin(angle)*r;
+  const br=Math.min(W,H)*.055;
+  x.globalAlpha=1;
+
+  const g=x.createRadialGradient(bx,by,0,bx,by,br*1.6);
+  g.addColorStop(0,'#FFD0B0');g.addColorStop(.4,'#FF4D26');g.addColorStop(1,'rgba(255,77,38,0)');
+  x.fillStyle=g;x.beginPath();x.arc(bx,by,br*1.6,0,7);x.fill();
+  x.fillStyle='#FF6B47';x.beginPath();x.arc(bx,by,br,0,7);x.fill();
+
+  // orbit track ghost
+  x.globalAlpha=.06;x.strokeStyle='#FF4D26';x.lineWidth=1;
+  x.beginPath();x.arc(cx,cy,r,0,Math.PI*2);x.stroke();
+
+  // center pivot
+  x.globalAlpha=.4;x.fillStyle='#E9E7E1';
+  x.beginPath();x.arc(cx,cy,Math.min(W,H)*.012,0,7);x.fill();
+  x.globalAlpha=1;
+
+  label('MOTION BLUR','TEMPORAL MULTI-SAMPLE · SHUTTER ANGLE · SAMPLES');
+  requestAnimationFrame(frame);
+}
+
+function label(name,desc){
+  const p=Math.min(W,H)*.038;
+  x.fillStyle='#FF4D26';x.font=`700 ${p*.38}px monospace`;x.textAlign='left';
+  x.fillText(name,p,p*1.1);
+  x.fillStyle='rgba(233,231,225,.38)';x.font=`${p*.26}px monospace`;
+  x.fillText(desc,p,p*1.65);
+}
+
+frame();
+</script>
+</body>
+</html>

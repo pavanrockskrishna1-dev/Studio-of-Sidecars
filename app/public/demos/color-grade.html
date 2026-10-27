@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Color Grading — Snitch</title>
+<style>
+  *{margin:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#07080A;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let t=0,W,H;
+function resize(){c.width=W=innerWidth;c.height=H=innerHeight}
+resize();addEventListener('resize',resize);
+
+function drawScene(ctx,w,h,graded){
+  // background
+  const bg=ctx.createLinearGradient(0,0,0,h);
+  bg.addColorStop(0,graded?'#0A1525':'#1A1A2A');
+  bg.addColorStop(1,graded?'#051020':'#0D0D1A');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+
+  // ground
+  const gr=ctx.createLinearGradient(0,h*.6,0,h);
+  gr.addColorStop(0,graded?'#0D1F0A':'#1A1A14');
+  gr.addColorStop(1,graded?'#081508':'#0D0D0A');
+  ctx.fillStyle=gr;ctx.fillRect(0,h*.6,w,h*.4);
+
+  // moon/sun
+  const sunCol=graded?'#E8C840':'#C8C8C8';
+  const glowCol=graded?'rgba(232,200,64,.25)':'rgba(200,200,200,.15)';
+  const sg=ctx.createRadialGradient(w*.75,h*.25,0,w*.75,h*.25,h*.2);
+  sg.addColorStop(0,glowCol);sg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=sg;ctx.beginPath();ctx.arc(w*.75,h*.25,h*.2,0,7);ctx.fill();
+  ctx.fillStyle=sunCol;ctx.beginPath();ctx.arc(w*.75,h*.25,h*.08,0,7);ctx.fill();
+
+  // hills
+  ctx.fillStyle=graded?'#0A2A08':'#14141E';
+  ctx.beginPath();ctx.moveTo(0,h*.65);ctx.bezierCurveTo(w*.2,h*.35,w*.4,h*.55,w*.6,h*.45);
+  ctx.bezierCurveTo(w*.8,h*.35,w*.9,h*.5,w,h*.6);ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.fill();
+
+  // silhouette tree
+  ctx.fillStyle=graded?'#030E02':'#08080F';
+  ctx.fillRect(w*.35-w*.015,h*.3,w*.03,h*.35);
+  for(let i=0;i<3;i++){
+    const ty=h*(.3+i*.08),tw=w*(.08-.02*i);
+    ctx.beginPath();ctx.moveTo(w*.35,ty-h*.06);ctx.lineTo(w*.35+tw,ty);ctx.lineTo(w*.35-tw,ty);ctx.closePath();ctx.fill();
+  }
+
+  // grade label
+  const fs=h*.04;
+  if(graded){
+    ctx.fillStyle='rgba(232,200,64,.7)';ctx.font=`600 ${fs}px monospace`;ctx.textAlign='center';
+    ctx.fillText('GRADE ON',w/2,h*.9);
+  }else{
+    ctx.fillStyle='rgba(180,180,180,.4)';ctx.font=`600 ${fs}px monospace`;ctx.textAlign='center';
+    ctx.fillText('ORIGINAL',w/2,h*.9);
+  }
+}
+
+function frame(){
+  t+=.012;
+  x.fillStyle='#07080A';x.fillRect(0,0,W,H);
+
+  const split=.5+.5*Math.sin(t*.4);// animated split
+  const splitX=Math.round(W*split);
+
+  // left: original
+  const offL=document.createElement('canvas');offL.width=W;offL.height=H;
+  const oxL=offL.getContext('2d');drawScene(oxL,W,H,false);
+
+  // right: graded
+  const offR=document.createElement('canvas');offR.width=W;offR.height=H;
+  const oxR=offR.getContext('2d');drawScene(oxR,W,H,true);
+
+  x.drawImage(offL,0,0,splitX,H,0,0,splitX,H);
+  x.drawImage(offR,splitX,0,W-splitX,H,splitX,0,W-splitX,H);
+
+  // split line
+  x.strokeStyle='#E9E7E1';x.lineWidth=2;x.globalAlpha=.8;
+  x.beginPath();x.moveTo(splitX,0);x.lineTo(splitX,H);x.stroke();
+  // arrow indicators
+  x.globalAlpha=.6;x.fillStyle='#E9E7E1';
+  x.font=`${Math.min(W,H)*.03}px monospace`;x.textAlign='center';x.textBaseline='middle';
+  x.fillText('◀',splitX-W*.06,H*.5);x.fillText('▶',splitX+W*.06,H*.5);
+  x.globalAlpha=1;
+
+  label('COLOR GRADING','LUT · CURVES · TEMPERATURE · SATURATION');
+  requestAnimationFrame(frame);
+}
+
+function label(name,desc){
+  const p=Math.min(W,H)*.038;
+  x.fillStyle='#FF4D26';x.font=`700 ${p*.38}px monospace`;x.textAlign='left';
+  x.fillText(name,p,p*1.1);
+  x.fillStyle='rgba(233,231,225,.38)';x.font=`${p*.26}px monospace`;
+  x.fillText(desc,p,p*1.65);
+}
+
+frame();
+</script>
+</body>
+</html>
