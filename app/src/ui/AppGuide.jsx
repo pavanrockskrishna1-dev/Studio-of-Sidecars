@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const GUIDE_KEY = "sos_guide_seen_v1";
 
@@ -48,11 +48,27 @@ const SECTIONS = [
 ];
 
 export default function AppGuide({ open, onClose }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <div className="sos-guide-overlay" role="dialog" aria-modal="true" aria-label="App Guide">
+    <div
+      className="sos-guide-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="App Guide"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="sos-guide-inner">
+        {/* close X */}
+        <button className="sos-guide-close" onClick={onClose} aria-label="Close guide">✕</button>
+
         {/* header */}
         <div className="sos-guide-header">
           <div className="sos-guide-speedlines" aria-hidden="true" />

@@ -4173,20 +4173,48 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(0, 0, 0, 0.92);
+  background: rgba(0, 0, 0, 0.82);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
   overflow-y: auto;
+  cursor: pointer;
 }
 
 .sos-guide-inner {
+  position: relative;
   width: 100%;
   max-width: 680px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  cursor: default;
+  margin: auto;
+}
+
+/* X close button */
+.sos-guide-close {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(224, 90, 26, 0.5);
+  background: rgba(15, 15, 15, 0.95);
+  color: rgba(255,255,255,0.7);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  transition: border-color 0.15s, color 0.15s;
+}
+.sos-guide-close:hover {
+  border-color: var(--manga-accent, #e05a1a);
+  color: #fff;
 }
 
 .sos-guide-header {
