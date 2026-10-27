@@ -1,1011 +1,890 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getCanvas } from "../animation/animationStore";
 
 /* ── shared helpers ─────────────────────────────────────────── */
-function hex2rgb(hex) { const n=parseInt(hex.replace("#",""),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
-function rr(ctx,x,y,w,h,r) {
-  ctx.beginPath();
-  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
-  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
-  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
-}
-function rnd(seed,n) { let s=(seed*9301+49297)%233280; return ((s*9301+n*7321)%233280)/233280; }
-function sh(ctx,col,blur) { ctx.shadowColor=col; ctx.shadowBlur=blur; }
-function noSh(ctx) { ctx.shadowColor="transparent"; ctx.shadowBlur=0; }
 
-const PALETTES = [
-  { id:"fire",    name:"BBQ Fire",      accent:"#ff6b00", dark:"#120800", mid:"#3d1500" },
-  { id:"gold",    name:"Midnight Gold", accent:"#f0c040", dark:"#080818", mid:"#18183a" },
-  { id:"saffron", name:"Saffron",       accent:"#ff9800", dark:"#160404", mid:"#3d0f0f" },
-  { id:"rose",    name:"Rose Bold",     accent:"#e85d8a", dark:"#140510", mid:"#35102a" },
-  { id:"steel",   name:"Steel Blue",    accent:"#4aa8d8", dark:"#040e18", mid:"#0f1f35" },
-  { id:"forest",  name:"Forest",        accent:"#52b788", dark:"#040e0a", mid:"#0f2016" },
-];
-
-const SIZES = { "1:1":{w:1080,h:1080}, "4:5":{w:1080,h:1350}, "9:16":{w:1080,h:1920} };
-
-const ARTS = [
-  { id:"steam",   label:"Steam & Serve" },
-  { id:"diorama", label:"Product Diorama" },
-  { id:"window",  label:"Neon Window" },
-  { id:"pulse",   label:"Event Pulse" },
-  { id:"bike",    label:"BBQ Bike Hero" },
-  { id:"manga",   label:"Manga Panel" },
-];
-
-/* ── 1. STEAM & SERVE ─────────────────────────────────────── */
-function drawSteam(ctx, W, H, t, mx, my, d) {
-  const [ar,ag,ab] = hex2rgb(d.accent);
-  const bg=ctx.createLinearGradient(0,0,W,H);
-  bg.addColorStop(0,d.dark); bg.addColorStop(1,d.mid);
-  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
-  const gl=ctx.createRadialGradient(W*.5,H*.9,0,W*.5,H*.9,W*.65);
-  gl.addColorStop(0,`rgba(${ar},${ag},${ab},.18)`); gl.addColorStop(1,"rgba(0,0,0,0)");
-  ctx.fillStyle=gl; ctx.fillRect(0,0,W,H);
-
-  const INGR = [
-    {lbl:d.ing1||"Chicken",  ox:.22, oy:.30, r:.08, dep:.4},
-    {lbl:d.ing2||"Spices",   ox:.78, oy:.25, r:.07, dep:.25},
-    {lbl:"Sauce",    ox:.15, oy:.62, r:.075,dep:.55},
-    {lbl:"Veggies",  ox:.82, oy:.60, r:.07, dep:.35},
-    {lbl:"Fire",     ox:.50, oy:.18, r:.065,dep:.2},
-  ];
-  INGR.forEach(({lbl,ox,oy,r,dep},i)=>{
-    const floatX=Math.sin(t*.42+i*1.4)*W*.015;
-    const floatY=Math.cos(t*.37+i*1.1)*H*.012;
-    const cx=(ox+mx*dep*.12)*W+floatX;
-    const cy=(oy+my*dep*.12)*H+floatY;
-    const rad=r*W;
-    sh(ctx,`rgba(${ar},${ag},${ab},.35)`,W*.04);
-    ctx.fillStyle=`rgba(${ar},${ag},${ab},.18)`;
-    ctx.beginPath(); ctx.arc(cx,cy,rad,0,Math.PI*2); ctx.fill(); noSh(ctx);
-    ctx.strokeStyle=`rgba(${ar},${ag},${ab},.55)`; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(cx,cy,rad,0,Math.PI*2); ctx.stroke();
-    ctx.fillStyle="#fff"; ctx.font=`500 ${W*.028}px Oswald,sans-serif`;
-    ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText(lbl,cx,cy); ctx.textAlign="left";
-  });
-
-  const pz={x:W*.28,y:H*.37,w:W*.44,h:H*.32};
-  sh(ctx,"rgba(0,0,0,.55)",W*.06); ctx.fillStyle="rgba(0,0,0,.55)";
-  rr(ctx,pz.x,pz.y,pz.w,pz.h,W*.04); ctx.fill(); noSh(ctx);
-  const plateCx=pz.x+pz.w*.5, plateCy=pz.y+pz.h*.5;
-  ctx.fillStyle="rgba(255,255,255,.07)"; ctx.beginPath(); ctx.arc(plateCx,plateCy,pz.w*.38,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle=`rgba(${ar},${ag},${ab},.4)`; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.arc(plateCx,plateCy,pz.w*.38,0,Math.PI*2); ctx.stroke();
-  ctx.fillStyle="rgba(255,255,255,.55)"; ctx.font=`400 ${W*.022}px Oswald,sans-serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("your dish here",plateCx,plateCy); ctx.textAlign="left";
-
-  for(let i=0;i<12;i++){
-    const phase=(t*.28+i/12)%1;
-    const sx=plateCx+(rnd(i,1)-.5)*pz.w*.55;
-    const sy=pz.y+pz.h*.15-phase*H*.32;
-    const life=phase<0.15?phase/.15:phase>0.8?(1-phase)/.2:1;
-    ctx.globalAlpha=life*.35;
-    ctx.fillStyle="rgba(255,255,255,1)";
-    const swX=Math.sin(phase*Math.PI*3+i)*W*.025;
-    ctx.beginPath(); ctx.arc(sx+swX,sy,W*.015*(0.5+phase*.8),0,Math.PI*2); ctx.fill();
-  }
-  ctx.globalAlpha=1;
-
-  ctx.fillStyle="#fff"; ctx.font=`700 ${W*.072}px Oswald,sans-serif`; ctx.textBaseline="top";
-  const hw=(d.headline||"DAILY SPECIAL").split(" ");
-  hw.forEach((w,i)=>ctx.fillText(w,W*.07,H*.03+i*W*.08));
-
-  const prScale=1+0.04*Math.sin(t*2.8);
-  ctx.save(); ctx.translate(W*.82,H*.88); ctx.scale(prScale,prScale);
-  sh(ctx,"rgba(0,0,0,.5)",W*.05);
-  ctx.fillStyle=d.accent; rr(ctx,-W*.13,-H*.065,W*.26,H*.13,W*.03); ctx.fill(); noSh(ctx);
-  ctx.fillStyle="#fff"; ctx.font=`700 ${W*.065}px 'Saira Stencil One',sans-serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(d.price||"₹99",0,0);
-  ctx.textAlign="left"; ctx.restore();
-
-  ctx.fillStyle="rgba(255,255,255,.8)"; ctx.font=`400 ${W*.032}px Oswald,sans-serif`; ctx.textBaseline="bottom";
-  ctx.fillText(d.sub||"",W*.07,H*.97);
-  ctx.fillStyle=`rgba(${ar},${ag},${ab},.75)`;
-  ctx.fillText(d.cta||"",W*.07,H*.93);
+function loadImages(urls) {
+  const flat = Array.isArray(urls) ? urls : [urls];
+  return Promise.all(flat.map(src => new Promise(res => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => res(null);
+    img.src = src;
+  })));
 }
 
-/* ── 2. PRODUCT DIORAMA ──────────────────────────────────── */
-function drawDiorama(ctx, W, H, t, mx, my, d) {
-  const [ar,ag,ab] = hex2rgb(d.accent);
-  const bg=ctx.createRadialGradient(W*.5,H*.4,0,W*.5,H*.5,W*.85);
-  bg.addColorStop(0,"#2a2a2a"); bg.addColorStop(.6,d.mid); bg.addColorStop(1,d.dark);
-  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
-
-  const lx=W*.5+mx*W*.15, ly=H*.25+my*H*.1;
-  const lg=ctx.createRadialGradient(lx,ly,0,lx,ly,W*.7);
-  lg.addColorStop(0,"rgba(255,240,200,.28)"); lg.addColorStop(.4,"rgba(255,200,100,.08)"); lg.addColorStop(1,"rgba(0,0,0,0)");
-  ctx.fillStyle=lg; ctx.fillRect(0,0,W,H);
-
-  const sweepX=((t*.08)%1.4)-.2;
-  const sg=ctx.createLinearGradient(sweepX*W,0,(sweepX+.22)*W,0);
-  sg.addColorStop(0,"rgba(255,255,255,0)"); sg.addColorStop(.5,"rgba(255,255,255,.07)"); sg.addColorStop(1,"rgba(255,255,255,0)");
-  ctx.fillStyle=sg; ctx.fillRect(0,0,W,H);
-
-  const shadowX=W*.5+mx*W*.08, shadowY=H*.78+my*H*.04;
-  ctx.save(); ctx.translate(shadowX,shadowY); ctx.scale(1,.25);
-  const se=ctx.createRadialGradient(0,0,0,0,0,W*.28);
-  se.addColorStop(0,"rgba(0,0,0,.55)"); se.addColorStop(1,"rgba(0,0,0,0)");
-  ctx.fillStyle=se; ctx.fillRect(-W*.28,-W*.28,W*.56,W*.56); ctx.restore();
-
-  const float=Math.sin(t*.6)*H*.012;
-  const px=W*.2, py=H*.25+float, pw=W*.6, ph=H*.44;
-  sh(ctx,"rgba(0,0,0,.5)",W*.06);
-  ctx.fillStyle=`rgba(${ar},${ag},${ab},.12)`;
-  rr(ctx,px,py,pw,ph,W*.035); ctx.fill(); noSh(ctx);
-  ctx.strokeStyle=`rgba(${ar},${ag},${ab},.35)`; ctx.lineWidth=2;
-  rr(ctx,px,py,pw,ph,W*.035); ctx.stroke();
-  ctx.fillStyle="rgba(255,255,255,.3)"; ctx.font=`400 ${W*.026}px Oswald,sans-serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText("your product here",px+pw*.5,py+ph*.5); ctx.textAlign="left";
-  const corners=[[px,py],[px+pw,py],[px,py+ph],[px+pw,py+ph]];
-  ctx.strokeStyle=d.accent; ctx.lineWidth=3;
-  corners.forEach(([cx2,cy2],i)=>{
-    const sx=i%2===0?1:-1, sy=i<2?1:-1;
-    ctx.beginPath(); ctx.moveTo(cx2,cy2); ctx.lineTo(cx2+sx*W*.05,cy2); ctx.moveTo(cx2,cy2); ctx.lineTo(cx2,cy2+sy*H*.035); ctx.stroke();
-  });
-
-  [
-    {txt:d.spec1||"100% Halal",  nx:.1, ny:.38, dep:.6},
-    {txt:d.spec2||"Chef's Pick", nx:.72,ny:.32, dep:.4},
-    {txt:d.spec3||"Fresh Daily", nx:.08,ny:.65, dep:.5},
-  ].forEach(({txt,nx,ny,dep},i)=>{
-    const bx=(nx+mx*dep*.1)*W+Math.sin(t*.4+i)*W*.008;
-    const by=(ny+my*dep*.1)*H+Math.cos(t*.35+i)*H*.006;
-    sh(ctx,"rgba(0,0,0,.45)",W*.025);
-    ctx.fillStyle="rgba(255,255,255,.92)"; rr(ctx,bx,by,W*.18,H*.04,W*.015); ctx.fill(); noSh(ctx);
-    ctx.fillStyle="#111"; ctx.font=`500 ${W*.022}px Oswald,sans-serif`;
-    ctx.textBaseline="middle"; ctx.fillText(txt,bx+W*.015,by+H*.02);
-  });
-
-  ctx.fillStyle="#fff"; ctx.font=`700 ${W*.082}px Oswald,sans-serif`; ctx.textBaseline="bottom";
-  ctx.fillText(d.headline||"NEW ARRIVAL",W*.07,H*.23);
-  ctx.fillStyle=d.accent; ctx.font=`700 ${W*.11}px 'Saira Stencil One',sans-serif`;
-  ctx.textAlign="right"; ctx.fillText(d.price||"₹99",W*.93,H*.95); ctx.textAlign="left";
-  ctx.fillStyle="rgba(255,255,255,.65)"; ctx.font=`400 ${W*.032}px Oswald,sans-serif`; ctx.textBaseline="bottom";
-  ctx.fillText(d.sub||"",W*.07,H*.97);
-  ctx.fillStyle=`rgba(${ar},${ag},${ab},.75)`;
-  ctx.fillText(d.cta||"",W*.07,H*.945);
+function drawFitImg(ctx, img, cx, cy, fitW, fitH) {
+  if (!img) return;
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return;
+  const ar = iw / ih;
+  let dw = fitW, dh = fitW / ar;
+  if (dh > fitH) { dh = fitH; dw = fitH * ar; }
+  ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
 }
 
-/* ── 3. NEON WINDOW ──────────────────────────────────────── */
-function drawWindow(ctx, W, H, t, mx, my, d) {
-  const [ar,ag,ab] = hex2rgb(d.accent);
-  const BORDER = W*.08;
-
+function glowText(ctx, text, x, y, font, fill, glow, blur = 20) {
   ctx.save();
-  ctx.rect(BORDER,BORDER,W-BORDER*2,H-BORDER*2); ctx.clip();
-  const sky=ctx.createLinearGradient(0,0,0,H);
-  sky.addColorStop(0,"#04040e"); sky.addColorStop(1,"#0e122a");
-  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
-  ctx.fillStyle="#07091a";
-  [[0,.4,.18,.72],[.15,.32,.14,.72],[.27,.45,.09,.6],[.34,.28,.16,.72],[.48,.38,.11,.64],[.56,.24,.19,.72],[.70,.36,.14,.64],[.82,.30,.12,.7]].forEach(([x,top,w,bot])=>{
-    ctx.fillRect(x*W+mx*8,top*H+my*4,(w||.12)*W,(bot-top)*H);
-  });
-  const SIGNS=[
-    {x:.12,y:.52,txt:d.neon1||"BBQ",col:`rgb(${ar},${ag},${ab})`},
-    {x:.55,y:.45,txt:d.neon2||"OPEN",col:"#00e5ff"},
-    {x:.72,y:.58,txt:d.neon3||"HOT",col:"#ff4080"},
-  ];
-  SIGNS.forEach(({x,y,txt,col},i)=>{
-    const fx=x*W+mx*20, fy=y*H+my*10;
-    const flicker=0.6+0.4*Math.abs(Math.sin(t*3.2+i*2.1));
-    ctx.globalAlpha=flicker;
-    sh(ctx,col,W*.022); ctx.fillStyle=col;
-    ctx.font=`700 ${W*.062}px 'Saira Stencil One',sans-serif`;
-    ctx.textBaseline="top"; ctx.fillText(txt,fx,fy); noSh(ctx); ctx.globalAlpha=1;
-  });
-  ctx.strokeStyle="rgba(150,200,255,.22)"; ctx.lineWidth=1;
-  for(let i=0;i<80;i++){
-    const phase=(t*1.8+i/80)%1;
-    const rx=rnd(i,1)*W+mx*55, ry=phase*H;
-    ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx-W*.004,ry+H*.025); ctx.stroke();
-  }
-  for(let i=0;i<15;i++){
-    const dropPhase=(t*.3+i/15+rnd(i,5))%1;
-    const dx=BORDER+rnd(i,6)*(W-BORDER*2);
-    const dy=BORDER+dropPhase*(H-BORDER*2)*.4;
-    ctx.globalAlpha=0.12+rnd(i,7)*.1;
-    ctx.fillStyle="#c8e8ff"; ctx.beginPath(); ctx.arc(dx,dy,W*.006,0,Math.PI*2); ctx.fill();
-  }
-  ctx.globalAlpha=1;
+  ctx.font = font;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = blur;
+  ctx.fillStyle = glow;
+  ctx.fillText(text, x, y);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
   ctx.restore();
-
-  ctx.fillStyle=d.dark;
-  ctx.fillRect(0,0,W,BORDER); ctx.fillRect(0,H-BORDER,W,BORDER);
-  ctx.fillRect(0,0,BORDER,H); ctx.fillRect(W-BORDER,0,BORDER,H);
-  ctx.strokeStyle=d.accent; ctx.lineWidth=3;
-  ctx.strokeRect(BORDER,BORDER,W-BORDER*2,H-BORDER*2);
-  const cb=BORDER*1.6;
-  [[0,0],[W,0],[0,H],[W,H]].forEach(([cx,cy])=>{
-    const sx=cx===0?1:-1, sy=cy===0?1:-1;
-    ctx.strokeStyle=d.accent; ctx.lineWidth=4;
-    ctx.beginPath(); ctx.moveTo(cx+sx*BORDER,cy+sy*cb); ctx.lineTo(cx+sx*BORDER,cy+sy*BORDER); ctx.lineTo(cx+sx*cb,cy+sy*BORDER); ctx.stroke();
-  });
-  const gPhase=((t*.06)%1.4)-.2;
-  const fgr=ctx.createLinearGradient(gPhase*W,0,(gPhase+.15)*W,0);
-  fgr.addColorStop(0,"rgba(255,255,255,0)"); fgr.addColorStop(.5,"rgba(255,255,255,.15)"); fgr.addColorStop(1,"rgba(255,255,255,0)");
-  ctx.fillStyle=fgr; ctx.fillRect(0,0,BORDER,H); ctx.fillRect(W-BORDER,0,BORDER,H);
-  ctx.fillRect(0,0,W,BORDER); ctx.fillRect(0,H-BORDER,W,BORDER);
-
-  ctx.fillStyle="#fff"; ctx.font=`700 ${W*.048}px Oswald,sans-serif`; ctx.textBaseline="middle";
-  ctx.textAlign="center"; ctx.fillText(d.headline||"BBQ NIGHTS",W*.5,BORDER*.5); ctx.textAlign="left";
-  ctx.fillStyle=d.accent; ctx.font=`700 ${W*.052}px 'Saira Stencil One',sans-serif`;
-  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(d.price||"₹99",W*.5,H-BORDER*.5); ctx.textAlign="left";
-  ctx.fillStyle="rgba(255,255,255,.6)"; ctx.font=`400 ${W*.024}px Oswald,sans-serif`;
-  ctx.textAlign="center"; ctx.fillText(d.sub||"",W*.5,H-BORDER*.5+W*.036); ctx.textAlign="left";
 }
 
-/* ── 4. EVENT PULSE ──────────────────────────────────────── */
-function drawPulse(ctx, W, H, t, mx, my, d) {
-  const [ar,ag,ab] = hex2rgb(d.accent);
-  const bg=ctx.createRadialGradient(W*.5,H*.5,0,W*.5,H*.5,H*.75);
-  bg.addColorStop(0,d.mid); bg.addColorStop(1,d.dark);
-  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
-
-  for(let r=0;r<4;r++){
-    const phase=((t*.18+r/4)%1);
-    const rad=phase*W*.65;
-    const alpha=(1-phase)*.28;
-    ctx.strokeStyle=`rgba(${ar},${ag},${ab},${alpha})`;
-    ctx.lineWidth=Math.max(1,(1-phase)*W*.015);
-    ctx.beginPath(); ctx.arc(W*.5,H*.5,rad,0,Math.PI*2); ctx.stroke();
-  }
-
-  ctx.fillStyle="#050305";
-  for(let i=0;i<32;i++){
-    const hx=(i/31)*W+mx*25;
-    const hy=H*.82+Math.sin(i*.9)*H*.06+rnd(i,2)*H*.04;
-    const hw=W*.035+rnd(i,3)*W*.02;
-    const hh=H*.18+rnd(i,4)*H*.08;
-    ctx.beginPath(); ctx.arc(hx,hy-hh*.3,hw*.4,0,Math.PI*2); ctx.fill();
-    ctx.fillRect(hx-hw*.5,hy-hh*.2,hw,hh*.6);
-  }
-
-  for(let i=0;i<8;i++){
-    const speed=0.04+rnd(i,10)*.03;
-    const phase=(t*speed+rnd(i,11))%1;
-    const lx=(rnd(i,12)*.75+.12)*W+Math.sin(t*.4+i)*W*.025+mx*35*rnd(i,13);
-    const ly=H*(1.05-phase*1.3);
-    if(ly<-H*.1||ly>H*1.05) continue;
-    const sz=W*.025+rnd(i,14)*W*.015;
-    sh(ctx,d.accent,sz*2);
-    ctx.fillStyle=d.accent;
-    ctx.beginPath(); ctx.ellipse(lx,ly,sz,sz*1.4,0,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle="rgba(255,240,150,.6)";
-    ctx.beginPath(); ctx.arc(lx,ly+sz*.5,sz*.35,0,Math.PI*2); ctx.fill();
-    noSh(ctx);
-    ctx.strokeStyle=`rgba(${ar},${ag},${ab},.3)`; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(lx,ly+sz*1.4); ctx.lineTo(lx,ly+sz*2.5); ctx.stroke();
-  }
-
-  const cardW=W*.82, cardH=H*.28;
-  const cardX=(W-cardW)*.5, cardY=(H-cardH)*.5-H*.03;
-  sh(ctx,"rgba(0,0,0,.55)",W*.06);
-  ctx.fillStyle=`rgba(${ar},${ag},${ab},.15)`;
-  rr(ctx,cardX,cardY,cardW,cardH,W*.03); ctx.fill();
-  ctx.strokeStyle=d.accent; ctx.lineWidth=2;
-  rr(ctx,cardX,cardY,cardW,cardH,W*.03); ctx.stroke(); noSh(ctx);
-  ctx.fillStyle="#fff"; ctx.font=`700 ${W*.088}px Oswald,sans-serif`; ctx.textBaseline="top";
-  ctx.textAlign="center"; ctx.fillText(d.headline||"GRAND OPENING",W*.5,cardY+cardH*.1);
-  ctx.fillStyle=d.accent; ctx.font=`400 ${W*.042}px Oswald,sans-serif`;
-  ctx.fillText(d.date||"12 Nov 2025 · 7 PM",W*.5,cardY+cardH*.58);
-  ctx.fillStyle="rgba(255,255,255,.65)"; ctx.font=`400 ${W*.03}px Oswald,sans-serif`;
-  ctx.fillText(d.sub||"",W*.5,cardY+cardH*.8);
-  ctx.textAlign="left";
-
-  ctx.fillStyle="rgba(255,255,255,.75)"; ctx.font=`400 ${W*.03}px Oswald,sans-serif`; ctx.textBaseline="bottom";
-  ctx.textAlign="center"; ctx.fillText(d.cta||"",W*.5,H*.98); ctx.textAlign="left";
-
-  const burstPhase=t%4;
-  if(burstPhase<0.6){
-    const bp=burstPhase/0.6;
-    for(let p=0;p<20;p++){
-      const angle=rnd(p,20)*Math.PI*2;
-      const dist=bp*W*.28;
-      const px2=W*.5+Math.cos(angle)*dist, py2=H*.5+Math.sin(angle)*dist;
-      ctx.globalAlpha=(1-bp)*.7;
-      ctx.fillStyle=d.accent; ctx.beginPath(); ctx.arc(px2,py2,W*.008*(1-bp)+W*.003,0,Math.PI*2); ctx.fill();
-    }
-    ctx.globalAlpha=1;
-  }
-}
-
-/* ── wheel draw helper ──────────────────────────────────────── */
-function drawWheel(ctx, cx, cy, rad, angle, rimCol, accentCol) {
-  ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = rad * 0.22;
-  ctx.beginPath(); ctx.arc(cx, cy, rad * 0.84, 0, Math.PI * 2); ctx.stroke();
-  sh(ctx, accentCol, rad * 0.12);
-  ctx.strokeStyle = rimCol; ctx.lineWidth = rad * 0.07;
-  ctx.beginPath(); ctx.arc(cx, cy, rad * 0.72, 0, Math.PI * 2); ctx.stroke();
-  noSh(ctx);
-  ctx.strokeStyle = rimCol; ctx.lineWidth = rad * 0.05;
-  for (let s = 0; s < 6; s++) {
-    const a = angle + (s / 6) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * rad * 0.14, cy + Math.sin(a) * rad * 0.14);
-    ctx.lineTo(cx + Math.cos(a) * rad * 0.68, cy + Math.sin(a) * rad * 0.68);
+function drawPill(ctx, cx, cy, w, h, r, fill, stroke, strokeW = 0) {
+  ctx.beginPath();
+  ctx.roundRect(cx - w / 2, cy - h / 2, w, h, r);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  if (strokeW) {
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = strokeW;
     ctx.stroke();
   }
-  ctx.fillStyle = rimCol; ctx.beginPath(); ctx.arc(cx, cy, rad * 0.15, 0, Math.PI * 2); ctx.fill();
-  sh(ctx, accentCol, rad * 0.2);
-  ctx.fillStyle = accentCol; ctx.beginPath(); ctx.arc(cx, cy, rad * 0.07, 0, Math.PI * 2); ctx.fill();
-  noSh(ctx);
 }
 
-/* ── food icon helper ───────────────────────────────────────── */
-function drawFoodIcon(ctx, type, cx, cy, sz, accent) {
-  const [ar, ag, ab] = hex2rgb(accent);
-  ctx.save(); ctx.translate(cx, cy);
-  if (type === "flame") {
-    ctx.fillStyle = accent;
-    sh(ctx, accent, sz * 0.5);
-    ctx.beginPath();
-    ctx.moveTo(0, sz * 0.6);
-    ctx.bezierCurveTo(-sz * 0.4, sz * 0.2, -sz * 0.45, -sz * 0.3, 0, -sz * 0.6);
-    ctx.bezierCurveTo(sz * 0.45, -sz * 0.3, sz * 0.4, sz * 0.2, 0, sz * 0.6);
-    ctx.fill(); noSh(ctx);
-    ctx.fillStyle = `rgba(255,240,100,0.7)`;
-    ctx.beginPath();
-    ctx.moveTo(0, sz * 0.3);
-    ctx.bezierCurveTo(-sz * 0.2, sz * 0.1, -sz * 0.22, -sz * 0.15, 0, -sz * 0.32);
-    ctx.bezierCurveTo(sz * 0.22, -sz * 0.15, sz * 0.2, sz * 0.1, 0, sz * 0.3);
-    ctx.fill();
-  } else if (type === "kebab") {
-    ctx.strokeStyle = "#888"; ctx.lineWidth = sz * 0.08;
-    ctx.beginPath(); ctx.moveTo(0, -sz * 0.65); ctx.lineTo(0, sz * 0.65); ctx.stroke();
-    [-0.32, 0, 0.32].forEach((oy, i) => {
-      ctx.fillStyle = i === 1 ? accent : `rgb(${ar},${Math.round(ag*.7)},${Math.round(ab*.5)})`;
-      ctx.beginPath(); ctx.arc(0, oy * sz * 2, sz * 0.28, 0, Math.PI * 2); ctx.fill();
-    });
-  } else if (type === "chai") {
-    ctx.fillStyle = "#fff";
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.32, -sz * 0.45); ctx.lineTo(sz * 0.32, -sz * 0.45);
-    ctx.lineTo(sz * 0.28, sz * 0.42); ctx.lineTo(-sz * 0.28, sz * 0.42);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = accent;
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.28, -sz * 0.1); ctx.lineTo(sz * 0.28, -sz * 0.1);
-    ctx.lineTo(sz * 0.25, sz * 0.38); ctx.lineTo(-sz * 0.25, sz * 0.38);
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = sz * 0.1;
-    ctx.beginPath(); ctx.arc(sz * 0.38, 0, sz * 0.2, -Math.PI * 0.4, Math.PI * 0.4); ctx.stroke();
-    ctx.fillStyle = "rgba(255,255,255,0.4)";
-    ctx.beginPath(); ctx.arc(sz * 0.08, -sz * 0.65, sz * 0.1, 0, Math.PI * 2); ctx.fill();
-  } else if (type === "star") {
-    sh(ctx, accent, sz * 0.4); ctx.fillStyle = accent;
-    ctx.beginPath();
-    for (let p = 0; p < 12; p++) {
-      const a = (p / 12) * Math.PI * 2 - Math.PI / 2;
-      const r2 = p % 2 === 0 ? sz * 0.55 : sz * 0.26;
-      p === 0 ? ctx.moveTo(Math.cos(a)*r2, Math.sin(a)*r2) : ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2);
-    }
-    ctx.closePath(); ctx.fill(); noSh(ctx);
-  }
-  ctx.restore();
-}
-
-/* ── 5. BBQ BIKE HERO ─────────────────────────────────────────── */
-function drawBikeHero(ctx, W, H, t, mx, my, d) {
-  const [ar, ag, ab] = hex2rgb(d.accent);
-  const s = Math.min(W, H);
-
-  const BX = W * 0.5;
-  const WY = H * 0.72;
-  const WR = s * 0.125;
-  const LWX = BX - s * 0.225;
-  const RWX = BX + s * 0.215;
-  const wheelAngle = t * 2.8;
-
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, d.dark); bg.addColorStop(0.6, d.mid); bg.addColorStop(1, "#000");
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-  const stageGl = ctx.createRadialGradient(BX, H * 0.85, 0, BX, H * 0.85, W * 0.7);
-  stageGl.addColorStop(0, `rgba(${ar},${ag},${ab},0.25)`);
-  stageGl.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = stageGl; ctx.fillRect(0, 0, W, H);
-
-  const csx = mx * 12;
-  ctx.fillStyle = `rgba(${ar},${ag},${ab},0.07)`;
-  [[0,.4,.18],[.14,.3,.14],[.26,.48,.09],[.33,.26,.15],[.46,.37,.12],
-   [.56,.22,.18],[.70,.33,.14],[.82,.27,.13]].forEach(([x,top,w])=>{
-    ctx.fillRect(x*W+csx, top*H, w*W, (0.62-top)*H);
-  });
-
-  const roadY = H * 0.82;
-  const roadG = ctx.createLinearGradient(0, roadY, 0, H);
-  roadG.addColorStop(0, "#141414"); roadG.addColorStop(1, "#060606");
-  ctx.fillStyle = roadG; ctx.fillRect(0, roadY, W, H - roadY);
-  ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.5)`;
-  ctx.lineWidth = W * 0.008; ctx.setLineDash([W * 0.055, W * 0.038]);
-  ctx.beginPath(); ctx.moveTo(BX, roadY + H * 0.01); ctx.lineTo(BX, H); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.2)`; ctx.lineWidth = W * 0.004;
-  ctx.beginPath(); ctx.moveTo(0, roadY); ctx.lineTo(W, roadY); ctx.stroke();
-
-  const speedPhase = (t * 0.55) % 1;
-  for (let i = 0; i < 7; i++) {
-    const ph = (speedPhase + i / 7) % 1;
-    const ly = H * (0.44 + i * 0.052);
-    const llen = W * (0.07 + rnd(i, 40) * 0.1);
-    const lx = LWX - WR * 1.1 - ph * W * 0.12;
-    const alpha = ph < 0.25 ? ph / 0.25 : ph > 0.65 ? (1 - ph) / 0.35 : 1;
-    ctx.globalAlpha = alpha * 0.38;
-    ctx.strokeStyle = d.accent; ctx.lineWidth = W * 0.004;
-    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx - llen, ly); ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
-  ctx.save(); ctx.translate(BX + mx * 15, WY + WR * 1.02);
-  ctx.scale(1, 0.2);
-  const gs = ctx.createRadialGradient(0, 0, 0, 0, 0, W * 0.35);
-  gs.addColorStop(0, "rgba(0,0,0,0.65)"); gs.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = gs; ctx.fillRect(-W * 0.35, -W * 0.35, W * 0.7, W * 0.7);
-  ctx.restore();
-
-  const exTipX = RWX + WR * 0.9, exTipY = WY + WR * 0.18;
-  for (let i = 0; i < 10; i++) {
-    const ep = (t * 0.35 + i / 10) % 1;
-    const ex = exTipX + ep * W * 0.14 + rnd(i, 50) * W * 0.02;
-    const ey = exTipY - ep * H * 0.06 + Math.sin(ep * Math.PI * 4 + i) * H * 0.015;
-    const er = W * 0.018 * (0.3 + ep * 0.7);
-    ctx.globalAlpha = (1 - ep) * 0.28;
-    ctx.fillStyle = "rgba(200,200,200,1)";
-    ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  ctx.save(); ctx.translate(BX + mx * 18, H * 0.02 + my * 10);
-
-  const lx = LWX - BX;
-  const rx = RWX - BX;
-  const wy = WY - H * 0.02;
-
-  const frameCol = "#c8c8c8";
-  ctx.strokeStyle = frameCol; ctx.lineCap = "round"; ctx.lineJoin = "round";
-
-  const seatTopX = lx + s * 0.055, seatTopY = wy - WR * 1.98;
-  const engTopX = lx + s * 0.185, engTopY = wy - WR * 1.72;
-
-  ctx.lineWidth = s * 0.025;
-  ctx.strokeStyle = "#888";
-  ctx.beginPath();
-  ctx.moveTo(lx, wy - WR * 0.12);
-  ctx.lineTo(seatTopX, seatTopY);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(lx + s * 0.04, wy - WR * 0.1);
-  ctx.lineTo(engTopX, engTopY);
-  ctx.stroke();
-
-  const headTubeTopX = rx - s * 0.06, headTubeTopY = wy - WR * 1.82;
-  const headTubeBot = { x: rx - s * 0.05, y: wy - WR * 1.1 };
-  ctx.lineWidth = s * 0.032;
-  ctx.strokeStyle = frameCol;
-  ctx.beginPath();
-  ctx.moveTo(engTopX, engTopY);
-  ctx.quadraticCurveTo(BX - BX + s * 0.02, wy - WR * 2.1, headTubeTopX, headTubeTopY);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(headTubeBot.x, headTubeBot.y);
-  ctx.lineTo(lx + s * 0.14, wy - WR * 0.22);
-  ctx.stroke();
-  ctx.lineWidth = s * 0.018; ctx.strokeStyle = "#999";
-  ctx.beginPath();
-  ctx.moveTo(seatTopX, seatTopY);
-  ctx.lineTo(lx + s * 0.12, wy - WR * 0.2);
-  ctx.stroke();
-
-  const engX = lx + s * 0.02, engY = wy - WR * 1.55;
-  const engW = s * 0.34, engH = s * 0.38;
-  sh(ctx, "rgba(0,0,0,0.5)", s * 0.04);
-  ctx.fillStyle = "#1c1c1c";
-  rr(ctx, engX, engY, engW, engH, s * 0.03); ctx.fill(); noSh(ctx);
-  ctx.strokeStyle = "#555"; ctx.lineWidth = s * 0.012;
-  rr(ctx, engX, engY, engW, engH, s * 0.03); ctx.stroke();
-  ctx.strokeStyle = "#333"; ctx.lineWidth = s * 0.008;
-  for (let f = 1; f < 5; f++) {
-    const fy = engY + (f / 5) * engH;
-    ctx.beginPath(); ctx.moveTo(engX + s * 0.02, fy); ctx.lineTo(engX + engW - s * 0.02, fy); ctx.stroke();
-  }
-
-  const tankStartX = seatTopX + s * 0.02, tankStartY = seatTopY - s * 0.02;
-  sh(ctx, d.accent, s * 0.04);
-  ctx.fillStyle = d.accent;
-  ctx.beginPath();
-  ctx.moveTo(tankStartX, tankStartY + s * 0.12);
-  ctx.bezierCurveTo(
-    tankStartX - s * 0.03, tankStartY - s * 0.01,
-    headTubeTopX - s * 0.14, headTubeTopY - s * 0.04,
-    headTubeTopX - s * 0.08, headTubeTopY + s * 0.04
-  );
-  ctx.lineTo(headTubeTopX, headTubeTopY + s * 0.14);
-  ctx.bezierCurveTo(
-    headTubeTopX - s * 0.06, headTubeTopY + s * 0.22,
-    tankStartX + s * 0.06, tankStartY + s * 0.22,
-    tankStartX, tankStartY + s * 0.12
-  );
-  ctx.fill(); noSh(ctx);
-  ctx.fillStyle = "rgba(255,255,255,0.2)";
-  ctx.beginPath();
-  ctx.ellipse(
-    (tankStartX + headTubeTopX) * 0.5 - s * 0.02,
-    (tankStartY + headTubeTopY) * 0.5 - s * 0.01,
-    s * 0.1, s * 0.035, -0.3, 0, Math.PI * 2
-  );
-  ctx.fill();
-
-  const seatX = lx - s * 0.06, seatY = seatTopY - s * 0.01;
-  sh(ctx, "rgba(0,0,0,0.3)", s * 0.02);
-  ctx.fillStyle = "#2a2a2a";
-  ctx.beginPath();
-  ctx.moveTo(seatX, seatY + s * 0.06);
-  ctx.bezierCurveTo(seatX, seatY - s * 0.01, seatX + s * 0.24, seatY - s * 0.025, seatX + s * 0.24, seatY + s * 0.06);
-  ctx.bezierCurveTo(seatX + s * 0.24, seatY + s * 0.11, seatX, seatY + s * 0.11, seatX, seatY + s * 0.06);
-  ctx.fill(); noSh(ctx);
-
-  ctx.lineWidth = s * 0.028; ctx.strokeStyle = "#aaa";
-  ctx.beginPath();
-  ctx.moveTo(headTubeBot.x - s * 0.015, headTubeBot.y);
-  ctx.lineTo(rx - s * 0.015, wy - WR * 0.18);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(headTubeBot.x + s * 0.015, headTubeBot.y);
-  ctx.lineTo(rx + s * 0.015, wy - WR * 0.18);
-  ctx.stroke();
-
-  const hbY = headTubeTopY - s * 0.04;
-  ctx.lineWidth = s * 0.02; ctx.strokeStyle = frameCol;
-  ctx.beginPath();
-  ctx.moveTo(headTubeTopX - s * 0.12, hbY);
-  ctx.lineTo(headTubeTopX + s * 0.06, hbY);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(headTubeTopX, hbY + s * 0.02);
-  ctx.lineTo(headTubeTopX, headTubeTopY + s * 0.04);
-  ctx.stroke();
-  ctx.lineWidth = s * 0.032;
-  ctx.strokeStyle = "#555";
-  ctx.beginPath(); ctx.moveTo(headTubeTopX - s * 0.12, hbY); ctx.lineTo(headTubeTopX - s * 0.16, hbY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(headTubeTopX + s * 0.06, hbY); ctx.lineTo(headTubeTopX + s * 0.1, hbY); ctx.stroke();
-
-  ctx.lineWidth = s * 0.028; ctx.strokeStyle = "#888";
-  ctx.beginPath();
-  ctx.moveTo(lx + s * 0.22, wy - WR * 0.52);
-  ctx.quadraticCurveTo(rx - s * 0.04, wy - WR * 0.35, rx + WR * 0.85, wy - WR * 0.1);
-  ctx.stroke();
-  ctx.lineWidth = s * 0.018; ctx.strokeStyle = "#666";
-  ctx.beginPath();
-  ctx.moveTo(lx + s * 0.22, wy - WR * 0.42);
-  ctx.quadraticCurveTo(rx - s * 0.04, wy - WR * 0.28, rx + WR * 0.82, wy - WR * 0.02);
-  ctx.stroke();
-  sh(ctx, `rgba(${ar},${ag},${ab},0.7)`, s * 0.025);
-  ctx.fillStyle = `rgba(${ar},${ag},${ab},0.4)`;
-  ctx.beginPath(); ctx.arc(rx + WR * 0.88, wy - WR * 0.12, s * 0.022, 0, Math.PI * 2); ctx.fill();
-  noSh(ctx);
-
-  drawWheel(ctx, lx, wy, WR, wheelAngle, frameCol, d.accent);
-  drawWheel(ctx, rx, wy, WR * 0.92, wheelAngle * 1.04, frameCol, d.accent);
-
-  const hlX = headTubeTopX + s * 0.04, hlY = headTubeTopY + s * 0.1;
-  const glowPulse = 0.6 + 0.4 * Math.abs(Math.sin(t * 1.9));
-  sh(ctx, "#fff", s * 0.06 * glowPulse);
-  ctx.fillStyle = "#fff";
-  ctx.beginPath(); ctx.arc(hlX, hlY, s * 0.035, 0, Math.PI * 2); ctx.fill();
-  noSh(ctx);
-  const beam = ctx.createLinearGradient(hlX, hlY, hlX + s * 0.55, hlY + s * 0.08);
-  beam.addColorStop(0, `rgba(255,255,240,${0.15 * glowPulse})`);
-  beam.addColorStop(1, "rgba(255,255,240,0)");
+function speedLines(ctx, cx, cy, count, minLen, maxLen, color, alpha) {
   ctx.save();
-  ctx.translate(hlX, hlY);
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(s * 0.55, -s * 0.06);
-  ctx.lineTo(s * 0.55, s * 0.12);
-  ctx.closePath();
-  ctx.fillStyle = beam; ctx.fill();
-  ctx.restore();
-
-  ctx.restore();
-
-  const ORBIT_ITEMS = [
-    { type: "flame",  baseAngle: 0,           orbitR: s * 0.36, spd: 0.30, dep: 0.42, sz: s * 0.055 },
-    { type: "kebab",  baseAngle: Math.PI/2,   orbitR: s * 0.41, spd: 0.22, dep: 0.28, sz: s * 0.048 },
-    { type: "chai",   baseAngle: Math.PI,     orbitR: s * 0.34, spd: 0.26, dep: 0.5,  sz: s * 0.05  },
-    { type: "star",   baseAngle: Math.PI*1.5, orbitR: s * 0.44, spd: 0.18, dep: 0.32, sz: s * 0.042 },
-  ];
-
-  ORBIT_ITEMS.forEach(({ type, baseAngle, orbitR, spd, dep, sz }) => {
-    const angle = baseAngle + t * spd;
-    const ox = BX + Math.cos(angle) * orbitR + mx * dep * 40;
-    const oy = WY - WR * 0.8 + Math.sin(angle) * orbitR * 0.55 + my * dep * 20;
-    sh(ctx, d.accent, sz * 0.4);
-    ctx.fillStyle = `rgba(${ar},${ag},${ab},0.12)`;
-    ctx.beginPath(); ctx.arc(ox, oy, sz * 0.95, 0, Math.PI * 2); ctx.fill();
-    noSh(ctx);
-    drawFoodIcon(ctx, type, ox, oy, sz, d.accent);
-    ctx.fillStyle = "rgba(255,255,255,0.75)";
-    ctx.font = `500 ${sz * 0.48}px Oswald,sans-serif`;
-    ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillText(type === "chai" ? "CHAI" : type === "kebab" ? "BBQ" : type === "flame" ? "FIRE" : "INDIA", ox, oy + sz * 1.05);
-  });
-  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-
-  const brandPulse = 1 + 0.02 * Math.sin(t * 1.4);
-  ctx.save(); ctx.translate(W * 0.5, H * 0.11); ctx.scale(brandPulse, brandPulse);
-  sh(ctx, d.accent, s * 0.04);
-  ctx.fillStyle = "#fff";
-  ctx.font = `700 ${s * 0.1}px 'Saira Stencil One',sans-serif`;
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(d.headline || "BBQ RIDE", 0, 0); noSh(ctx);
-  ctx.restore();
-
-  ctx.save(); ctx.translate(W * 0.5, H * 0.195);
-  sh(ctx, d.accent, s * 0.025);
-  ctx.fillStyle = d.accent;
-  ctx.font = `700 ${s * 0.062}px Oswald,sans-serif`;
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("INDIA", 0, 0); noSh(ctx);
-  ctx.restore();
-
-  ctx.fillStyle = "rgba(255,255,255,0.55)";
-  ctx.font = `400 ${s * 0.028}px Oswald,sans-serif`;
-  ctx.textAlign = "center";
-  ctx.fillText(d.sub || "Fuel Your Ride. Fire Your Taste.", W * 0.5, H * 0.25);
-
-  if (d.price && d.price !== "₹99") {
-    const prPulse = 1 + 0.04 * Math.sin(t * 2.6);
-    ctx.save(); ctx.translate(W * 0.86, H * 0.88); ctx.scale(prPulse, prPulse);
-    sh(ctx, "rgba(0,0,0,0.5)", s * 0.04);
-    ctx.fillStyle = d.accent; rr(ctx, -s * 0.12, -s * 0.062, s * 0.24, s * 0.124, s * 0.03); ctx.fill(); noSh(ctx);
-    ctx.fillStyle = "#fff";
-    ctx.font = `700 ${s * 0.065}px 'Saira Stencil One',sans-serif`;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(d.price, 0, 0); ctx.restore();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = alpha;
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    const len = minLen + (maxLen - minLen) * ((i % 5) / 5);
+    ctx.lineWidth = 1 + (i % 3);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(angle) * (minLen * 0.3), cy + Math.sin(angle) * (minLen * 0.3));
+    ctx.lineTo(cx + Math.cos(angle) * len, cy + Math.sin(angle) * len);
+    ctx.stroke();
   }
-
-  ctx.fillStyle = `rgba(${ar},${ag},${ab},0.8)`;
-  ctx.font = `400 ${s * 0.028}px Oswald,sans-serif`;
-  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-  ctx.fillText(d.cta || "", W * 0.5, H * 0.97);
-  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.restore();
 }
 
-/* ── 6. MANGA PANEL ─────────────────────────────────────────── */
-function drawMangaPanel(ctx, t, W, H, sceneImg, _opts) {
-  const s = Math.min(W, H);
-  // 12fps staccato: integer frame index, changes position jitter
-  const step = Math.floor(t * 12);
-  const jit = (seed, amp) =>
-    Math.sin(step * 7.31 + seed * 3.17) * amp;
+/* ── sticker asset URLs ─────────────────────────────────────── */
 
-  // 1. Cream/paper background
-  ctx.fillStyle = "#f5f0e8";
+const STICKER_URLS = {
+  torn: Array.from({ length: 13 }, (_, i) => `/stickers/torn/PNG-${String(i + 1).padStart(2, "0")}.png`),
+  sauces: Array.from({ length: 8 }, (_, i) => `/stickers/bbq/sauce-${i + 1}.png`),
+  sauceBtls: Array.from({ length: 8 }, (_, i) => `/stickers/bbq/sauce-${i + 9}.png`),
+  campfire: "/stickers/camping/camp-21.png",
+  cookingPot: "/stickers/camping/camp-29.png",
+  marshmallow: "/stickers/camping/camp-25.png",
+  mug: "/stickers/camping/camp-19.png",
+};
+
+/* ── templates ─────────────────────────────────────────────── */
+
+const TEMPLATES = [
+  { id: "torn-reveal", label: "TORN PAPER" },
+  { id: "sauce-drip", label: "SAUCE DRIP" },
+  { id: "campfire", label: "CAMPFIRE" },
+  { id: "neon-speed", label: "NEON SPEED" },
+  { id: "cinematic", label: "CINEMATIC" },
+  { id: "story-ad", label: "STORY AD" },
+];
+
+const DEFAULT_OPTS = {
+  "torn-reveal":  { headline: "RIDERS ONLY",      sub: "Every Sunday, 6 AM",      price: "₹99" },
+  "sauce-drip":   { headline: "THE BBQ BEAST",    sub: "Fresh Sauces Daily",      price: "₹99" },
+  "campfire":     { headline: "CAMPFIRE RIDE",    sub: "Join the Tribe",          price: "₹99" },
+  "neon-speed":   { headline: "FULL THROTTLE",    sub: "Speed Meets Flavor",      price: "₹99" },
+  "cinematic":    { headline: "THE RIDE",         sub: "Cinematic BBQ Journey",   price: "₹99" },
+  "story-ad":     { headline: "SWIPE UP",         sub: "Limited Spots Available", price: "₹99" },
+};
+
+const SIZES = { "1:1": { w: 1080, h: 1080 }, "9:16": { w: 1080, h: 1920 } };
+
+/* ── scene snapshot ────────────────────────────────────────── */
+
+function drawScene(ctx, sceneImg, cx, cy, fitW, fitH) {
+  if (!sceneImg) {
+    ctx.fillStyle = "#2a1800";
+    ctx.fillRect(0, 0, cx * 2, cy * 2);
+    ctx.strokeStyle = `rgba(224,90,26,0.4)`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 8]);
+    ctx.strokeRect(4, 4, cx * 2 - 8, cy * 2 - 8);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "400 16px Oswald,sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Open SCENE to load bike", cx, cy);
+    return;
+  }
+  drawFitImg(ctx, sceneImg, cx, cy, fitW, fitH);
+}
+
+/* ── template draw functions ───────────────────────────────── */
+
+function drawTornReveal(ctx, W, H, t, cache, sceneImg, opts) {
+  // L0 BG
+  const bg = ctx.createLinearGradient(0, H * 0.35, 0, H * 0.65);
+  bg.addColorStop(0, "rgba(26,8,0,0.95)");
+  bg.addColorStop(0.5, "rgba(224,90,26,0.1)");
+  bg.addColorStop(1, "rgba(26,8,0,0.95)");
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  // 2. Halftone dots
-  const ds = s * 0.038;
-  const dr = ds * 0.19;
-  ctx.fillStyle = "rgba(0,0,0,0.055)";
-  for (let row = 0, y = 0; y < H + ds; y += ds, row++) {
-    for (let x = (row % 2) * ds * 0.5; x < W + ds; x += ds) {
+  // L1 Bike
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, t * 1.5);
+  drawScene(ctx, sceneImg, W / 2, H * 0.52, 900, 750);
+  ctx.restore();
+
+  // L2 Torn papers
+  const slideIn = Math.min(1, t / 0.7);
+  const ease = slideIn * slideIn;
+
+  const tornArr = cache.torn || [];
+  const torn0 = tornArr[0];
+  const torn1 = tornArr[1];
+  const torn3 = tornArr[3];
+
+  // Paper A — top left
+  if (torn0) {
+  ctx.save();
+  ctx.translate(-60 + (1 - ease) * 80, -40);
+  ctx.rotate(Math.sin(t * 0.8 + 0) * 0.026);
+  ctx.drawImage(torn0, 0, 0, torn0.naturalWidth, torn0.naturalHeight,
+    0, 0, 420, torn0.naturalHeight * 420 / torn0.naturalWidth);
+  ctx.restore();
+  }
+
+  ctx.save();
+  ctx.translate(-60 + (1 - ease) * 80 + 210, 170);
+  ctx.fillStyle = opts.accent;
+  ctx.font = "700 18px 'Saira Stencil One',sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("BBQ RIDE", 0, 0);
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 36px Oswald,sans-serif";
+  ctx.fillText(opts.headline, 0, 28);
+  ctx.restore();
+
+  // Paper B — bottom right
+  if (torn1) {
+  ctx.save();
+  ctx.translate(W - 320 + ease * 80, H - 280);
+  ctx.rotate(-Math.PI / 4 + Math.sin(t * 0.6) * 0.03);
+  ctx.drawImage(torn1, 0, 0, torn1.naturalWidth, torn1.naturalHeight,
+    0, 0, 380, torn1.naturalHeight * 380 / torn1.naturalWidth);
+  ctx.restore();
+  }
+
+  ctx.save();
+  ctx.translate(W - 320 + ease * 80 + 190, H - 280 + 120);
+  ctx.rotate(Math.PI);
+  ctx.fillStyle = opts.accent;
+  ctx.font = "700 52px Oswald,sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.price, 0, 0);
+  ctx.fillStyle = "#fff";
+  ctx.font = "400 16px Oswald,sans-serif";
+  ctx.fillText("ONLY", 0, -40);
+  ctx.restore();
+
+  // Paper C — center bottom
+  if (torn3) {
+  ctx.save();
+  ctx.translate(W / 2 + Math.sin(t * 0.4) * 8, H - 60);
+  ctx.drawImage(torn3, 0, 0, torn3.naturalWidth, torn3.naturalHeight,
+    0, 0, 200, torn3.naturalHeight * 200 / torn3.naturalWidth);
+  ctx.restore();
+  }
+
+  ctx.save();
+  ctx.translate(W / 2 + Math.sin(t * 0.4) * 8, H - 60 + 100);
+  ctx.fillStyle = "#fff";
+  ctx.font = "400 18px Oswald,sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.sub, 0, 0);
+  ctx.restore();
+
+  // L3 Decor
+  ctx.save();
+  ctx.strokeStyle = opts.accent;
+  ctx.lineWidth = 3;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath(); ctx.moveTo(W - 40, 40); ctx.lineTo(W - 140, 40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W - 100, 40); ctx.lineTo(W - 100, 140); ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.font = "400 14px Oswald,sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("@ bbqrideindia", 32, H - 28);
+}
+
+function drawSauceDrip(ctx, W, H, t, cache, sceneImg, opts) {
+  // L0 BG
+  ctx.fillStyle = "#0f0f0f";
+  ctx.fillRect(0, 0, W, H);
+
+  const dotG = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W * 0.7);
+  dotG.addColorStop(0, "rgba(224,90,26,0.04)");
+  dotG.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = dotG;
+  ctx.fillRect(0, 0, W, H);
+
+  // Halftone dot grid
+  for (let y = 0; y < H; y += 20) {
+    for (let x = 0; x < W; x += 20) {
+      ctx.fillStyle = "#1a1a1a";
       ctx.beginPath();
-      ctx.arc(x, y, dr, 0, Math.PI * 2);
+      ctx.arc(x + 10, y + 10, 2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
-  // 3. Speed lines from focal point (upper-right-ish)
-  const FX = W * 0.56 + jit(1, W * 0.008);
-  const FY = H * 0.42 + jit(2, H * 0.006);
-  const lineCount = 40;
-  ctx.save();
-  for (let i = 0; i < lineCount; i++) {
-    const angle = (i / lineCount) * Math.PI * 2;
-    const thick = i % 4 === 0;
-    ctx.lineWidth = thick ? s * 0.003 : s * 0.001;
-    ctx.globalAlpha = thick ? 0.18 : 0.09;
-    ctx.strokeStyle = "#111";
-    const dist = Math.max(W, H) * 1.5;
-    ctx.beginPath();
-    ctx.moveTo(FX, FY);
-    ctx.lineTo(FX + Math.cos(angle) * dist, FY + Math.sin(angle) * dist);
-    ctx.stroke();
-  }
-  ctx.restore();
+  // L1 Sauce Squirts (4 border pieces, stagger drip in)
+  const sauceArr = cache.sauces || [];
+  const sauceBtlArr = cache.sauceBtls || [];
+  const squirts = [
+    { img: sauceArr[0],  x: -20,        y: H * 0.25,   h: 300, rot: Math.PI / 2 },
+    { img: sauceArr[4],  x: W - 60,     y: H * 0.35,   h: 260, rot: -Math.PI / 2 },
+    { img: sauceArr[2],  x: W * 0.75,   y: -20,        h: 220, rot: Math.PI },
+    { img: sauceArr[6],  x: 60,         y: H - 20,     h: 240, rot: 0 },
+  ];
 
-  // 4. Main scene panel — manga-ink filtered scene snapshot
-  const pw = W * 0.84, ph = H * 0.56;
-  const pcx = W * 0.5 + jit(3, W * 0.003);
-  const pcy = H * 0.43 + jit(4, H * 0.003);
-  const pRot = jit(5, 0.009);
-  ctx.save();
-  ctx.translate(pcx, pcy);
-  ctx.rotate(pRot);
-  // Clip to panel rectangle
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(-pw / 2, -ph / 2, pw, ph);
-  ctx.clip();
-  if (sceneImg) {
-    // Manga-ink look: grayscale + high contrast base
-    ctx.filter = "grayscale(1) contrast(1.8) brightness(1.08)";
-    ctx.drawImage(sceneImg, -pw / 2, -ph / 2, pw, ph);
-    // Edge ink layer: very high contrast overlay in multiply
-    ctx.globalCompositeOperation = "multiply";
-    ctx.filter = "grayscale(1) contrast(9) brightness(1.5)";
-    ctx.globalAlpha = 0.45;
-    ctx.drawImage(sceneImg, -pw / 2, -ph / 2, pw, ph);
-  } else {
-    // Placeholder if no scene loaded yet
-    ctx.fillStyle = "#ddd";
-    ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
-  }
-  ctx.restore(); // remove clip
-  // Panel border
-  ctx.filter = "none";
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = "source-over";
-  ctx.lineWidth = s * 0.013;
-  ctx.strokeStyle = "#111";
-  ctx.strokeRect(-pw / 2, -ph / 2, pw, ph);
-  ctx.restore();
-
-  // 5. Small accent panel — bottom right corner, slight tilt
-  const ap = { w: W * 0.29, h: H * 0.16 };
-  const acx = W * 0.8 + jit(6, W * 0.005);
-  const acy = H * 0.8 + jit(7, H * 0.005);
-  ctx.save();
-  ctx.translate(acx, acy);
-  ctx.rotate(0.035 + jit(8, 0.012));
-  ctx.fillStyle = "rgba(224,90,26,0.18)";
-  ctx.fillRect(-ap.w / 2, -ap.h / 2, ap.w, ap.h);
-  ctx.lineWidth = s * 0.009;
-  ctx.strokeStyle = "#111";
-  ctx.strokeRect(-ap.w / 2, -ap.h / 2, ap.w, ap.h);
-  ctx.restore();
-
-  // 6. Impact sound word — rotates every ~0.8 s
-  const SOUNDS = ["ドカーン!", "ガシャン!", "CRASH!", "SIZZLE!", "ズドン!", "BAM!"];
-  const sound = SOUNDS[Math.floor(t * 1.25) % SOUNDS.length];
-  const sfx = s * 0.11;
-  const stx = W * 0.25 + jit(9, W * 0.012);
-  const sty = H * 0.82 + jit(10, H * 0.008);
-  ctx.save();
-  ctx.translate(stx, sty);
-  ctx.rotate(-0.07 + jit(11, 0.03));
-  ctx.font = `900 ${sfx}px Oswald, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.lineWidth = sfx * 0.2;
-  ctx.strokeStyle = "#111";
-  ctx.lineJoin = "round";
-  ctx.strokeText(sound, 0, 0);
-  ctx.fillStyle = "#fff";
-  ctx.fillText(sound, 0, 0);
-  ctx.restore();
-
-  // 7. Top black banner — brand name
-  const bh = H * 0.09;
-  ctx.fillStyle = "#111";
-  ctx.fillRect(0, 0, W, bh);
-  ctx.font = `700 ${bh * 0.52}px Oswald, sans-serif`;
-  ctx.fillStyle = "#e05a1a";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("BBQ RIDE INDIA", W / 2, bh / 2);
-
-  // 8. Full-frame ink border
-  const bw = s * 0.016;
-  ctx.lineWidth = bw;
-  ctx.strokeStyle = "#111";
-  ctx.strokeRect(bw / 2, bw / 2, W - bw, H - bw);
-}
-
-/* ── GIF export ─────────────────────────────────────────── */
-function loadGifJs() {
-  return new Promise(res=>{
-    if(window.GIF){res();return;}
-    const s=document.createElement("script");
-    s.src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js";
-    s.onload=res; document.head.appendChild(s);
+  squirts.forEach(({ img, x, y, h, rot }, i) => {
+    if (!img) return;
+    const start = i * 0.15;
+    if (t < start) return;
+    const yOff = Math.max(0, (0.5 - t) * 200) * Math.max(0, Math.min(1, (t - start) / 0.3));
+    ctx.save();
+    ctx.translate(x + img.naturalWidth / 2, y + h / 2 + yOff);
+    ctx.rotate(rot);
+    const ar = img.naturalWidth / img.naturalHeight;
+    const dw = h * ar;
+    ctx.drawImage(img, -dw / 2, -h / 2, dw, h);
+    ctx.restore();
   });
+
+  // L2 Sauce Bottles (3 corners)
+  const bottles = [
+    { img: sauceBtlArr[0], x: 40,   y: H - 100, h: 80,  rot: 0 },
+    { img: sauceBtlArr[4], x: W - 80, y: H - 90,  h: 75,  rot: 0 },
+    { img: sauceBtlArr[2], x: W - 60, y: 90,    h: 70,  rot: -15 * Math.PI / 180 },
+  ];
+
+  bottles.forEach(({ img, x, y, h, rot }) => {
+    if (!img) return;
+    const ar = img.naturalWidth / img.naturalHeight;
+    const dw = h * ar;
+    const bounce = Math.sin(t * 2) * 4;
+    ctx.save();
+    ctx.translate(x + dw / 2, y + h / 2 + bounce);
+    ctx.rotate(rot);
+    ctx.drawImage(img, -dw / 2, -h / 2, dw, h);
+    ctx.restore();
+  });
+
+  // L3 Bike
+  ctx.save();
+  ctx.fillStyle = `rgba(224,90,26,0.08)`;
+  ctx.fillRect(0, 0, W, H);
+  drawScene(ctx, sceneImg, W / 2, H * 0.48, 820, 680);
+  ctx.restore();
+
+  // L4 Typography
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 22px 'Saira Stencil One',sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("BBQ RIDE INDIA", W / 2, 50);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 54px Oswald,sans-serif";
+  ctx.fillText(opts.headline, W / 2, H * 0.85);
+
+  const pillSlide = Math.min(1, (t - 0.8) / 0.4);
+  const pillY = H * 0.93 + Math.max(0, (0.8 - t) * 100);
+  ctx.save();
+  ctx.translate(W / 2, pillY);
+  ctx.scale(pillSlide, pillSlide);
+  drawPill(ctx, 0, 0, 220, 54, 27, opts.accent, "#000", 2);
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 36px Oswald,sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.price, 0, 0);
+  ctx.restore();
 }
 
-/* ═══════════════════════════════════════════════════════════
+function drawCampfire(ctx, W, H, t, cache, sceneImg, opts) {
+  // L0 BG — radial gradient
+  const bg = ctx.createRadialGradient(W / 2, H * 0.6, 0, W / 2, H * 0.6, 600);
+  bg.addColorStop(0, "rgba(26,10,0,1)");
+  bg.addColorStop(1, "rgba(5,5,5,1)");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Soft glow bottom radial
+  const glowG = ctx.createRadialGradient(W / 2, H * 0.78, 0, W / 2, H * 0.78, 350);
+  glowG.addColorStop(0, "rgba(224,90,26,0.15)");
+  glowG.addColorStop(1, "rgba(224,90,26,0)");
+  ctx.fillStyle = glowG;
+  ctx.fillRect(0, 0, W, H);
+
+  // L1 Campfire
+  const fireScale = 1 + Math.sin(t * 6) * 0.04;
+  const fireAlpha = 0.9 + Math.sin(t * 5) * 0.1;
+  ctx.save();
+  ctx.translate(W / 2, H * 0.78);
+  ctx.scale(fireScale, fireScale);
+  ctx.globalAlpha = fireAlpha;
+  const fireImg = cache.campfire;
+  if (fireImg) {
+    const ar = fireImg.naturalWidth / fireImg.naturalHeight;
+    const dw = 280 * ar;
+    ctx.drawImage(fireImg, -dw / 2, -140, dw, 280);
+  }
+  ctx.restore();
+
+  // L2 Cooking Pot
+  const potImg = cache.cookingPot;
+  if (potImg) {
+    const potAr = potImg.naturalWidth / potImg.naturalHeight;
+    const potDw = 180 * potAr;
+    const sway = Math.sin(t * 0.7) * 0.04;
+    ctx.save();
+    ctx.translate(W * 0.72, H * 0.70);
+    ctx.rotate(sway);
+    ctx.drawImage(potImg, -potDw / 2, -90, potDw, 180);
+    ctx.restore();
+
+    // Steam
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    for (let i = 0; i < 3; i++) {
+      const sy = H * 0.70 - 90 - ((t * 15 + i * 20) % 60);
+      const sx = W * 0.72 + Math.sin(t + i) * 4;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, 14 + i * 2, 22 + i * 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // L3 Bike
+  drawScene(ctx, sceneImg, W / 2, H * 0.44, 820, 660);
+
+  // L4 Marshmallows
+  const mallowImg = cache.marshmallow;
+  if (mallowImg) {
+    const mAr = mallowImg.naturalWidth / mallowImg.naturalHeight;
+    const mDw = 140 * mAr;
+    const wobble = Math.sin(t * 2) * 0.05;
+    ctx.save();
+    ctx.translate(W * 0.22, H * 0.72);
+    ctx.rotate(30 * Math.PI / 180 + wobble);
+    ctx.drawImage(mallowImg, -mDw / 2, -70, mDw, 140);
+    ctx.restore();
+  }
+
+  // L5 Mug + Steam
+  const mugImg = cache.mug;
+  if (mugImg) {
+    const mugAr = mugImg.naturalWidth / mugImg.naturalHeight;
+    const mugDw = 100 * mugAr;
+    const bobble = Math.sin(t * 1.5 + 2) * 3;
+    ctx.save();
+    ctx.translate(W * 0.78, H * 0.76 + bobble);
+    ctx.drawImage(mugImg, -mugDw / 2, -50, mugDw, 100);
+    ctx.restore();
+
+    // Mug steam circles
+    for (let i = 0; i < 3; i++) {
+      const steamY = H * 0.76 - 50 - ((t * 20 + i * 15) % 40);
+      const steamX = W * 0.78 + Math.cos(t + i) * 6;
+      const alpha = 0.2 * (1 - ((t * 20 + i * 15) % 40) / 40);
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(steamX, steamY, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // L7 Typography
+  ctx.fillStyle = opts.accent;
+  ctx.font = "700 18px 'Saira Stencil One',sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("BBQ RIDE", 32, 36);
+
+  glowText(ctx, opts.headline, W / 2, 80, "700 58px Oswald,sans-serif", "#fff", opts.accent);
+
+  ctx.fillStyle = opts.accent;
+  ctx.font = "400 22px Oswald,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(opts.sub, W / 2, H * 0.9);
+
+  drawPill(ctx, W / 2, H * 0.95, 260, 64, 32, opts.accent, "#000", 2);
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 38px Oswald,sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.price, W / 2, H * 0.95);
+}
+
+function drawNeonSpeed(ctx, W, H, t, cache, sceneImg, opts) {
+  // BG
+  const bg = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W * 0.75);
+  bg.addColorStop(0, "#0a0a0a");
+  bg.addColorStop(1, "#1a1a1a");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Speed lines (rotating)
+  ctx.save();
+  ctx.translate(W / 2, H * 0.52);
+  ctx.rotate(t * 0.12);
+  speedLines(ctx, 0, 0, 36, 180, 480, opts.accent, 0.4);
+  ctx.restore();
+
+  // Bike
+  drawScene(ctx, sceneImg, W / 2, H * 0.52, 820, 680);
+
+  // Neon frame — 4 corner L-brackets
+  const frameIn = Math.min(1, t / 0.4);
+  const bracketLen = 30 * frameIn;
+  const bracketW = 4;
+  const strokeGlow = 14 * frameIn;
+
+  ctx.save();
+  ctx.lineCap = "round";
+
+  // Top-left
+  ctx.strokeStyle = opts.accent;
+  ctx.lineWidth = bracketW;
+  ctx.beginPath(); ctx.moveTo(40, 40); ctx.lineTo(40 + bracketLen, 40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(40, 40); ctx.lineTo(40, 40 + bracketLen); ctx.stroke();
+  // Glow passes
+  for (const gw of [strokeGlow * 0.8, strokeGlow * 0.5, strokeGlow * 0.2]) {
+    ctx.lineWidth = gw;
+    ctx.strokeStyle = `rgba(224,90,26,${0.12})`;
+    ctx.beginPath(); ctx.moveTo(40, 40); ctx.lineTo(40 + bracketLen, 40); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(40, 40); ctx.lineTo(40, 40 + bracketLen); ctx.stroke();
+  }
+
+  // Top-right
+  ctx.beginPath(); ctx.moveTo(W - 40, 40); ctx.lineTo(W - 40 - bracketLen, 40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W - 40, 40); ctx.lineTo(W - 40, 40 + bracketLen); ctx.stroke();
+  for (const gw of [strokeGlow * 0.8, strokeGlow * 0.5, strokeGlow * 0.2]) {
+    ctx.lineWidth = gw;
+    ctx.strokeStyle = `rgba(224,90,26,${0.12})`;
+    ctx.beginPath(); ctx.moveTo(W - 40, 40); ctx.lineTo(W - 40 - bracketLen, 40); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W - 40, 40); ctx.lineTo(W - 40, 40 + bracketLen); ctx.stroke();
+  }
+
+  // Bottom-left
+  ctx.beginPath(); ctx.moveTo(40, H - 40); ctx.lineTo(40 + bracketLen, H - 40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(40, H - 40); ctx.lineTo(40, H - 40 - bracketLen); ctx.stroke();
+  for (const gw of [strokeGlow * 0.8, strokeGlow * 0.5, strokeGlow * 0.2]) {
+    ctx.lineWidth = gw;
+    ctx.strokeStyle = `rgba(224,90,26,${0.12})`;
+    ctx.beginPath(); ctx.moveTo(40, H - 40); ctx.lineTo(40 + bracketLen, H - 40); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(40, H - 40); ctx.lineTo(40, H - 40 - bracketLen); ctx.stroke();
+  }
+
+  // Bottom-right
+  ctx.beginPath(); ctx.moveTo(W - 40, H - 40); ctx.lineTo(W - 40 - bracketLen, H - 40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W - 40, H - 40); ctx.lineTo(W - 40, H - 40 - bracketLen); ctx.stroke();
+  for (const gw of [strokeGlow * 0.8, strokeGlow * 0.5, strokeGlow * 0.2]) {
+    ctx.lineWidth = gw;
+    ctx.strokeStyle = `rgba(224,90,26,${0.12})`;
+    ctx.beginPath(); ctx.moveTo(W - 40, H - 40); ctx.lineTo(W - 40 - bracketLen, H - 40); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W - 40, H - 40); ctx.lineTo(W - 40, H - 40 - bracketLen); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Price badge
+  const pulse = 1 + Math.sin(t * 3) * 0.04;
+  ctx.save();
+  ctx.translate(W * 0.78, H * 0.76);
+  ctx.scale(pulse, pulse);
+  ctx.fillStyle = "#0f0f0f";
+  ctx.beginPath(); ctx.arc(0, 0, 110, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = opts.accent;
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, 110, 0, Math.PI * 2); ctx.stroke();
+  ctx.shadowColor = opts.accent;
+  ctx.shadowBlur = 12;
+  ctx.stroke();
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 26px 'Saira Stencil One',sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("₹", -10, -12);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 52px Oswald,sans-serif";
+  ctx.fillText(opts.price, 12, 0);
+  ctx.restore();
+
+  // Headline
+  ctx.fillStyle = "#fff";
+  ctx.font = "500 36px Oswald,sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(opts.headline, W / 2, H * 0.9);
+
+  // Brand
+  ctx.fillStyle = opts.accent;
+  ctx.font = "700 16px 'Saira Stencil One',sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("BBQ RIDE INDIA", 32, 28);
+
+  // Scan line
+  const scanY = (t * 90) % H;
+  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.fillRect(0, scanY, W, 1);
+}
+
+function drawCinematic(ctx, W, H, t, cache, sceneImg, opts) {
+  // BG
+  ctx.fillStyle = "#060606";
+  ctx.fillRect(0, 0, W, H);
+
+  // Bike
+  drawScene(ctx, sceneImg, W / 2, H * 0.5, 940, 780);
+
+  // Left accent stripe
+  ctx.fillStyle = opts.accent;
+  ctx.fillRect(0, 0, 10, H);
+
+  // Letterbox bars
+  const barSlide = Math.min(1, t / 0.7);
+  const barH = barSlide * H * 0.14;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, barH);
+  ctx.fillRect(0, H - barH, W, barH);
+
+  // Title (after bars settle)
+  if (t > 0.7) {
+    const titleSlide = Math.min(1, (t - 0.7) * 3);
+    const titleX = 44 - 100 * (1 - titleSlide);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "600 64px Oswald,sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(opts.headline, titleX, H * 0.07);
+
+    ctx.fillStyle = opts.accent;
+    ctx.font = "400 20px Oswald,sans-serif";
+    ctx.fillText(opts.sub, titleX, H * 0.07 + 80);
+  }
+
+  // Bottom bar price pill
+  if (t > 0.5) {
+    const priceSlide = Math.min(1, (t - 0.5) * 2);
+    const priceY = H - barH - 40 - 100 * (1 - priceSlide);
+    ctx.save();
+    ctx.translate(W * 0.86, priceY);
+    ctx.scale(priceSlide, priceSlide);
+    drawPill(ctx, 0, 0, 200, 56, 28, opts.accent, "#000", 2);
+    ctx.fillStyle = "#fff";
+    ctx.font = "700 42px Oswald,sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(opts.price, 0, 0);
+    ctx.restore();
+  }
+
+  // Scan lines
+  for (let y = 0; y < H; y += 6) {
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillRect(0, y, W, 1);
+  }
+}
+
+function drawStoryAd(ctx, W, H, t, cache, sceneImg, opts) {
+  // BG linear gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#0f0f0f");
+  bg.addColorStop(1, "#1a0800");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Top brand bar
+  ctx.fillStyle = "#0f0f0f";
+  ctx.fillRect(0, 0, W, 130);
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 24px 'Saira Stencil One',sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("BBQ RIDE INDIA", W / 2, 65);
+  ctx.fillStyle = opts.accent;
+  ctx.beginPath(); ctx.arc(W / 2 - 160, 65, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(W / 2 + 160, 65, 4, 0, Math.PI * 2); ctx.fill();
+
+  // Rule line
+  ctx.strokeStyle = opts.accent;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 130); ctx.lineTo(W, 130); ctx.stroke();
+
+  // Bike
+  drawScene(ctx, sceneImg, W / 2, H * 0.39, 920, 680);
+
+  // Glow behind bike
+  const glowG = ctx.createRadialGradient(W / 2, H * 0.62, 0, W / 2, H * 0.62, 360);
+  glowG.addColorStop(0, "rgba(224,90,26,0.3)");
+  glowG.addColorStop(1, "rgba(224,90,26,0)");
+  ctx.fillStyle = glowG;
+  ctx.fillRect(0, 0, W, H);
+
+  // Rule 2
+  ctx.beginPath(); ctx.moveTo(0, H * 0.63); ctx.lineTo(W, H * 0.63); ctx.stroke();
+
+  // Text block
+  ctx.fillStyle = "#fff";
+  ctx.font = "600 68px Oswald,sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.headline, W / 2, H * 0.70);
+
+  ctx.fillStyle = opts.accent;
+  ctx.font = "400 28px Oswald,sans-serif";
+  ctx.fillText(opts.sub, W / 2, H * 0.70 + 80);
+
+  // Price pill
+  const pulse = 1 + Math.sin(t * 2.5) * 0.03;
+  ctx.save();
+  ctx.translate(W / 2, H * 0.83);
+  ctx.scale(pulse, pulse);
+  drawPill(ctx, 0, 0, 300, 82, 41, "#e05a1a", "#000", 2);
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 50px Oswald,sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.price, 0, 0);
+  ctx.restore();
+
+  // Bottom CTA bar
+  ctx.fillStyle = "#0f0f0f";
+  ctx.fillRect(0, H - 130, W, 130);
+  const ctaY = H - 130 + 65 + Math.sin(t * 3) * 5;
+  ctx.fillStyle = "#fff";
+  ctx.font = "500 20px Oswald,sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("SWIPE UP ↑", W / 2, ctaY);
+
+  // Handle
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.font = "400 15px Oswald,sans-serif";
+  ctx.fillText("@ bbqrideindia", W / 2, H - 148);
+}
+
+/* ── draw dispatch ─────────────────────────────────────────── */
+
+function drawFrame(ctx, W, H, t, cache, sceneImg, opts) {
+  ctx.clearRect(0, 0, W, H);
+  switch (opts.tmpl) {
+    case "torn-reveal":   drawTornReveal(ctx, W, H, t, cache, sceneImg, opts); break;
+    case "sauce-drip":    drawSauceDrip(ctx, W, H, t, cache, sceneImg, opts); break;
+    case "campfire":      drawCampfire(ctx, W, H, t, cache, sceneImg, opts); break;
+    case "neon-speed":    drawNeonSpeed(ctx, W, H, t, cache, sceneImg, opts); break;
+    case "cinematic":     drawCinematic(ctx, W, H, t, cache, sceneImg, opts); break;
+    case "story-ad":      drawStoryAd(ctx, W, H, t, cache, sceneImg, opts); break;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
    COMPONENT
-═══════════════════════════════════════════════════════════ */
+════════════════════════════════════════════════════════════════ */
+
 export default function BrandArt() {
-  const [art, setArt]         = useState("steam");
-  const [ratio, setRatio]     = useState("1:1");
-  const [paletteId, setPalId] = useState("fire");
+  const [art, setArt]     = useState("torn-reveal");
+  const [ratio, setRatio] = useState("1:1");
+  const [accent, setAccent] = useState("#e05a1a");
   const [headline, setHL]     = useState("");
   const [sub, setSub]         = useState("");
   const [price, setPrice]     = useState("₹99");
-  const [cta, setCta]         = useState("");
-  const [date, setDate]       = useState("12 Nov · 7 PM");
-  const [spec1, setS1]        = useState("100% Halal");
-  const [spec2, setS2]        = useState("Chef's Pick");
-  const [spec3, setS3]        = useState("Fresh Daily");
-  const [neon1, setN1]        = useState("BBQ");
-  const [neon2, setN2]        = useState("OPEN");
-  const [neon3, setN3]        = useState("HOT");
-  const [ing1, setI1]         = useState("Chicken");
-  const [ing2, setI2]         = useState("Spices");
-  const [gifBusy, setGifBusy] = useState(false);
-  const [gifProg, setGifProg] = useState(0);
 
   const canvasRef    = useRef(null);
   const containerRef = useRef(null);
   const rafRef       = useRef(null);
   const tRef         = useRef(0);
   const lastTsRef    = useRef(null);
-  const mouseRef     = useRef({x:0,y:0});
-  const smoothRef    = useRef({x:0,y:0});
+  const imgCacheRef  = useRef({});
 
-  const palette = PALETTES.find(p=>p.id===paletteId)||PALETTES[0];
+  const TEMPLATE_IDS = TEMPLATES.map(t => t.id);
+  const tmplIdx = TEMPLATE_IDS.indexOf(art);
 
-  const getData = useCallback(() => ({
-    accent:palette.accent, dark:palette.dark, mid:palette.mid,
-    headline, sub, price, cta, date, spec1, spec2, spec3, neon1, neon2, neon3, ing1, ing2,
-  }), [palette, headline, sub, price, cta, date, spec1, spec2, spec3, neon1, neon2, neon3, ing1, ing2]);
-
-  const drawFrame = useCallback((canvas, t2, W, H, mx2, my2) => {
-    const ctx=canvas.getContext("2d");
-    ctx.clearRect(0,0,W,H);
-    const d=getData();
-    if(art==="steam")   drawSteam(ctx,W,H,t2,mx2,my2,d);
-    if(art==="diorama") drawDiorama(ctx,W,H,t2,mx2,my2,d);
-    if(art==="window")  drawWindow(ctx,W,H,t2,mx2,my2,d);
-    if(art==="pulse")   drawPulse(ctx,W,H,t2,mx2,my2,d);
-    if(art==="bike")    drawBikeHero(ctx,W,H,t2,mx2,my2,d);
-    if(art==="manga")   drawMangaPanel(ctx,t2,W,H,null,d);
-  }, [art, getData]);
-
-  useEffect(()=>{
-    const canvas=canvasRef.current; if(!canvas) return;
-    const {w,h}=SIZES[ratio]; canvas.width=w; canvas.height=h;
-    tRef.current=0; lastTsRef.current=null;
-    let stopped=false;
-    const loop=(ts)=>{
-      if(stopped) return;
-      if(lastTsRef.current!==null) tRef.current=(tRef.current+(ts-lastTsRef.current)/1000)%8;
-      lastTsRef.current=ts;
-      const sm=smoothRef.current, m=mouseRef.current;
-      sm.x+=(m.x-sm.x)*.06; sm.y+=(m.y-sm.y)*.06;
-      const{w:W,h:H}=SIZES[ratio];
-      drawFrame(canvas,tRef.current,W,H,sm.x,sm.y);
-      rafRef.current=requestAnimationFrame(loop);
-    };
-    document.fonts.ready.then(()=>{ if(!stopped) rafRef.current=requestAnimationFrame(loop); });
-    return()=>{ stopped=true; cancelAnimationFrame(rafRef.current); };
-  }, [ratio, drawFrame]);
-
-  const onMouseMove=(e)=>{
-    const el=containerRef.current; if(!el) return;
-    const r=el.getBoundingClientRect();
-    mouseRef.current={ x:(e.clientX-r.left)/r.width-.5, y:(e.clientY-r.top)/r.height-.5 };
-  };
-
-  const downloadPng=()=>{
-    const canvas=canvasRef.current; if(!canvas) return;
-    const a=document.createElement("a"); a.href=canvas.toDataURL("image/png");
-    a.download=`art-${art}-${ratio.replace(":","x")}.png`; a.click();
-  };
-
-  const downloadGif=async()=>{
-    if(gifBusy) return; setGifBusy(true); setGifProg(0);
-    await loadGifJs();
-    const{w,h}=SIZES[ratio];
-    const off=document.createElement("canvas");
-    off.width=Math.round(w*.5); off.height=Math.round(h*.5);
-    const FRAMES=20, DELAY=100;
-    const gif=new window.GIF({workers:2,quality:8,width:off.width,height:off.height});
-    const ctx2=off.getContext("2d");
-    for(let f=0;f<FRAMES;f++){
-      const ft=(f/FRAMES)*8;
-      const tmp=document.createElement("canvas"); tmp.width=w; tmp.height=h;
-      drawFrame(tmp,ft,w,h,0,0);
-      ctx2.clearRect(0,0,off.width,off.height);
-      ctx2.drawImage(tmp,0,0,off.width,off.height);
-      gif.addFrame(ctx2,{copy:true,delay:DELAY});
-      setGifProg(Math.round((f/FRAMES)*85));
+  // Reset text opts when template changes
+  useEffect(() => {
+    const def = DEFAULT_OPTS[art];
+    if (def) {
+      setHL(def.headline);
+      setSub(def.sub);
+      setPrice(def.price);
     }
-    gif.on("finished",blob=>{
-      const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
-      a.download=`art-${art}-${ratio.replace(":","x")}.gif`; a.click();
-      setGifBusy(false); setGifProg(0);
+  }, [art]);
+
+  // Auto-switch ratio for story-ad
+  useEffect(() => {
+    if (art === "story-ad") setRatio("9:16");
+    else if (ratio === "9:16") setRatio("1:1");
+  }, [art, ratio]);
+
+  // Asset preloader
+  useEffect(() => {
+    Promise.all([
+      loadImages(STICKER_URLS.torn).then(imgs => { imgCacheRef.current.torn = imgs; }),
+      loadImages(STICKER_URLS.sauces).then(imgs => { imgCacheRef.current.sauces = imgs; }),
+      loadImages(STICKER_URLS.sauceBtls).then(imgs => { imgCacheRef.current.sauceBtls = imgs; }),
+      (async () => {
+        const [fire, pot, mall, mug] = await loadImages([
+          STICKER_URLS.campfire, STICKER_URLS.cookingPot,
+          STICKER_URLS.marshmallow, STICKER_URLS.mug,
+        ]);
+        imgCacheRef.current.campfire = fire;
+        imgCacheRef.current.cookingPot = pot;
+        imgCacheRef.current.marshmallow = mall;
+        imgCacheRef.current.mug = mug;
+      })(),
+    ]);
+  }, []);
+
+  const drawFrameWrap = useCallback((canvas, t2, W, H) => {
+    const ctx = canvas.getContext("2d");
+    const sceneImg = getCanvas();
+    const opts = {
+      tmpl: art,
+      headline, sub, price, accent,
+    };
+    drawFrame(ctx, W, H, t2, imgCacheRef.current, sceneImg, opts);
+  }, [art, headline, sub, price, accent]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const { w, h } = SIZES[ratio];
+    canvas.width = w;
+    canvas.height = h;
+    tRef.current = 0;
+    lastTsRef.current = null;
+
+    let stopped = false;
+    const loop = (ts) => {
+      if (stopped) return;
+      if (lastTsRef.current !== null) tRef.current = (tRef.current + (ts - lastTsRef.current) / 1000) % 8;
+      lastTsRef.current = ts;
+      drawFrameWrap(canvas, tRef.current, w, h);
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    document.fonts.ready.then(() => {
+      if (!stopped) rafRef.current = requestAnimationFrame(loop);
     });
-    gif.on("progress",p=>setGifProg(85+Math.round(p*15)));
+    return () => { stopped = true; cancelAnimationFrame(rafRef.current); };
+  }, [ratio, drawFrameWrap]);
+
+  const onMouseMove = (e) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    // parallax handled by mouseRef if needed; kept for API compat
+  };
+
+  const downloadPng = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `art-${art}-${ratio.replace(":", "x")}.png`;
+    a.click();
+  };
+
+  const downloadGif = async () => {
+    await loadGifJs();
+    const { w, h } = SIZES[ratio];
+    const off = document.createElement("canvas");
+    off.width = Math.round(w * 0.5);
+    off.height = Math.round(h * 0.5);
+    const FRAMES = 20;
+    const gif = new window.GIF({ workers: 2, quality: 8, width: off.width, height: off.height });
+    const ctx2 = off.getContext("2d");
+    for (let f = 0; f < FRAMES; f++) {
+      const ft = (f / FRAMES) * 8;
+      const tmp = document.createElement("canvas");
+      tmp.width = w; tmp.height = h;
+      drawFrameWrap(tmp, ft, w, h);
+      ctx2.clearRect(0, 0, off.width, off.height);
+      ctx2.drawImage(tmp, 0, 0, off.width, off.height);
+      gif.addFrame(ctx2, { copy: true, delay: 100 });
+    }
+    gif.on("finished", blob => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `art-${art}-${ratio.replace(":", "x")}.gif`;
+      a.click();
+    });
     gif.render();
   };
 
-  const {w,h}=SIZES[ratio];
-
-  const extraControls = {
-    steam: (
-      <>
-        <label className="sos2-posts-field"><span>Ingredient 1</span><input value={ing1} onChange={e=>setI1(e.target.value)}/></label>
-        <label className="sos2-posts-field"><span>Ingredient 2</span><input value={ing2} onChange={e=>setI2(e.target.value)}/></label>
-      </>
-    ),
-    diorama: (
-      <>
-        <label className="sos2-posts-field"><span>Badge 1</span><input value={spec1} onChange={e=>setS1(e.target.value)}/></label>
-        <label className="sos2-posts-field"><span>Badge 2</span><input value={spec2} onChange={e=>setS2(e.target.value)}/></label>
-        <label className="sos2-posts-field"><span>Badge 3</span><input value={spec3} onChange={e=>setS3(e.target.value)}/></label>
-      </>
-    ),
-    window: (
-      <>
-        <label className="sos2-posts-field"><span>Sign 1</span><input value={neon1} onChange={e=>setN1(e.target.value)}/></label>
-        <label className="sos2-posts-field"><span>Sign 2</span><input value={neon2} onChange={e=>setN2(e.target.value)}/></label>
-        <label className="sos2-posts-field"><span>Sign 3</span><input value={neon3} onChange={e=>setN3(e.target.value)}/></label>
-      </>
-    ),
-    pulse: (
-      <label className="sos2-posts-field"><span>Date / Time</span><input value={date} onChange={e=>setDate(e.target.value)}/></label>
-    ),
-    bike: null,
-    manga: null,
-  };
-
-  useEffect(() => {
-    if (art === "bike" && headline === "") setHL("BBQ RIDE");
-  }, [art]);
+  const { w, h } = SIZES[ratio];
 
   return (
     <div className="sos2-posts sos2-art">
       <div className="sos2-posts-tabs">
-        {ARTS.map(a=>(
-          <button key={a.id} className={`sos2-posts-tab${art===a.id?" active":""}`} onClick={()=>setArt(a.id)}>{a.label}</button>
-        ))}
-      </div>
-
-      <div ref={containerRef} className="sos2-posts-preview-wrap"
-        style={{aspectRatio:`${w}/${h}`}}
-        onMouseMove={onMouseMove} onMouseLeave={()=>{ mouseRef.current={x:0,y:0}; }}>
-        <canvas ref={canvasRef} className="sos2-posts-canvas" />
-      </div>
-
-      <div className="sos2-posts-row">
-        {Object.entries(SIZES).map(([k])=>(
-          <button key={k} className={`sos2-posts-chip${ratio===k?" active":""}`} onClick={()=>setRatio(k)}>{k}</button>
-        ))}
-      </div>
-      <div className="sos2-posts-row" style={{flexWrap:"wrap"}}>
-        {PALETTES.map(p=>(
-          <button key={p.id} className={`sos2-posts-pal${paletteId===p.id?" active":""}`}
-            style={{"--pal":p.accent}} onClick={()=>setPalId(p.id)} title={p.name}>
-            <span style={{background:p.accent}}/>
+        {TEMPLATES.map(a => (
+          <button key={a.id}
+            className={`sos2-posts-tab${art === a.id ? " active" : ""}`}
+            onClick={() => setArt(a.id)}>
+            {a.label}
           </button>
         ))}
       </div>
 
+      <div ref={containerRef} className="sos2-posts-preview-wrap"
+        style={{ aspectRatio: `${w}/${h}` }}
+        onMouseMove={onMouseMove}>
+        <canvas ref={canvasRef} className="sos2-posts-canvas" />
+      </div>
+
+      <div className="sos2-posts-row">
+        <label className="sos2-posts-field"><span>Accent</span>
+          <input type="color" value={accent} onChange={e => setAccent(e.target.value)} />
+        </label>
+      </div>
+
       <label className="sos2-posts-field"><span>Headline</span>
-        <input value={headline} onChange={e=>setHL(e.target.value)} placeholder={art==="pulse"?"GRAND OPENING":"TODAY'S SPECIAL"}/>
+        <input value={headline} onChange={e => setHL(e.target.value)} />
       </label>
       <label className="sos2-posts-field"><span>Sub</span>
-        <input value={sub} onChange={e=>setSub(e.target.value)} placeholder="Tagline or venue"/>
+        <input value={sub} onChange={e => setSub(e.target.value)} />
       </label>
-      {art!=="pulse" && (
-        <label className="sos2-posts-field"><span>Price</span>
-          <input value={price} onChange={e=>setPrice(e.target.value)}/>
-        </label>
-      )}
-      <label className="sos2-posts-field"><span>CTA / Phone</span>
-        <input value={cta} onChange={e=>setCta(e.target.value)} placeholder="Order Now · 9876543210"/>
+      <label className="sos2-posts-field"><span>Price</span>
+        <input value={price} onChange={e => setPrice(e.target.value)} />
       </label>
-      {extraControls[art]}
 
       <div className="sos2-posts-row">
         <button className="sos2-posts-dl" onClick={downloadPng}>↓ PNG</button>
-        <button className="sos2-posts-dl sos2-posts-dl-gif" onClick={downloadGif} disabled={gifBusy}>
-          {gifBusy?`GIF ${gifProg}%`:"↓ GIF"}
+        <button className="sos2-posts-dl sos2-posts-dl-gif" onClick={downloadGif}>
+          ↓ GIF
         </button>
       </div>
     </div>
   );
+}
+
+/* ── GIF loader ───────────────────────────────────────────── */
+
+function loadGifJs() {
+  return new Promise(res => {
+    if (window.GIF) { res(); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js";
+    s.onload = res;
+    document.head.appendChild(s);
+  });
 }
