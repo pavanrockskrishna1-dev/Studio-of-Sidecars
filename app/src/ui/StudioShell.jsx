@@ -92,7 +92,7 @@ export default function StudioShell() {
   // replaces the previous normal one - a pinned sheet is left alone). Plain
   // component state, remembered only for this session.
   const [pinnedId, setPinnedId] = useState(null);
-  const [normalId, setNormalId] = useState(null);
+  const [normalId, setNormalId] = useState("scene");
   const [motionLabOpen, setMotionLabOpen] = useState(false);
   const idle = useIdleFade();
   // Slice U2: while a Reel plays or exports every open sheet slides out of view
@@ -186,6 +186,11 @@ export default function StudioShell() {
           modelName={currentProduct.name}
           onClose={() => setMotionLabOpen(false)}
         />
+      )}
+      {openIds.length === 0 && (
+        <div className="sos-canvas-hint" aria-hidden="true">
+          <span>Tap <strong>SCENE</strong> to pick your product &amp; environment</span>
+        </div>
       )}
       <StudioCapsule productName={assetName} idle={idle} />
       <StudioDock openIds={openIds} onSelect={handleDockSelect} idle={idle} />

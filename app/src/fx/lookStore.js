@@ -44,7 +44,10 @@ function load() {
   } catch {
     /* no saved look */
   }
-  return { preset: "off", params: { ...NEUTRAL }, smooth: !!lowMemory };
+  const defaultPreset = "studio";
+  const p = LOOK_PRESETS[defaultPreset];
+  const params = { ...Object.fromEntries(Object.keys(NEUTRAL).map((k) => [k, p[k] ?? NEUTRAL[k]])), focusBlur: 0 };
+  return { preset: defaultPreset, params, smooth: !!lowMemory };
 }
 
 let state = load();
