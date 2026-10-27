@@ -9,6 +9,10 @@ import PropsShelf from "./PropsShelf";
 import PropGroupShelf from "./PropGroupShelf";
 import PosterPanel from "./PosterPanel";
 import PosterMakerPanel from "./PosterMakerPanel";
+import BrandArt from "./BrandArt";
+import PostStudio from "./PostStudio";
+import CaptionGen from "./CaptionGen";
+import AiScenePanel from "./AiScenePanel";
 import {
   AnimatePanel,
   CameraFraming,
@@ -16,7 +20,9 @@ import {
   CameraSliders,
   GaragePanel,
   LightingPanel,
+  MangaPanel,
 } from "./InspectorRail";
+import ScenePresets from "./ScenePresets";
 import { setLightSlot } from "./lightSlot";
 import LookPanel from "./LookPanel";
 import MoodPanel from "./MoodPanel";
@@ -196,6 +202,8 @@ const lightSlotRef = (el) => setLightSlot(el || null);
 export function LightBody() {
   return (
     <>
+      <ScenePresets />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
       <MoodPanel />
       <div className="sos2-sheet-divider" aria-hidden="true" />
       <StagePanel />
@@ -203,6 +211,8 @@ export function LightBody() {
       <LookPanel />
       <div className="sos2-sheet-divider" aria-hidden="true" />
       <LightingPanel />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <MangaPanel />
       <div className="sos2-sheet-divider" aria-hidden="true" />
       <span className="sos2-sheet-subhead">Fine-tune</span>
       <div ref={lightSlotRef} data-testid="ui2-light-slot" />
@@ -216,8 +226,20 @@ export function GarageBody() {
 
 // PosterPanel's live preview overlay is already portaled to document.body (see
 // PosterPanel.jsx), so nothing here - and no sheet ancestor - can contain it.
+// Brand Art and the motion post templates moved here from InspectorRail, which
+// is no longer mounted.
 export function PosterBody() {
-  return <PosterPanel />;
+  return (
+    <>
+      <PosterPanel />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Brand Art</span>
+      <BrandArt />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Motion Posters</span>
+      <PostStudio />
+    </>
+  );
 }
 
 // Poster Maker — a one-click high-res PNG export of the live view, separate
@@ -229,6 +251,19 @@ export function PosterMakerBody() {
 
 export function ReelBody() {
   return <AnimatePanel />;
+}
+
+// The Instagram caption generator moved here from InspectorRail, which is no
+// longer mounted.
+export function AiBody({ productId }) {
+  return (
+    <>
+      <AiScenePanel productId={productId} />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Instagram Captions</span>
+      <CaptionGen productId={productId} />
+    </>
+  );
 }
 
 export { default as OccasionBody } from "./OccasionSheet";

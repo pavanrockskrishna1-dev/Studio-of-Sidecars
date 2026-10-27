@@ -3708,3 +3708,514 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
   box-sizing: border-box;
   cursor: pointer;
 }
+
+/* ── Guided Visual Timeline ───────────────────────────────────────────────── */
+.sos2-timeline { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+
+/* Duration bar */
+.sos2-tl-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.sos2-tl-bar-track {
+  flex: 1; height: 20px; display: flex; border-radius: 4px;
+  overflow: hidden; background: rgba(255,255,255,0.06);
+}
+.sos2-tl-bar-seg {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 0; transition: width 0.2s ease;
+  font-size: 10px; font-weight: 700; color: #fff; letter-spacing: 0.04em;
+}
+.sos2-tl-bar-label { opacity: 0.85; overflow: hidden; white-space: nowrap; }
+.sos2-tl-bar-empty { background: rgba(255,255,255,0.06); }
+.sos2-tl-dur { font-size: 11px; color: var(--sos-muted); white-space: nowrap; }
+
+/* Shot cards */
+.sos2-tl-shot {
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 6px; padding: 8px 10px;
+  background: rgba(255,255,255,0.03);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sos2-tl-shot-head {
+  display: flex; align-items: center; gap: 7px;
+}
+.sos2-tl-shot-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.sos2-tl-shot-num { font-size: 11px; font-weight: 700; color: var(--sos-muted); }
+.sos2-tl-shot-move { font-size: 12px; font-weight: 600; flex: 1; }
+.sos2-tl-shot-actions { display: flex; gap: 4px; margin-left: auto; }
+.sos2-tl-btn {
+  width: 24px; height: 24px; border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px; background: rgba(255,255,255,0.06);
+  color: var(--sos-fg); font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; line-height: 1;
+}
+.sos2-tl-btn:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+.sos2-tl-btn:disabled { opacity: 0.3; cursor: default; }
+.sos2-tl-btn-del { color: #ff6b6b; }
+
+/* Duration +/− row */
+.sos2-tl-shot-dur {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.sos2-tl-dur-btn {
+  width: 28px; height: 28px; border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px; background: rgba(255,255,255,0.06);
+  color: var(--sos-fg); font-size: 16px; cursor: pointer; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.sos2-tl-dur-btn:hover:not(:disabled) { background: rgba(255,107,0,0.2); border-color: #ff6b00; }
+.sos2-tl-dur-btn:disabled { opacity: 0.3; cursor: default; }
+.sos2-tl-dur-val {
+  font-size: 13px; font-weight: 700; min-width: 28px; text-align: center;
+  color: #ff6b00;
+}
+.sos2-tl-move-sel,
+.sos2-tl-view-sel {
+  flex: 1; min-width: 80px; height: 28px; font-size: 11px;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 4px; color: var(--sos-fg); padding: 0 6px; cursor: pointer;
+}
+.sos2-tl-move-sel:disabled,
+.sos2-tl-view-sel:disabled { opacity: 0.4; cursor: default; }
+
+/* Add shot button */
+.sos2-tl-add {
+  width: 100%; padding: 8px 0; border: 1px dashed rgba(255,107,0,0.4);
+  border-radius: 6px; background: transparent; color: #ff6b00;
+  font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 0.04em;
+}
+.sos2-tl-add:hover:not(:disabled) { background: rgba(255,107,0,0.08); border-color: #ff6b00; }
+.sos2-tl-add:disabled { opacity: 0.35; cursor: default; border-color: rgba(255,255,255,0.1); color: var(--sos-muted); }
+.sos2-hint { font-size: 11px; color: var(--sos-muted); margin: 2px 0 0; }
+
+/* ── Whisper Tips ─────────────────────────────────────────── */
+.sos2-whisper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,107,0,0.12);
+  border: 1px solid rgba(255,107,0,0.35);
+  border-radius: 8px;
+  padding: 6px 10px 6px 12px;
+  margin-bottom: 8px;
+  animation: whisper-in 0.3s ease;
+}
+@keyframes whisper-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sos2-whisper-text {
+  flex: 1;
+  font-size: 11px;
+  color: #ffa050;
+  line-height: 1.4;
+}
+.sos2-whisper-x {
+  background: none;
+  border: none;
+  color: #ff6b00;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.sos2-whisper-x:hover { opacity: 1; }
+
+/* ── AI Prompt row (voice button) ──────────────────────────── */
+.ai-prompt-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.ai-mic-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  background: rgba(255,107,0,0.15);
+  border: 1px solid rgba(255,107,0,0.4);
+  border-radius: 6px;
+  color: #ff6b00;
+  font-size: 15px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s;
+}
+.ai-mic-btn:hover { background: rgba(255,107,0,0.28); }
+.ai-mic-active {
+  background: rgba(220,30,30,0.22) !important;
+  border-color: #e03030 !important;
+  color: #e03030 !important;
+  animation: mic-pulse 0.9s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,30,30,0.5); }
+  50%       { box-shadow: 0 0 0 5px rgba(220,30,30,0); }
+}
+
+/* ── BGM Player ─────────────────────────────────────────────── */
+.sos2-bgm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  margin-top: auto;
+  background: rgba(0,0,0,0.2);
+}
+.sos2-bgm-play {
+  background: rgba(255,107,0,0.18);
+  border: 1px solid rgba(255,107,0,0.45);
+  border-radius: 6px;
+  color: #ff6b00;
+  font-size: 14px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.sos2-bgm-prev, .sos2-bgm-next {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.sos2-bgm-prev:hover, .sos2-bgm-next:hover { color: #ccc; }
+.sos2-bgm-name {
+  flex: 1;
+  font-size: 10px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sos2-bgm-vol {
+  width: 52px;
+  accent-color: #ff6b00;
+  cursor: pointer;
+}
+
+/* ── Post Studio ─────────────────────────────────────────── */
+.sos2-posts { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+
+.sos2-posts-tabs { display: flex; gap: 4px; }
+.sos2-posts-tab {
+  flex: 1; padding: 5px 4px; font-size: 10px; font-weight: 600;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px; color: #aaa; cursor: pointer; transition: all 0.15s;
+  text-align: center;
+}
+.sos2-posts-tab.active, .sos2-posts-tab:hover {
+  background: rgba(255,107,0,0.18); border-color: rgba(255,107,0,0.5); color: #ff6b00;
+}
+
+.sos2-posts-preview-wrap {
+  width: 100%; border-radius: 10px; overflow: hidden;
+  background: #111; cursor: crosshair;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.sos2-posts-canvas {
+  width: 100%; height: 100%; display: block;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.sos2-posts-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.sos2-posts-chip {
+  flex: 1; padding: 4px 6px; font-size: 10px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px; color: #aaa; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s; text-align: center;
+}
+.sos2-posts-chip.active, .sos2-posts-chip:hover {
+  background: rgba(255,107,0,0.18); border-color: rgba(255,107,0,0.5); color: #ff6b00;
+}
+
+.sos2-posts-field {
+  display: flex; flex-direction: column; gap: 3px;
+}
+.sos2-posts-field span { font-size: 10px; color: #888; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+.sos2-posts-field input[type="text"], .sos2-posts-field input:not([type]) {
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px; color: #fff; padding: 6px 8px; font-size: 12px;
+}
+.sos2-posts-field input:focus { outline: none; border-color: rgba(255,107,0,0.55); }
+
+.sos2-posts-dl {
+  width: 100%; padding: 9px; background: #ff6b00; color: #fff;
+  border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: opacity 0.15s; margin-top: 4px;
+}
+.sos2-posts-dl:hover { opacity: 0.88; }
+
+.sos2-posts-pal {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent;
+  background: rgba(255,255,255,.08); cursor: pointer; display:flex; align-items:center; justify-content:center; padding:0;
+  transition: border-color .15s;
+}
+.sos2-posts-pal span { width:16px; height:16px; border-radius:50%; display:block; }
+.sos2-posts-pal.active { border-color: var(--pal, #ff6b00); }
+.sos2-posts-pal:hover { border-color: rgba(255,255,255,.4); }
+
+.sos2-posts-dl-gif { background: #1a1a2e; border: 1px solid rgba(255,107,0,.5); }
+.sos2-posts-dl-gif:disabled { opacity:.6; cursor:default; }
+
+/* ─── Parallax Environment Picker ─────────────────────────── */
+.sos2-env-wrap { padding: 12px 10px 8px; }
+.sos2-env-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.sos2-env-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.05); color: rgba(255,255,255,.75);
+  font-size: 11px; cursor: pointer; transition: all .15s;
+}
+.sos2-env-btn:hover { border-color: rgba(255,107,0,.5); color: #fff; }
+.sos2-env-btn.active { border-color: #ff6b00; background: rgba(255,107,0,.18); color: #fff; }
+.sos2-env-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,.15); flex-shrink: 0; }
+.sos2-env-label { white-space: nowrap; }
+.sos2-env-hint { margin: 8px 2px 0; font-size: 10px; color: rgba(255,255,255,.35); font-style: italic; }
+
+/* ── Anime Mode toggle (GradePanel → AnimeToggle) ────────────────────── */
+.sos2-anime-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid var(--rail-border, #333);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sos2-anime-btn:hover {
+  border-color: var(--accent, #e05a1a);
+}
+.sos2-anime-btn[data-on] {
+  border-color: var(--accent, #e05a1a);
+  background: color-mix(in srgb, var(--accent, #e05a1a) 15%, transparent);
+}
+.sos2-anime-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.sos2-anime-label {
+  flex: 1;
+  text-align: left;
+}
+
+/* ── Caption Generator ─────────────────────────────────────────────── */
+.caption-gen {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.caption-no-key {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, #e05a1a 12%, transparent);
+  border: 1px solid color-mix(in srgb, #e05a1a 40%, transparent);
+  font-size: 12px;
+  color: var(--text-secondary, #aaa);
+}
+.caption-notes {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1.5px solid var(--rail-border, #333);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary, #fff);
+  font-size: 12px;
+  resize: none;
+  box-sizing: border-box;
+}
+.caption-context-line {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  margin: 2px 0;
+}
+.caption-gen-btn {
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent, #e05a1a);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.caption-gen-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.caption-error {
+  font-size: 12px;
+  color: #f87;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: rgba(255,80,80,0.08);
+}
+.caption-results { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.caption-card {
+  padding: 10px 11px;
+  border: 1px solid var(--rail-border, #333);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.caption-text { font-size: 12.5px; line-height: 1.5; margin: 0; color: var(--text-primary, #fff); }
+.caption-hashtags { font-size: 11px; line-height: 1.6; margin: 0; color: var(--text-secondary, #888); word-break: break-word; }
+.caption-hashtag-card { border-style: dashed; }
+.caption-card-actions { display: flex; gap: 6px; }
+.caption-copy-btn {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--rail-border, #444);
+  background: transparent;
+  color: var(--text-secondary, #aaa);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.caption-copy-btn:hover { border-color: var(--accent, #e05a1a); color: var(--text-primary, #fff); }
+.caption-copy-combo { border-color: color-mix(in srgb, var(--accent, #e05a1a) 50%, transparent); }
+
+/* ==========================================================================
+   Occasion Auto-Badge — small animated corner badge over the 3D canvas
+   ========================================================================== */
+
+.sos-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.sos-occasion-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 6px;
+  border-radius: 999px;
+  background: rgba(14, 17, 23, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  animation: occasion-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.sos-occasion-emoji {
+  font-size: 14px;
+  line-height: 1;
+  animation: occasion-bounce 1.2s ease-in-out infinite;
+}
+
+.sos-occasion-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+@keyframes occasion-pop {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes occasion-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sos-occasion-badge {
+    animation: none;
+  }
+  .sos-occasion-emoji {
+    animation: none;
+  }
+}
+
+/* ==========================================================================
+   Scene Presets — one-tap complete aesthetic setups
+   ========================================================================== */
+
+.sos-scene-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+
+.sos-scene-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sos-scene-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sos-line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sos-text-2);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--sos-fast), border-color var(--sos-fast), color var(--sos-fast);
+}
+
+.sos-scene-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--sos-line-2);
+  color: var(--sos-text);
+}
+
+.sos-scene-chip:focus-visible {
+  outline: 2px solid var(--sos-acc);
+  outline-offset: 2px;
+}
+
+.sos-scene-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.sos-scene-name {
+  white-space: nowrap;
+}

@@ -18,6 +18,7 @@ import { canAdd, durationAllowed } from "../animation/reelSequence";
 import * as reelKeys from "../animation/reelKeys";
 import * as reelCycles from "../animation/reelCycles";
 import ReelSection from "./ReelSection";
+import ReelTimeline from "./ReelTimeline";
 import { BrandingSection, ShotTitleEdit } from "./ReelBranding";
 import { brandingSummary, useBranding } from "./useBranding";
 import { PIVOT_IDS, PIVOT_LABELS } from "../animation/partKeys";
@@ -46,8 +47,14 @@ import * as stageLookStore from "../fx/stageLook.js";
 import * as lookStore from "../fx/lookStore.js";
 import { exportPng } from "./engineCapture";
 import PosterPanel from "./PosterPanel";
+import PostStudio from "./PostStudio";
+import BrandArt from "./BrandArt";
 import AiScenePanel from "./AiScenePanel.jsx";
+import EnvPicker from "./EnvPicker";
+import BgmPlayer from "./BgmPlayer";
 import ReelTemplates from "./ReelTemplates.jsx";
+import CaptionGen from "./CaptionGen.jsx";
+import ScenePresets from "./ScenePresets.jsx";
 import * as shotStore from "../animation/shotStore";
 import * as lowerThirdStore from "../animation/lowerThirdStore.js";
 import { shotStatus } from "../animation/shotStore";
@@ -62,8 +69,10 @@ import {
   BACKDROP_FAILED_WARNING,
 } from "../capture/exportGate";
 import * as gradeStore from "../fx/gradeStore.js";
+import * as animeModeStore from "../fx/animeModeStore.js";
 import { GRADES, GRADE_IDS } from "../fx/gradeShader.js";
 import * as propThumb from "./propThumb";
+import WhisperTip from "./WhisperTip";
 
 /* ==========================================================================
    Right inspector rail (Agent #2 · UI ONLY)
@@ -84,15 +93,21 @@ import * as propThumb from "./propThumb";
    ========================================================================== */
 
 const SECTIONS = [
+  { id: "scene", name: "Scene", sub: "one-tap complete looks", icon: "sparkles" },
   { id: "camera", name: "Camera", sub: "one-tap framing", icon: "camera" },
   { id: "lighting", name: "Lighting", sub: "cinematic looks", icon: "sun" },
   { id: "materials", name: "Materials", sub: "tap a part to style", icon: "cube" },
   { id: "render", name: "Render", sub: "output presets", icon: "render" },
   { id: "grade", name: "Grade", sub: "cinematic look", icon: "film" },
+  { id: "manga", name: "Manga", sub: "toon shading & anime mode", icon: "sparkles" },
   { id: "animate", name: "Animate", sub: "turntable preview", icon: "film" },
   { id: "garage", name: "Garage", sub: "pick parts by click", icon: "frame" },
   { id: "poster", name: "Poster", sub: "PNG poster overlay", icon: "swatch" },
+  { id: "posts", name: "Posts", sub: "2.5D social graphics", icon: "swatch" },
+  { id: "art", name: "Brand Art", sub: "4 looping art templates", icon: "sparkles" },
   { id: "ai", name: "AI", sub: "build scene from text", icon: "star" },
+  { id: "env", name: "Environment", sub: "2.5D parallax backgrounds", icon: "globe" },
+  { id: "caption", name: "Caption", sub: "AI Instagram captions", icon: "chat" },
 ];
 
 /* --------------------------------------------------------------------------
@@ -324,12 +339,61 @@ export function CameraSliders() {
   );
 }
 
-function Hint({ children }) {
+export function Hint({ children }) {
   return (
     <p className="sos-hint">
       <Icon name="info" size={12} stroke={1.8} />
       <span>{children}</span>
     </p>
+  );
+}
+
+const TOON_PALETTES = [
+  { id: "ink", label: "Ink", color: "#787878" },
+  { id: "warm", label: "Warm", color: "#c47a3c" },
+  { id: "cool", label: "Cool", color: "#3d4a8c" },
+];
+
+function AnimeToggle() {
+  const { anime, toonPalette } = useSyncExternalStore(
+    animeModeStore.subscribe,
+    animeModeStore.getSnapshot,
+    animeModeStore.getSnapshot,
+  );
+  return (
+    <div className="sos-group" style={{ marginTop: 10 }}>
+      <div className="sos-group-head">
+        <span className="sos-eyebrow">Style</span>
+      </div>
+      <button
+        type="button"
+        className="sos2-anime-btn"
+        data-on={anime || undefined}
+        onClick={animeModeStore.toggleAnime}
+      >
+        <span className="sos2-anime-icon">{anime ? "⛩" : "🎌"}</span>
+        <span className="sos2-anime-label">{anime ? "Anime ON" : "Anime Mode"}</span>
+      </button>
+      {anime && (
+        <div className="sos-chips" style={{ marginTop: 8 }}>
+          {TOON_PALETTES.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="sos-pchip"
+              data-on={toonPalette === p.id || undefined}
+              aria-pressed={toonPalette === p.id}
+              style={{ borderColor: toonPalette === p.id ? p.color : undefined }}
+              onClick={() => animeModeStore.setToonPalette(p.id)}
+              title={p.label}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <Hint>Cel shading + ink outlines on all 3D meshes.</Hint>
+    </div>
   );
 }
 
@@ -362,6 +426,60 @@ function GradePanel() {
         ))}
       </div>
       <Hint>Live-viewport post-processing. Export frames stay raw.</Hint>
+    </div>
+  );
+}
+
+export function MangaPanel() {
+  const { anime, toonPalette } = useSyncExternalStore(
+    animeModeStore.subscribe,
+    animeModeStore.getSnapshot,
+    animeModeStore.getSnapshot,
+  );
+  return (
+    <div className="sos-group">
+      <div className="sos-group-head">
+        <span className="sos-eyebrow">Anime / Manga mode</span>
+      </div>
+      <Hint>Replaces PBR shading with cel-shading + ink outlines on every 3D mesh in the scene.</Hint>
+      <button
+        type="button"
+        className="sos2-anime-btn"
+        data-on={anime || undefined}
+        onClick={animeModeStore.toggleAnime}
+        style={{ marginTop: 10 }}
+      >
+        <span className="sos2-anime-icon">{anime ? "⛩" : "🎌"}</span>
+        <span className="sos2-anime-label">{anime ? "Anime ON — tap to turn off" : "Enable Anime Mode"}</span>
+      </button>
+      {anime && (
+        <>
+          <div className="sos-group-head" style={{ marginTop: 14 }}>
+            <span className="sos-eyebrow">Toon palette</span>
+          </div>
+          <div className="sos-chips">
+            {TOON_PALETTES.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="sos-pchip"
+                data-on={toonPalette === p.id || undefined}
+                aria-pressed={toonPalette === p.id}
+                style={{ borderColor: toonPalette === p.id ? p.color : undefined }}
+                onClick={() => animeModeStore.setToonPalette(p.id)}
+                title={p.label}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <Hint>Ink = greyscale manga · Warm = sunset manga · Cool = night manga</Hint>
+        </>
+      )}
+      <div className="sos-group-head" style={{ marginTop: 18 }}>
+        <span className="sos-eyebrow">2.5D social graphics</span>
+      </div>
+      <Hint>Design flat Instagram-style social cards in the Posts section.</Hint>
     </div>
   );
 }
@@ -3042,183 +3160,7 @@ export function AnimatePanel() {
       </Hint>
       <ReelTemplates busy={animBusy} onApplied={() => setSelected(0)} />
       <ReelSection id="shots" title="Shots" summary={`${seq.length} of 5 · ${total} s`}>
-        <div className="sos-reel-sec">
-          <div className="sos-reel-head">
-            <span className="sos-reel-total" data-testid="ui-reel-total">
-              {seq.length} of 5 · {total} s of 30 s
-            </span>
-          </div>
-          <ol className="sos-reel-list" data-testid="ui-reel-shots">
-            {seq.map((s, i) => (
-              <li key={i} className="sos-reel-row" data-on={i === selected || undefined}>
-                <button
-                  type="button"
-                  className="sos-reel-pick"
-                  data-testid={`ui-shot-${i + 1}`}
-                  aria-pressed={i === selected}
-                  disabled={animBusy}
-                  title={`Edit shot ${i + 1}`}
-                  onClick={() => setSelected(i)}
-                >
-                  <span className="sos-reel-num">{i + 1}</span>
-                  <span className="sos-reel-sum">{shotSummary(s, startViewLabel)}</span>
-                  {animPreviewing && animState.shot === i ? <span className="sos-reel-live">playing</span> : null}
-                </button>
-                <button
-                  type="button"
-                  className="sos-reel-tool"
-                  data-testid={`ui-shot-${i + 1}-up`}
-                  aria-label={`Move shot ${i + 1} up`}
-                  title={i === 0 ? "Already the first shot." : `Move shot ${i + 1} up`}
-                  disabled={animBusy || i === 0}
-                  onClick={() => handleMove(i, -1)}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="sos-reel-tool"
-                  data-testid={`ui-shot-${i + 1}-down`}
-                  aria-label={`Move shot ${i + 1} down`}
-                  title={i === seq.length - 1 ? "Already the last shot." : `Move shot ${i + 1} down`}
-                  disabled={animBusy || i === seq.length - 1}
-                  onClick={() => handleMove(i, 1)}
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  className="sos-reel-tool"
-                  data-testid={`ui-shot-${i + 1}-delete`}
-                  aria-label={`Delete shot ${i + 1}`}
-                  title={seq.length === 1 ? "A Reel needs at least one shot." : `Delete shot ${i + 1}`}
-                  disabled={animBusy || seq.length === 1}
-                  onClick={() => handleDelete(i)}
-                >
-                  ✕
-                </button>
-                {/* Slice R1: this shot's title (2 lines) and where it sits */}
-                <ShotTitleEdit index={i} shot={s} busy={animBusy} onResult={run} />
-              </li>
-            ))}
-          </ol>
-          <button
-            type="button"
-            className="sos-btn sos-btn-ghost sos-rail-export"
-            data-testid="ui-shot-add"
-            disabled={animBusy || !addCheck.ok}
-            title={addCheck.ok ? "Add a shot at the end" : addCheck.reason}
-            onClick={handleAdd}
-          >
-            Add shot
-          </button>
-          {!addCheck.ok ? (
-            <p className="sos-reel-why" data-testid="ui-shot-add-why">
-              {addCheck.reason}
-            </p>
-          ) : null}
-
-          <span className="sos-label">Shot {selected + 1}: move</span>
-          <div className="sos-frow">
-            {animationStore.PRESETS.map((id) => (
-              <button
-                key={id}
-                type="button"
-                className="sos-pchip"
-                data-testid={id === "turntable" ? "ui-anim-turntable" : `ui-anim-preset-${id}`}
-                data-on={shot.move === id || undefined}
-                aria-pressed={shot.move === id}
-                disabled={animBusy}
-                onClick={() => run(animationStore.setShot(selected, { move: id }))}
-              >
-                {REEL_PRESET_LABELS[id]}
-              </button>
-            ))}
-          </div>
-          <span className="sos-label">Shot {selected + 1}: start view</span>
-          <div className="sos-frow">
-            {animationStore.START_VIEWS.map((v) => (
-              <button
-                key={v}
-                type="button"
-                className="sos-pchip"
-                data-testid={startViewTestId(v)}
-                data-on={(!loneTurntable && shot.startView === v) || undefined}
-                aria-pressed={!loneTurntable && shot.startView === v}
-                disabled={animBusy || loneTurntable || (v === "custom" && !hasCustomView)}
-                title={
-                  loneTurntable
-                    ? "A Turntable on its own spins from the current camera view"
-                    : v === "custom" && !hasCustomView
-                      ? "Save a custom view in the Camera sheet first"
-                      : `Start shot ${selected + 1} from the ${startViewLabel(v)} view`
-                }
-                onClick={() => run(animationStore.setShot(selected, { startView: v }))}
-              >
-                {startViewLabel(v)}
-              </button>
-            ))}
-          </div>
-          {loneTurntable ? (
-            <p className="sos-reel-why">
-              A Turntable on its own spins from the current camera view, as before. In a Reel with more shots it starts from its start view.
-            </p>
-          ) : null}
-          <span className="sos-label">Shot {selected + 1}: duration</span>
-          <div className="sos-frow">
-            {animationStore.DURATIONS.map((n) => {
-              const c = durationCheck(n);
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  className="sos-pchip"
-                  data-testid={`ui-anim-duration-${n}`}
-                  data-on={shot.durationS === n || undefined}
-                  aria-pressed={shot.durationS === n}
-                  disabled={animBusy || !c.ok}
-                  title={c.ok ? `Shot ${selected + 1} lasts ${n} s` : c.reason}
-                  onClick={() => run(animationStore.setShot(selected, { durationS: n }))}
-                >
-                  {n} s
-                </button>
-              );
-            })}
-          </div>
-          {blockedDurations.length ? (
-            <p className="sos-reel-why" data-testid="ui-duration-why">
-              {durationCheck(blockedDurations[0]).reason}
-            </p>
-          ) : null}
-          {/* Slice C3a: what a shot with main-product keys is framed on */}
-          <span className="sos-label">Shot {selected + 1}: frame on</span>
-          <div className="sos-frow">
-            {reelKeys.FRAME_ON.map((v) => (
-              <button
-                key={v}
-                type="button"
-                className="sos-pchip"
-                data-testid={`ui-frame-on-${v}`}
-                data-on={(shot.frameOn ?? "end") === v || undefined}
-                aria-pressed={(shot.frameOn ?? "end") === v}
-                disabled={animBusy}
-                title={
-                  v === "start"
-                    ? "Frame the camera on the product's keyed pose at the shot's first frame"
-                    : "Frame the camera on the product's keyed pose at the shot's last frame"
-                }
-                onClick={() => run(animationStore.setShot(selected, { frameOn: v }))}
-              >
-                {v === "start" ? "Start" : "End"}
-              </button>
-            ))}
-          </div>
-          {notice ? (
-            <p className="sos-reel-why" data-testid="ui-reel-notice">
-              {notice}
-            </p>
-          ) : null}
-        </div>
+        <ReelTimeline />
       </ReelSection>
       <ReelSection id="director" title="Camera director" summary={`${shotTag}${hasCamKeys(shot) ? `${shot.cam.keys.length} camera keys` : "uses its move"}`}>
         <CameraDirector selected={selected} shot={shot} busy={animBusy} />
@@ -3478,16 +3420,18 @@ export default function InspectorRail({
       ) : null}
 
       <div className="sos-rail-scroll">
-        {SECTIONS.map((section) => (
-          <RailCard
-            key={section.id}
-            section={section}
-            open={openId === section.id}
-            collapsed={collapsed}
-            onOpenFromStrip={() => openFromStrip(section.id)}
-            onToggle={() => openSection(section.id)}
-          >
-            {section.id === "camera" ? (
+{SECTIONS.map((section) => (
+            <RailCard
+              key={section.id}
+              section={section}
+              open={openId === section.id}
+              collapsed={collapsed}
+              onOpenFromStrip={() => openFromStrip(section.id)}
+              onToggle={() => openSection(section.id)}
+            >
+              {section.id === "scene" ? (
+                <ScenePresets />
+              ) : section.id === "camera" ? (
               <>
                 <CameraFraming />
                 <CameraSliders />
@@ -3512,14 +3456,42 @@ export default function InspectorRail({
               </>
             ) : section.id === "grade" ? (
               <GradePanel />
+            ) : section.id === "manga" ? (
+              <MangaPanel />
             ) : section.id === "animate" ? (
               <AnimatePanel />
             ) : section.id === "garage" ? (
-              <GaragePanel />
+              <>
+                <WhisperTip id="garage-place" text="Tap a prop card to place it · drag the orange arrows to move it" />
+                <GaragePanel />
+              </>
             ) : section.id === "poster" ? (
-              <PosterPanel />
+              <>
+                <WhisperTip id="poster-panel" text="Design a cover image for your reel or story post" />
+                <PosterPanel />
+              </>
+            ) : section.id === "posts" ? (
+              <>
+                <WhisperTip id="posts-studio" text="Design a 2.5D social graphic — choose a template, tweak text, download PNG" />
+                <PostStudio />
+              </>
+            ) : section.id === "art" ? (
+              <>
+                <WhisperTip id="brand-art" text="4 animated brand art templates — pick a style, customise text, download PNG or GIF" />
+                <BrandArt />
+              </>
             ) : section.id === "ai" ? (
-              <AiScenePanel />
+              <>
+                <WhisperTip id="ai-build" text="Describe your scene in plain English — AI will stage it for you" />
+                <AiScenePanel />
+              </>
+            ) : section.id === "env" ? (
+              <EnvPicker />
+            ) : section.id === "caption" ? (
+              <>
+                <WhisperTip id="caption-gen" text="Pick a tone, hit Generate — copy individual captions or caption + hashtags together" />
+                <CaptionGen productId={productId} />
+              </>
             ) : (
               <>
                 <span className="sos-label">Format</span>
@@ -3575,6 +3547,7 @@ export default function InspectorRail({
           CAMERA · LIGHTING · MATERIALS · RENDER LIVE
         </span>
       </div>
+      <BgmPlayer />
     </aside>
   );
 }

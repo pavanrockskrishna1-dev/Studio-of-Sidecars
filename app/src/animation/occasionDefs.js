@@ -173,6 +173,30 @@ export const OCCASIONS = [
     ],
     shots: null,
   },
+  {
+    id: 'press-coverage',
+    name: 'As Seen In',
+    emoji: '📰',
+    tagline: 'Featured in major media',
+    accent: '#1a1a2e',
+    grade: 'cinema',
+    particles: null,
+    lowerThird: { title: 'As Seen In Major Media 📰', subtitle: 'BBQ Ride India · Trusted by the Press' },
+    hashtags: ['#BBQRideIndia', '#AsSeenIn', '#TheHindu', '#MediaCoverage', '#BBQBike', '#StreetFood'],
+    shots: null,
+  },
+  {
+    id: 'franchise-map',
+    name: 'Franchise Map',
+    emoji: '🗺️',
+    tagline: '50+ cities across India',
+    accent: '#ff6b00',
+    grade: 'cinema',
+    particles: null,
+    lowerThird: { title: '50+ Franchise Cities 🗺️', subtitle: 'BBQ Ride India · Join the Revolution' },
+    hashtags: ['#BBQRideIndia', '#FranchiseOpportunity', '#IndiaWide', '#BBQBike', '#StartupIndia', '#OwnABike'],
+    shots: null,
+  },
 ];
 
 export const OCCASION_MAP = Object.fromEntries(OCCASIONS.map(o => [o.id, o]));

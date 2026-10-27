@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
+import WhisperTip from './WhisperTip';
 import { subscribe, getSnapshot, setOccasion } from '../animation/occasionStore';
 import { OCCASIONS, getOccasion } from '../animation/occasionDefs';
 import { setGrade } from '../fx/gradeStore';
@@ -70,6 +71,7 @@ export default function OccasionSheet() {
         One tap sets the grade, particles, caption and hashtags for any occasion.
       </p>
 
+      <WhisperTip id="occasions-pick" text="Choose a theme to add seasonal flair to your reel overlay" />
       <div className="sos2-occ-grid">
         {OCCASIONS.map(occ => {
           const isActive = occ.id === occasionId;

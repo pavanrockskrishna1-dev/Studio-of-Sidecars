@@ -18,8 +18,8 @@ import {
   PosterMakerBody,
   ReelBody,
   OccasionBody,
+  AiBody,
 } from "./SheetContents";
-import AiScenePanel from "./AiScenePanel.jsx";
 import OccasionParticles from "./OccasionParticles";
 import OccasionBackground from "./OccasionBackground";
 import PlaceBanner from "./PlaceBanner";
@@ -170,7 +170,7 @@ export default function StudioShell() {
       case "occasions":
         return <OccasionBody />;
       case "ai":
-        return <AiScenePanel productId={assets.productId} />;
+        return <AiBody productId={assets.productId} />;
       case "save":
         return <SaveBody session={session} />;
       case "capture":

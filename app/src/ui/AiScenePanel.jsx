@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useSyncExternalStore } from "react";
 import * as aiScene from "../ai/aiScene.js";
 import { PRODUCTS } from "../products/registry";
@@ -25,6 +25,34 @@ export default function AiScenePanel({ productId }) {
     });
   };
 
+  const recognitionRef = useRef(null);
+  const [listening, setListening] = useState(false);
+
+  const toggleVoice = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    const rec = new SR();
+    rec.lang = "en-IN";
+    rec.interimResults = false;
+    rec.continuous = false;
+    rec.onresult = (e) => {
+      const t = e.results[0][0].transcript;
+      setPrompt((p) => (p ? p + " " + t : t));
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    rec.start();
+    recognitionRef.current = rec;
+    setListening(true);
+  };
+
+  const hasSpeech = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
   return (
     <div className="ai-scene-panel">
       <div className="inspector-label">Groq API key — free at console.groq.com</div>
@@ -42,15 +70,27 @@ export default function AiScenePanel({ productId }) {
         </div>
       )}
       <div className="inspector-label" style={{ marginTop: 12 }}>Describe the scene</div>
-      <textarea
-        className="ai-prompt-textarea"
-        rows={4}
-        placeholder={`e.g. "Diwali night market with warm lights and golden glow"`}
-        value={prompt}
-        disabled={busy}
-        onChange={(e) => setPrompt(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) handleBuild(); }}
-      />
+      <div className="ai-prompt-row">
+        <textarea
+          className="ai-prompt-textarea"
+          rows={4}
+          placeholder={`e.g. "Diwali night market with warm lights and golden glow"`}
+          value={prompt}
+          disabled={busy}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) handleBuild(); }}
+        />
+        {hasSpeech && (
+          <button
+            className={`ai-mic-btn${listening ? " ai-mic-active" : ""}`}
+            onClick={toggleVoice}
+            title={listening ? "Stop listening" : "Speak your scene brief"}
+            type="button"
+          >
+            {listening ? "⏹" : "🎙"}
+          </button>
+        )}
+      </div>
       <button
         className="ai-build-btn"
         disabled={busy || !prompt.trim() || !apiKey.trim()}
