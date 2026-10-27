@@ -17,7 +17,7 @@ const TOOLS = [
   { id: "export", label: "Export", glyph: "↓" },
 ];
 
-export default function StudioDock({ openIds = [], onSelect, idle }) {
+export default function StudioDock({ openIds = [], onSelect, idle, onGuide }) {
   return (
     <nav className="sos2-dock" data-idle={idle || undefined} aria-label="Studio tools">
       {TOOLS.map((t) => (
@@ -36,6 +36,17 @@ export default function StudioDock({ openIds = [], onSelect, idle }) {
           <span className="sos2-dock-label">{t.label}</span>
         </button>
       ))}
+      {onGuide && (
+        <button
+          type="button"
+          className="sos-guide-btn"
+          onClick={onGuide}
+          aria-label="App guide"
+          title="How to use"
+        >
+          ?
+        </button>
+      )}
     </nav>
   );
 }

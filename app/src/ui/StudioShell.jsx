@@ -16,6 +16,7 @@ import {
 } from "./SheetContents";
 import OccasionParticles from "./OccasionParticles";
 import OccasionBackground from "./OccasionBackground";
+import AppGuide, { useGuide } from "./AppGuide";
 import PlaceBanner from "./PlaceBanner";
 import useEngineSelection from "./useEngineSelection";
 import { PosterOverlayHost } from "./PosterPanel";
@@ -94,6 +95,7 @@ export default function StudioShell() {
   const [pinnedId, setPinnedId] = useState(null);
   const [normalId, setNormalId] = useState("scene");
   const [motionLabOpen, setMotionLabOpen] = useState(false);
+  const guide = useGuide();
   const idle = useIdleFade();
   // Slice U2: while a Reel plays or exports every open sheet slides out of view
   // (the sheets stay mounted, so they come back exactly as they were).
@@ -192,8 +194,9 @@ export default function StudioShell() {
           <span>Tap <strong>SCENE</strong> to pick your product &amp; environment</span>
         </div>
       )}
+      <AppGuide open={guide.open} onClose={guide.close} />
       <StudioCapsule productName={assetName} idle={idle} />
-      <StudioDock openIds={openIds} onSelect={handleDockSelect} idle={idle} />
+      <StudioDock openIds={openIds} onSelect={handleDockSelect} idle={idle} onGuide={guide.show} />
       {openIds.map((id) => (
         <Sheet
           key={id}
