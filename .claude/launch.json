@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Studio of Sidecars",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/vite/bin/vite.js", "--port", "5173"],
+      "cwd": "app",
+      "port": 5173,
+      "url": "http://localhost:5173"
+    }
+  ]
+}

@@ -21,6 +21,11 @@ export const EFFECT_TYPES = Object.freeze({
   hearts: { label: "Floating hearts", hint: "soft hearts drifting up" },
   tricolor: { label: "Tricolour confetti", hint: "saffron, white and green confetti" },
   snowground: { label: "Snow ground", hint: "a blanket of snow on the ground" },
+  flame: { label: "Flame", hint: "hot orange flame rising from a point" },
+  steam: { label: "Steam", hint: "thin wisps of steam drifting upward" },
+  petals: { label: "Cherry petals", hint: "pink blossom petals drifting down" },
+  stars: { label: "Night stars", hint: "twinkling stars overhead" },
+  lanterns: { label: "Sky lanterns", hint: "warm glowing lanterns floating up" },
 });
 export const MAX_EFFECTS = 20;
 

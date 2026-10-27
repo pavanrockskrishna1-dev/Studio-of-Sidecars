@@ -72,7 +72,7 @@ const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 // optional line. handle: null follows the active kit's handle; a string (even
 // "") is the user's own and wins.
 export function createBrandingState() {
-  const initial = Object.freeze({ logo: false, endCard: false, endText: "", handle: null });
+  const initial = Object.freeze({ logo: false, endCard: false, endText: "", endText2: "", handle: null });
   let snapshot = initial;
   const listeners = new Set();
   const set = (patch) => {
@@ -96,6 +96,7 @@ export function createBrandingState() {
       return { ok: true, reason: "" };
     },
     setEndText: (s) => set({ endText: str(s, MAX_END_TEXT_CHARS) }),
+    setEndText2: (s) => set({ endText2: str(s, MAX_END_TEXT_CHARS) }),
     setHandle: (s) => set({ handle: s === null ? null : str(s, MAX_HANDLE_CHARS) }),
     reset: () => set({ ...initial }),
     // The plain form saved with the session.
@@ -109,6 +110,7 @@ export function createBrandingState() {
         logo: raw.logo === true,
         endCard,
         endText: str(raw.endText, MAX_END_TEXT_CHARS),
+        endText2: str(raw.endText2 ?? "", MAX_END_TEXT_CHARS),
         handle: typeof raw.handle === "string" ? str(raw.handle, MAX_HANDLE_CHARS) : null,
       });
       return true;
@@ -144,7 +146,7 @@ export function buildBrandingSpec({ state, sequence, kit, logoImage }) {
   const shots = [];
   for (const s of sequence) {
     const lines = s.title ? titleLines(s.title.text) : [];
-    if (lines.length) shots.push({ t0, durationS: s.durationS, lines, pos: s.title.pos });
+    if (lines.length) shots.push({ t0, durationS: s.durationS, lines, pos: s.title.pos, animStyle: s.title.animStyle ?? "fade" });
     t0 += s.durationS;
   }
   const reelS = t0;
@@ -155,6 +157,7 @@ export function buildBrandingSpec({ state, sequence, kit, logoImage }) {
           img: logoImage || null,
           handle: String(state.handle ?? kit.handle1 ?? "").trim(),
           text: String(state.endText ?? "").trim(),
+          text2: String(state.endText2 ?? "").trim(),
         }
       : null;
   if (!logo && !shots.length && !endCard) return null;
@@ -208,8 +211,25 @@ function layoutLogoBug(logo) {
   return { img: logo.img, x: SAFE.x1 - s.w, y: SAFE.y0, w: s.w, h: s.h, alpha: LOGO_BUG_ALPHA };
 }
 
+function titleAlphaByStyle(local, durationS, animStyle) {
+  if (animStyle === "flash") {
+    return local > 0.1 && local < durationS - 0.1 ? 1 : 0;
+  }
+  return Math.max(0, Math.min(1, local / FADE_S, (durationS - local) / FADE_S));
+}
+
+function titleDyByStyle(local, durationS, animStyle) {
+  if (animStyle !== "slide-up") return 0;
+  const SLIDE_PX = 44;
+  if (local < FADE_S) return SLIDE_PX * (1 - local / FADE_S);
+  if (local > durationS - FADE_S) return -SLIDE_PX * (1 - (durationS - local) / FADE_S);
+  return 0;
+}
+
 function layoutTitle(ctx, shot, local, logoOn) {
-  const alpha = titleAlpha(local, shot.durationS);
+  const animStyle = shot.animStyle ?? "fade";
+  const alpha = titleAlphaByStyle(local, shot.durationS, animStyle);
+  const dy = titleDyByStyle(local, shot.durationS, animStyle);
   if (!(alpha > 0)) return null;
   const left = SAFE.x0;
   const right = SAFE.x1 - (shot.pos === "top" && logoOn ? LOGO_BUG_W + LOGO_BUG_GAP : 0);
@@ -232,6 +252,7 @@ function layoutTitle(ctx, shot, local, logoOn) {
   const w = Math.max(...widths);
   return {
     alpha,
+    dy,
     size,
     pos: shot.pos,
     lines: texts.map((text, i) => ({ text, x: cx, y: y0 + lineH * (i + 0.5), w: widths[i] })),
@@ -252,12 +273,14 @@ function layoutCard(ctx, card) {
   };
   const handle = card.handle ? text(card.handle, FONT_BODY, "600", 60, 24) : null;
   const line = card.text ? text(card.text, FONT_BODY, "500", 46, 22) : null;
+  const line2 = card.text2 ? text(card.text2, FONT_BODY, "400", 38, 20) : null;
   let H = 0;
   if (logo) H += logo.h;
   if (handle) H += (H ? gapLogo : 0) + handle.h;
   if (line) H += (H ? (handle ? gapLine : gapLogo) : 0) + line.h;
+  if (line2) H += gapLine + line2.h;
   let y = Math.max(SAFE.y0, CENTER_Y - H / 2);
-  const out = { logo: null, handle: null, line: null, rect: { x: SAFE.x0, y, w: SAFE.x1 - SAFE.x0, h: H } };
+  const out = { logo: null, handle: null, line: null, line2: null, rect: { x: SAFE.x0, y, w: SAFE.x1 - SAFE.x0, h: H } };
   const cx = (SAFE.x0 + SAFE.x1) / 2;
   if (logo) {
     out.logo = { img: card.img, x: cx - logo.w / 2, y, w: logo.w, h: logo.h };
@@ -267,7 +290,13 @@ function layoutCard(ctx, card) {
     out.handle = { text: handle.text, size: handle.size, x: cx, y: y + handle.h / 2, w: handle.w };
     y += handle.h + gapLine;
   }
-  if (line) out.line = { text: line.text, size: line.size, x: cx, y: y + line.h / 2, w: line.w };
+  if (line) {
+    out.line = { text: line.text, size: line.size, x: cx, y: y + line.h / 2, w: line.w };
+    y += line.h + gapLine;
+  }
+  if (line2) {
+    out.line2 = { text: line2.text, size: line2.size, x: cx, y: y + line2.h / 2, w: line2.w };
+  }
   return out;
 }
 
@@ -337,7 +366,8 @@ export function drawBranding(ctx, w, h, spec, t) {
   ctx.shadowOffsetY = 3;
   if (L.title) {
     ctx.globalAlpha = L.title.alpha;
-    for (const line of L.title.lines) drawTextLine(ctx, line.text, line.x, line.y, L.title.size, FONT_HEAD, "400", colors.text);
+    const dy = L.title.dy ?? 0;
+    for (const line of L.title.lines) drawTextLine(ctx, line.text, line.x, line.y + dy, L.title.size, FONT_HEAD, "400", colors.text);
   }
   if (L.card) {
     ctx.globalAlpha = 1;
@@ -348,6 +378,7 @@ export function drawBranding(ctx, w, h, spec, t) {
     }
     if (L.card.handle) drawTextLine(ctx, L.card.handle.text, L.card.handle.x, L.card.handle.y, L.card.handle.size, FONT_BODY, "600", colors.accent);
     if (L.card.line) drawTextLine(ctx, L.card.line.text, L.card.line.x, L.card.line.y, L.card.line.size, FONT_BODY, "500", colors.text);
+    if (L.card.line2) drawTextLine(ctx, L.card.line2.text, L.card.line2.x, L.card.line2.y, L.card.line2.size, FONT_BODY, "400", colors.text);
   }
   ctx.restore();
 }

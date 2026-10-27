@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import ParallaxBg from "./fx/ParallaxBg";
+import * as parallaxBgStore from "./fx/parallaxBgStore";
 import Hero from "./components/Hero";
 import StudioCanvas from "./components/StudioCanvas";
 import StudioControls from "./components/StudioControls";
 import CapturePreview from "./components/CapturePreview";
 import LoadingScreen from "./components/LoadingScreen";
+import OccasionBadge from "./fx/OccasionBadge";
 import { registerEngine } from "./session/studioSession";
 import { apiRef as cameraStudioApiRef } from "./camera/cameraStudio";
 import { getProduct } from "./products/registry";
@@ -81,6 +84,8 @@ export default function App() {
   const shotRef = useRef(null);
   const capturingRef = useRef(false);
   const [shot, setShot] = useState(null);
+
+  const { env: parallaxEnv } = useSyncExternalStore(parallaxBgStore.subscribe, parallaxBgStore.getSnapshot);
 
   const product = getProduct(productId);
   const environment = getEnvironment(environmentId);
@@ -327,20 +332,25 @@ export default function App() {
 
   return (
     <>
-      <StudioCanvas
-        product={product}
-        environment={environment}
-        cameraRequest={cameraRequest}
-        captureRef={captureRef}
-        customView={customView}
-        cameraApiRef={cameraStudioApiRef}
-        transformApiRef={transformApiRef}
-        lighting={lighting}
-        viewLive={viewLive}
-        onViewLive={setViewLive}
-        focusLock={focusLock}
-        onLockChange={handleLockChange}
-      />
+      <ParallaxBg />
+      <div className="sos-canvas-wrapper sos-canvas-manga-frame">
+        <StudioCanvas
+          transparent={!!parallaxEnv}
+          product={product}
+          environment={environment}
+          cameraRequest={cameraRequest}
+          captureRef={captureRef}
+          customView={customView}
+          cameraApiRef={cameraStudioApiRef}
+          transformApiRef={transformApiRef}
+          lighting={lighting}
+          viewLive={viewLive}
+          onViewLive={setViewLive}
+          focusLock={focusLock}
+          onLockChange={handleLockChange}
+        />
+        <OccasionBadge />
+      </div>
       <StudioControls
         environmentId={environment.id}
         onEnvironmentSelect={handleEnvironmentSelect}

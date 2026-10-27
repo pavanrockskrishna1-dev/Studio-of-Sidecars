@@ -10,6 +10,60 @@ import * as stageLook from "../fx/stageLook.js";
 import * as lookStore from "../fx/lookStore.js";
 import * as animationStore from "../animation/animationStore.js";
 
+const PRODUCT_PROP_HINTS = {
+  "bbq-bike": {
+    family: "BBQ / Street Food",
+    tip: "Prioritise BBQ food items, smoke/fire props and rustic barrel furniture near the bike.",
+    preferred: [
+      "prop-bbq-chicken-burger", "prop-bbq-box-open", "prop-bbqsmith-barrel-table",
+      "prop-bbqsmith-smoker-wagon", "prop-fire-barrel", "prop-bbq-chicken-wing",
+      "prop-bbqsmith-whisky-barrel", "prop-bbqsmith-firewood", "prop-campfire",
+      "prop-bbqsmith-bbq-letters",
+    ],
+  },
+  "coffee-bike": {
+    family: "Café / Coffee",
+    tip: "Prioritise café atmosphere — blackboard, seating, friendly characters. Light, welcoming tone.",
+    preferred: [
+      "prop-blackboard", "prop-table-chairs", "prop-balloons", "prop-lemon",
+      "prop-human-wave", "prop-human-walk-f", "prop-dog",
+    ],
+  },
+  "the-kop-main": {
+    family: "Café / Coffee",
+    tip: "Prioritise café atmosphere — blackboard, seating, friendly characters. Light, welcoming tone.",
+    preferred: [
+      "prop-blackboard", "prop-table-chairs", "prop-balloons", "prop-lemon",
+      "prop-human-wave", "prop-human-walk-f", "prop-dog",
+    ],
+  },
+};
+
+function validateAndClamp(config) {
+  const skippedIds = [];
+
+  if (Array.isArray(config.props)) {
+    config.props = config.props.slice(0, 6).map((p) => {
+      if (!p || !isPropId(p.assetId)) {
+        skippedIds.push(p?.assetId ?? "?");
+        return null;
+      }
+      const pos = Array.isArray(p.position) ? [...p.position] : [0, 0, 0];
+      pos[2] = Math.max(-4.5, Math.min(3, pos[2] ?? 0));
+      const x = pos[0] ?? 0;
+      if (Math.abs(x) < 1.5) pos[0] = (x >= 0 ? 1 : -1) * 2.2;
+      p.position = pos;
+      return p;
+    }).filter(Boolean);
+  }
+
+  if (Array.isArray(config.effects)) config.effects = config.effects.slice(0, 5);
+  if (Array.isArray(config.propCycles)) config.propCycles = config.propCycles.slice(0, 4);
+  if (Array.isArray(config.reel?.shots)) config.reel.shots = config.reel.shots.slice(0, 4);
+
+  return { config, skippedIds };
+}
+
 let state = { busy: false, error: null, result: null };
 const listeners = new Set();
 export const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
@@ -18,73 +72,123 @@ function set(patch) { state = { ...state, ...patch }; for (const fn of listeners
 
 function buildPrompt(userText, context = {}) {
   const productName = context.productName ?? "BBQ Bike";
+  const productFamily = PRODUCT_PROP_HINTS[context.productId ?? ""]?.family ?? "vehicle";
+
   const occasionList = OCCASIONS.map((o) => `  ${o.id} — ${o.name}`).join("\n");
   const effectList = Object.entries(EFFECT_TYPES).map(([k, v]) => `  ${k} — ${v.label}`).join("\n");
   const propList = PROPS.map((p) => `  ${p.id} — ${p.name}`).join("\n");
 
-  return `You are configuring a 3D studio scene for a short promotional reel.
+  return `You are an award-winning commercial director specialising in short, emotional product reels.
 
-The vehicle currently on stage is: "${productName}"
-The user described the scene as: "${userText}"
+Product on stage: "${productName}" (category: ${productFamily})
+Director's brief: "${userText}"
 
-Your job: build a scene that visually showcases the "${productName}" in the described setting. Choose props, effects, stage look, and reel shots that complement this specific vehicle and bring the description to life.
+====================
+YOUR GOAL
+====================
 
-Available occasion IDs (particles + background atmosphere):
+Create a cinematic 16–20 second scene in 3 acts that makes the "${productName}" look irresistible.
+
+Act 1 — ESTABLISH (use 8 s): Wider or lower shot that sets mood and world.
+Act 2 — REVEAL (use 8 s): Show the product with personality (orbit, slide, or gentle movement).
+Act 3 — DESIRE (use 4 s): Closer, more intimate shot — makes the viewer want it.
+
+Total: 3 shots, 20 s. Use 4 shots only if the brief truly demands it (max 28 s).
+
+====================
+COMPOSITION RULES
+====================
+
+- Asymmetric, layered compositions: foreground prop + product + background prop.
+- 4 to 6 props total. No more.
+- 1 hero prop (closest to camera, most interesting), 2–3 supporting, 1–2 background.
+- Include one unexpected but fitting detail that adds personality.
+- Never repeat the same camera move in one reel.
+- Never make the scene feel empty or perfectly symmetrical.
+- Prefer imperfect, natural placement over grid alignment.
+
+====================
+PLACEMENT RULES
+====================
+
+- Product sits at [0, 0, 0].
+- Positive Z = towards camera. Negative Z = behind product.
+- Never place any prop at Z below −4.2.
+- Keep all props at least 2.2 m from the product centre.
+- Flanking (sides): x = ±3.2 to ±5.2, z = 0.3 to 1.8
+- Background: x = ±3.5 to ±6.0, z = −2.0 to −3.8
+- Vary prop scale for depth (0.75 to 1.6). Closer props slightly larger.
+
+====================
+EFFECTS PLACEMENT
+====================
+
+- Place effects beside or slightly behind the product, never in front of it.
+- Preferred positions: x = ±2.5 to ±4.5, z = −1.0 to −2.5, y = 0 to 0.5.
+- Use size 0.8–1.4 for background fill; 0.6–0.9 for accent.
+- 0 to 2 effects maximum.
+
+====================
+LOOK PAIRINGS
+====================
+
+stageLook + lookPreset combinations that work:
+  studio + studio  — clean commercial product shot (default safe)
+  studio + sunset  — warm golden indoor
+  night  + moonlit — cool dramatic atmospheric
+  night  + studio  — mysterious dark
+  day    + sunset  — warm outdoor golden hour
+  day    + off     — natural daylight
+
+Never pair night with sunset. Never pair day with moonlit.
+
+====================
+PROP MOTION (propCycles)
+====================
+
+Add motion to 1–2 props for life. propIndex is the 0-based position of the prop in the props array.
+  bob   — gentle vertical float (good for food, lanterns)
+  spin  — slow rotation (good for wheels, orbs)
+  sway  — soft pendulum (good for hanging items, plants)
+  pulse — subtle breathing scale (good for hero prop or fire)
+
+====================
+AVAILABLE OPTIONS
+====================
+
+Occasion IDs (leave "none" if the brief has no seasonal context):
 ${occasionList}
 
-Available grade IDs: raw, warm, moody, cinema
+Grade: raw | warm | moody | cinema
+Stage Look: studio | night | day
+Look Preset: off | moonlit | sunset | studio
 
-Stage look (backdrop):
-  studio — indoor HDRI photo backdrop (default, clean product shot)
-  night  — dark sky with moonlight, no HDRI (halloween, diwali night, late-night vibes)
-  day    — outdoor blue sky with warm sun, no HDRI (summer, road trips, outdoor markets)
-
-Look preset (cinematic post-processing):
-  off     — no post processing
-  moonlit — cool blue dramatic (pairs with night stage)
-  sunset  — warm amber golden hour (pairs with day or warm diwali)
-  studio  — crisp neutral punch (pairs with studio stage)
-
-Available effect types:
+Effect types:
 ${effectList}
 
-Available prop IDs — ONLY use IDs exactly as listed here:
+Prop IDs — use ONLY these exact IDs, no variations:
 ${propList}
 
-Reel moves: turntable, orbit, push-in, pull-back, slide, crane
-Reel start views: Front, Side, 3/4, Rear, Top, Low Hero
-Shot durations: 4, 8, or 12 seconds. Total must not exceed 30 s. Use 2–4 shots.
+Camera moves: turntable | orbit | push-in | pull-back | slide | crane
+Start views: Front | Side | 3/4 | Rear | Top | Low Hero
+Shot durations: 4 | 8 | 12  (seconds only — no other values)
 
-Prop motion cycles (on placed props in shot 0):
-  bob   — vertical float: amplitude 0.02–0.12, period 1–3 s
-  spin  — rotation: rpm 10–60, axis "auto"
-  sway  — swing: angle 5–20, period 1.5–3 s, pivot "centre", axis "auto"
-  pulse — scale throb: scalePct 3–8, period 0.5–2 s
+====================
+OUTPUT
+====================
 
-Constraints:
-- The default camera looks at the FRONT of the vehicle from a slight angle
-- Position [x, y, z]: x is left/right, y = 0 (ground), z is front/back
-- z = 0 is the bike's centre. POSITIVE z is towards the camera. NEGATIVE z is behind the bike (out of frame).
-- Place flanking props at x = ±3 to ±5, z = 0 to 2 — this puts them to the sides and slightly in front, visible from the default view
-- Place background props (trees, large items) at x = ±3 to ±6, z = -2 to -4
-- NEVER place props at z beyond -5 — they will be behind the scene and invisible
-- Keep props at least 2 m from origin (bike is at [0,0,0])
-- at most 6 effects, at most 6 props, at most 4 propCycles
-- propIndex in propCycles is the 0-based index into the "props" array
-- use 2–4 reel shots that tell a cinematic story: e.g. Low Hero wide → 3/4 orbit → push-in front
-- IMPORTANT: only use prop assetId values from the list above — do not invent new IDs
+Respond with ONLY a valid JSON object. No markdown fences. No explanation. No comments. No trailing commas.
 
-Respond ONLY with a single JSON object, no markdown, no prose:
 {
-  "occasion": "<id or 'none'>",
+  "occasion": "<id or none>",
   "grade": "<raw|warm|moody|cinema>",
   "stageLook": "<studio|night|day>",
   "lookPreset": "<off|moonlit|sunset|studio>",
   "effects": [
-    { "type": "<effectType>", "position": [x, y, z], "size": <0.5–2.0> }
+    { "type": "<effectType>", "position": [x, y, z], "size": <number> }
   ],
   "props": [
-    { "assetId": "<propId>", "position": [x, y, z], "rotation": [rx, ry, rz], "scale": <0.8–1.5> }
+    { "assetId": "<exact prop id>", "position": [x, y, z], "rotation": [rx, ry, rz], "scale": <number> }
   ],
   "reel": {
     "shots": [
@@ -92,7 +196,7 @@ Respond ONLY with a single JSON object, no markdown, no prose:
     ]
   },
   "propCycles": [
-    { "propIndex": 0, "type": "<bob|spin|sway|pulse>", "amplitude": 0.06, "period": 2 }
+    { "propIndex": <0-based index into props array>, "type": "<bob|spin|sway|pulse>", "amplitude": <number>, "period": <number> }
   ]
 }`;
 }
@@ -108,7 +212,9 @@ export async function buildScene(prompt, apiKey, context = {}) {
       },
       body: JSON.stringify({
         model: "qwen/qwen3.8-27b",
-        max_tokens: 1500,
+        temperature: 0.3,
+        max_tokens: 2200,
+        response_format: { type: "json_object" },
         messages: [
           { role: "system", content: "You are a JSON-only API. Output only a single valid JSON object. No markdown, no prose, no thinking tags." },
           { role: "user", content: buildPrompt(prompt, context) },
@@ -135,6 +241,9 @@ export async function buildScene(prompt, apiKey, context = {}) {
       if (!match) throw new Error("No JSON found in response.");
       config = JSON.parse(match[0]);
     }
+
+    const { config: cleanConfig, skippedIds } = validateAndClamp(config);
+    config = cleanConfig;
 
     occasionStore.setOccasion(config.occasion ?? "none");
     gradeStore.setGrade(config.grade ?? "raw");
@@ -169,11 +278,19 @@ export async function buildScene(prompt, apiKey, context = {}) {
 
     const placedItems = [];
     let propsPlaced = 0;
-    const stageApi = garageMode.apiRef.current;
-    const floorY = stageApi && typeof stageApi.getFloorY === "function" ? stageApi.getFloorY() : 0;
-    if (Array.isArray(config.props) && stageApi && typeof stageApi.addObject === "function") {
+    // Capture floorY once before the async loop using the current API.
+    const _initApi = garageMode.apiRef.current;
+    const floorY = _initApi && typeof _initApi.getFloorY === "function" ? _initApi.getFloorY() : 0;
+    if (Array.isArray(config.props)) {
       for (const prop of config.props.slice(0, 6)) {
         if (!prop || !prop.assetId || !isPropId(prop.assetId)) {
+          placedItems.push(null);
+          continue;
+        }
+        // Re-read apiRef on each await boundary — registerApi re-runs after each
+        // garageStore change (refit → setLiveFit → re-render → new addObject closure).
+        const stageApi = garageMode.apiRef.current;
+        if (!stageApi || typeof stageApi.addObject !== "function") {
           placedItems.push(null);
           continue;
         }
@@ -229,10 +346,13 @@ export async function buildScene(prompt, apiKey, context = {}) {
       }
     }
 
-    const shotCount = animationStore.getSnapshot().sequence.length;
+    const sequence = animationStore.getSnapshot().sequence;
+    const shotCount = sequence.length;
+    const shotMoves = sequence.map((s) => s.move).join(" → ");
     const stageName = config.stageLook ?? "studio";
     const presetName = config.lookPreset && config.lookPreset !== "off" ? ` · ${config.lookPreset}` : "";
-    const resultText = `✦ Built — ${shotCount} shot${shotCount !== 1 ? "s" : ""} · ${stageName}${presetName} · ${propsPlaced} prop${propsPlaced !== 1 ? "s" : ""}`;
+    const skippedNote = skippedIds.length ? ` · ${skippedIds.length} prop${skippedIds.length !== 1 ? "s" : ""} skipped` : "";
+    const resultText = `✦ Built · ${stageName}${presetName} · ${propsPlaced} props · ${shotMoves}${skippedNote}`;
     set({ busy: false, error: null, result: resultText });
   } catch (err) {
     set({ busy: false, error: err.message ?? "Something went wrong", result: null });

@@ -20,6 +20,7 @@ import { recordPlaced } from "../garage/placedPoses";
 import * as placeMode from "../garage/placeMode";
 import { hasCamKeys, sampleCam } from "../animation/cameraKeys";
 import EffectsLayer from "../fx/EffectsLayer";
+import AnimeOverlay from "../fx/AnimeOverlay";
 import * as effectsStore from "../fx/effectsStore";
 import PlacedLights from "../fx/PlacedLights";
 import { createLook } from "../fx/exportLook";
@@ -974,6 +975,7 @@ function StudioStage({
   focusLock,
   onLockChange,
   reelViewRef,
+  transparent = false,
 }) {
   const { scene, camera, gl, setFrameloop, get } = useThree();
   const controlsRef = useRef(null);
@@ -1175,7 +1177,7 @@ function StudioStage({
     let disposed = false;
     let texture = null;
     const token = backdropGate.begin(backdropFile);
-    if (backdropFile) {
+    if (backdropFile && !transparent) {
       const loader = new THREE.TextureLoader();
       loader.load(
         backdropFile,
@@ -1196,6 +1198,11 @@ function StudioStage({
           backdropGate.failed(token);
         }
       );
+    } else if (!backdropFile || transparent) {
+      // No backdrop or parallax mode: clear any previous background so the
+      // WebGL alpha channel (always on) lets the page/parallax show through.
+      scene.background = null;
+      backdropGate.loaded(token);
     }
     return () => {
       disposed = true;
@@ -1203,7 +1210,7 @@ function StudioStage({
       if (scene.background === texture) scene.background = null;
       backdropGate.clear(token);
     };
-  }, [scene, backdropFile]);
+  }, [scene, backdropFile, transparent]);
 
   // Deterministic framing: measure the loaded model, fit camera + floor to it
   const fit = useMemo(() => {
@@ -4181,6 +4188,7 @@ function StudioStage({
             3), never as a declarative prop: an array-literal position prop is
             a fresh reference every render, so React would silently re-apply
             it (and stomp the live pivot centre) on any unrelated re-render. */}
+        <AnimeOverlay />
         <OccasionFog />
         <EffectsLayer />
         <group ref={pivotRef}>
@@ -4237,6 +4245,7 @@ export default function StudioCanvas({
   onViewLive = null,
   focusLock = true,
   onLockChange = null,
+  transparent = false,
 }) {
   // The stage's portrait-PNG pose function for CaptureBridge (Slice E3).
   const reelViewRef = useRef(null);
@@ -4313,11 +4322,15 @@ export default function StudioCanvas({
         // preserveDrawingBuffer keeps the rendered frame readable after the
         // compositor swaps, so Capture Shot can PNG-encode the exact current
         // presentation at any moment. No visual or scene-state change.
-        gl={{ preserveDrawingBuffer: true }}
+        // alpha:true is always on so the context supports transparency from
+        // creation — it is a WebGL context attribute that cannot be changed
+        // at runtime. The CSS background toggles between #050505 and
+        // "transparent" to control what shows through when parallax is off/on.
+        gl={{ preserveDrawingBuffer: true, alpha: true }}
         style={{
           position: "fixed",
           inset: 0,
-          background: "#050505",
+          background: transparent ? "transparent" : "#050505",
           zIndex: 0,
         }}
       >
@@ -4344,6 +4357,7 @@ export default function StudioCanvas({
             focusLock={focusLock}
             onLockChange={onLockChange}
             reelViewRef={reelViewRef}
+            transparent={transparent}
           />
         </Suspense>
         <CaptureBridge captureRef={captureRef} reelViewRef={reelViewRef} />

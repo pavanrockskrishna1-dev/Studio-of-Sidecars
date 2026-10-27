@@ -287,6 +287,102 @@ const KINDS = {
       c.g = 0.6 + 0.4 * r[i * 4 + 3];
     },
   },
+  flame: {
+    count: 60,
+    linear: true,
+    tex: () => sprite(radial([[0, "rgba(255,255,255,1)"], [0.35, "rgba(255,220,50,0.85)"], [0.65, "rgba(255,70,5,0.45)"], [1, "rgba(0,0,0,0)"]]), 64),
+    material: { size: 0.32, opacity: 1, blending: THREE.AdditiveBlending, color: 0xff6010 },
+    at(i, t, r, out) {
+      const ph = life01(t, r[i * 4], 0.55, 0.45);
+      const a = r[i * 4 + 1] * Math.PI * 2;
+      const rad = 0.07 + (1 - ph) * r[i * 4 + 2] * 0.16;
+      out.set(Math.cos(a) * rad + Math.sin(t * 9 + i) * 0.025 * ph, 0.04 + ph * 0.75, Math.sin(a) * rad + Math.cos(t * 7 + i) * 0.025 * ph);
+    },
+    look(i, t, r, c) {
+      const ph = life01(t, r[i * 4], 0.55, 0.45);
+      c.s = 1.6 - ph * 0.9;
+      c.a = (1 - ph * ph) * 0.92;
+      c.g = 0.48 - ph * 0.32;
+      c.b = 0.02;
+    },
+  },
+  steam: {
+    count: 22,
+    linear: true,
+    tex: () => sprite(radial([[0, "rgba(255,255,255,0.55)"], [0.5, "rgba(255,255,255,0.2)"], [1, "rgba(255,255,255,0)"]]), 128),
+    material: { size: 0.5, opacity: 0.42, blending: THREE.NormalBlending, color: 0xe8ecf4 },
+    at(i, t, r, out) {
+      const ph = life01(t, r[i * 4], 1.8, 1.4);
+      const drift = Math.sin(t * 0.5 + i * 1.1) * 0.14 * ph;
+      out.set((r[i * 4 + 1] - 0.5) * 0.12 + drift, 0.25 + ph * 1.9, (r[i * 4 + 2] - 0.5) * 0.12);
+    },
+    look(i, t, r, c) {
+      const ph = life01(t, r[i * 4], 1.8, 1.4);
+      c.s = 0.38 + ph * 1.5;
+      c.a = Math.sin(ph * Math.PI) * 0.52;
+    },
+  },
+  petals: {
+    count: 45,
+    tex: () => sprite((ctx, s) => {
+      ctx.translate(s / 2, s / 2);
+      ctx.fillStyle = "#ffb7c5";
+      ctx.beginPath();
+      ctx.ellipse(0, -s * 0.18, s * 0.19, s * 0.3, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,220,228,0.5)";
+      ctx.beginPath();
+      ctx.ellipse(s * 0.04, -s * 0.15, s * 0.1, s * 0.2, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }, 48),
+    material: { size: 0.11, opacity: 0.9, blending: THREE.NormalBlending, color: 0xffffff },
+    at(i, t, r, out) {
+      const fall = 0.22 + r[i * 4] * 0.28;
+      const y = 3.6 - ((t * fall + r[i * 4 + 1] * 3.6) % 3.6);
+      out.set((r[i * 4 + 2] - 0.5) * 3.8 + Math.sin(t * 0.85 + i) * 0.45, y, (r[i * 4 + 3] - 0.5) * 3.8 + Math.cos(t * 0.65 + i) * 0.32);
+    },
+    look(i, t, r, c) {
+      c.r = 1; c.g = 0.72 + 0.15 * r[i * 4 + 1]; c.b = 0.78 + 0.12 * r[i * 4 + 2];
+      c.s = 0.75 + 0.45 * Math.abs(Math.sin(t * 1.3 + i));
+    },
+  },
+  stars: {
+    count: 90,
+    tex: () => sprite(radial([[0, "rgba(255,255,255,1)"], [0.22, "rgba(255,255,255,0.55)"], [1, "rgba(0,0,0,0)"]]), 32),
+    material: { size: 0.04, opacity: 1, blending: THREE.AdditiveBlending, color: 0xffffff },
+    at(i, t, r, out) {
+      const a = r[i * 4] * Math.PI * 2;
+      const el = 0.12 + r[i * 4 + 1] * 0.68;
+      const rad = 4.5 + r[i * 4 + 2] * 3.5;
+      out.set(Math.cos(a) * rad * Math.cos(el * Math.PI / 2), rad * Math.sin(el * Math.PI / 2) + 0.5, Math.sin(a) * rad * Math.cos(el * Math.PI / 2));
+    },
+    look(i, t, r, c) {
+      const tw = 0.5 + 0.5 * Math.sin(t * (1.4 + r[i * 4 + 3] * 3.2) + r[i * 4] * 20);
+      c.a = 0.18 + 0.82 * tw * tw;
+      c.s = 0.5 + 0.75 * tw;
+      if (r[i * 4 + 1] > 0.55) { c.r = 1; c.g = 0.88; c.b = 0.68; }
+      else { c.r = 0.78; c.g = 0.88; c.b = 1; }
+    },
+  },
+  lanterns: {
+    count: 8,
+    linear: true,
+    tex: () => sprite(radial([[0, "rgba(255,200,80,1)"], [0.45, "rgba(255,110,10,0.65)"], [1, "rgba(0,0,0,0)"]]), 64),
+    material: { size: 0.55, opacity: 0.88, blending: THREE.AdditiveBlending, color: 0xff8820 },
+    at(i, t, r, out) {
+      const speed = 0.11 + r[i * 4] * 0.09;
+      const y = (t * speed + r[i * 4 + 1] * 5.5) % 5.5;
+      const sway = Math.sin(t * 0.45 + i * 1.25) * 0.32;
+      out.set((r[i * 4 + 2] - 0.5) * 3.2 + sway, 0.4 + y, (r[i * 4 + 3] - 0.5) * 3.2);
+    },
+    look(i, t, r, c) {
+      const speed = 0.11 + r[i * 4] * 0.09;
+      const y = (t * speed + r[i * 4 + 1] * 5.5) % 5.5;
+      const fadeTop = y > 4.5 ? (5.5 - y) : 1;
+      c.a = (0.65 + 0.35 * Math.sin(t * 2.3 + i)) * fadeTop;
+      c.s = 0.68 + 0.38 * Math.sin(t * 1.7 + i);
+    },
+  },
 };
 
 function seeded(seed, n) {

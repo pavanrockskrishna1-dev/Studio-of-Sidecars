@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useBranding } from "./useBranding";
 import * as animationStore from "../animation/animationStore";
-import { clampTitleText, TITLE_POSITIONS, DEFAULT_TITLE_POS, MAX_TITLE_LINE_CHARS } from "../animation/shotTitle";
+import { clampTitleText, TITLE_POSITIONS, DEFAULT_TITLE_POS, MAX_TITLE_LINE_CHARS, TITLE_ANIM_STYLES, DEFAULT_TITLE_ANIM } from "../animation/shotTitle";
 import { brandingState, endCardFits, activeKit, END_CARD_S, REEL_MAX_S, MAX_END_TEXT_CHARS, MAX_HANDLE_CHARS } from "../poster/branding";
 import { posterState, ensureLogoImage, getCachedLogoImage } from "../poster/poster.js";
 
@@ -16,6 +16,7 @@ import { posterState, ensureLogoImage, getCachedLogoImage } from "../poster/post
    ========================================================================== */
 
 const POS_LABELS = { top: "Top", middle: "Middle", bottom: "Bottom" };
+const ANIM_LABELS = { fade: "Fade", "slide-up": "Slide Up", flash: "Flash" };
 
 function OnOff({ label, on, onSet, disabled, id, title }) {
   return (
@@ -108,6 +109,18 @@ export function BrandingSection({ sequence, busy }) {
         />
       </label>
       <label className="sos-field">
+        <em>End card line 2 (phone / email)</em>
+        <input
+          type="text"
+          data-testid="ui-branding-endtext2"
+          value={b.endText2 ?? ""}
+          maxLength={MAX_END_TEXT_CHARS}
+          disabled={busy}
+          placeholder="📞 07700 900123 | hello@bbqride.co.uk"
+          onChange={(e) => brandingState.setEndText2(e.target.value)}
+        />
+      </label>
+      <label className="sos-field">
         <em>Handle (blank hides it)</em>
         <input
           type="text"
@@ -137,7 +150,7 @@ export function BrandingSection({ sequence, busy }) {
 
 // One shot's title: two lines of text and where they sit (inside the shot's row).
 export function ShotTitleEdit({ index, shot, busy, onResult }) {
-  const title = shot.title ?? { text: "", pos: DEFAULT_TITLE_POS };
+  const title = shot.title ?? { text: "", pos: DEFAULT_TITLE_POS, animStyle: DEFAULT_TITLE_ANIM };
   const [l1 = "", l2 = ""] = clampTitleText(title.text).split("\n");
   const set = (patch) => onResult(animationStore.setShot(index, { title: { ...title, ...patch } }));
   const setLines = (a, b) => set({ text: clampTitleText(b !== "" ? `${a}\n${b}` : a) });
@@ -176,6 +189,22 @@ export function ShotTitleEdit({ index, shot, busy, onResult }) {
             onClick={() => set({ pos: p })}
           >
             {POS_LABELS[p]}
+          </button>
+        ))}
+      </div>
+      <div className="sos-frow" role="group" aria-label={`Shot ${index + 1} title animation`}>
+        {TITLE_ANIM_STYLES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className="sos-pchip"
+            data-testid={`ui-shot-${index + 1}-title-anim-${s}`}
+            data-on={(title.animStyle ?? DEFAULT_TITLE_ANIM) === s || undefined}
+            aria-pressed={(title.animStyle ?? DEFAULT_TITLE_ANIM) === s}
+            disabled={busy}
+            onClick={() => set({ animStyle: s })}
+          >
+            {ANIM_LABELS[s]}
           </button>
         ))}
       </div>

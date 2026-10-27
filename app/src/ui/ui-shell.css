@@ -21,6 +21,39 @@
      engine panels never sit on top of the new UI.
    ========================================================================== */
 
+/* Manga redesign: the two faces the theme (and the poster / Brand Art canvas
+   drawing, which already names them) uses. Must stay the first rule. */
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Saira+Stencil+One&display=swap");
+
+/* ==========================================================================
+   Manga theme — design tokens
+   --------------------------------------------------------------------------
+   Applied by the "Manga redesign" block at the END of this file (it has to
+   sit last to win the cascade over the older skins it restyles).
+   Contrast on the cream paper (#f5f0e8): ink 17.0:1, ink-2 8.3:1,
+   accent-ink 4.7:1.
+   ========================================================================== */
+:root {
+  --manga-bg: #0f0f0f;
+  --manga-panel: #f5f0e8; /* cream paper */
+  --manga-panel-2: #e9e1d2; /* pressed / field fill on the paper */
+  --manga-ink: #111111; /* thick ink black */
+  --manga-ink-2: #4a4640; /* secondary text on the paper */
+  --manga-accent: #e05a1a; /* BBQ orange */
+  --manga-accent-ink: #b8460f; /* orange text on the paper */
+  --manga-accent2: #f0a500; /* warm gold accent */
+  --manga-danger-ink: #b3261e;
+  --manga-ok-ink: #1f7a46;
+  --manga-border: 2.5px solid #111;
+  --manga-border-thick: 4px solid #111;
+  --manga-text-on-dark: #f5f0e8;
+  --manga-text-on-light: #111111;
+  --manga-radius: 4px; /* manga panels are nearly square-cornered */
+  --manga-head: "Saira Stencil One", "Oswald", Impact, sans-serif;
+  --manga-body: "Oswald", "Arial Narrow", Arial, sans-serif;
+  --manga-bar-h: 76px;
+}
+
 .sos-shell {
   /* --- materials (design/redesign tokens: deeper room, glass that is glass) */
   --sos-bg: #05060a;
@@ -3063,6 +3096,14 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
 .sos-reel-title input:disabled {
   opacity: 0.4;
 }
+.sos-reel-title .sos-frow {
+  gap: 4px;
+}
+.sos-reel-title-anim-label {
+  font-size: 10px;
+  color: var(--sos2-text-2);
+  padding: 2px 0 0;
+}
 
 /* ── MotionLab Animation Studio overlay ─────────────────────────────────── */
 .motionlab-overlay {
@@ -3612,4 +3653,1431 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
 .reel-tpl-meta {
   font-size: 10px;
   color: #666;
+}
+
+/* Mood panel */
+.sos2-mood-panel { padding-bottom: 4px; }
+.sos2-mood-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 6px;
+}
+.sos2-mood-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--sos2-line);
+  background: transparent;
+  color: var(--sos2-text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+.sos2-mood-chip:hover {
+  background: var(--sos2-brass);
+  border-color: var(--sos2-brass-ink);
+  color: var(--sos2-brass-ink);
+}
+.sos2-mood-icon { font-size: 16px; flex-shrink: 0; }
+.sos2-mood-name { line-height: 1.2; }
+
+/* Prop group shelf */
+.sos2-propgroup-loading { font-size: 10px; font-weight: 400; color: var(--sos2-text-2); margin-left: 6px; }
+.sos2-propgroup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 6px;
+}
+.sos2-propgroup-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--sos2-line);
+  background: transparent;
+  color: var(--sos2-text);
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.sos2-propgroup-chip:hover:not(:disabled) {
+  background: var(--sos2-brass);
+  border-color: var(--sos2-brass-ink);
+  color: var(--sos2-brass-ink);
+}
+.sos2-propgroup-chip:disabled { opacity: 0.5; cursor: default; }
+.sos2-propgroup-icon { font-size: 20px; }
+.sos2-propgroup-name { font-size: 11px; font-weight: 600; }
+.sos2-propgroup-count { font-size: 9px; color: var(--sos2-text-2); }
+.sos2-propgroup-clear { border-style: dashed; }
+.sos2-propgroup-clear:hover:not(:disabled) { background: rgba(220,60,60,0.12); border-color: rgba(220,60,60,0.5); color: inherit; }
+
+/* Export format chips row */
+.sos-reel-export-formats { margin-bottom: 8px; gap: 4px; }
+
+/* Caption generator */
+.sos-reel-caption-box { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.sos-reel-caption-text {
+  width: 100%;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--sos2-line);
+  border-radius: 6px;
+  color: var(--sos2-text);
+  padding: 8px;
+  resize: none;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+/* ── Guided Visual Timeline ───────────────────────────────────────────────── */
+.sos2-timeline { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+
+/* Duration bar */
+.sos2-tl-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.sos2-tl-bar-track {
+  flex: 1; height: 20px; display: flex; border-radius: 4px;
+  overflow: hidden; background: rgba(255,255,255,0.06);
+}
+.sos2-tl-bar-seg {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 0; transition: width 0.2s ease;
+  font-size: 10px; font-weight: 700; color: #fff; letter-spacing: 0.04em;
+}
+.sos2-tl-bar-label { opacity: 0.85; overflow: hidden; white-space: nowrap; }
+.sos2-tl-bar-empty { background: rgba(255,255,255,0.06); }
+.sos2-tl-dur { font-size: 11px; color: var(--sos-muted); white-space: nowrap; }
+
+/* Shot cards */
+.sos2-tl-shot {
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 6px; padding: 8px 10px;
+  background: rgba(255,255,255,0.03);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sos2-tl-shot-head {
+  display: flex; align-items: center; gap: 7px;
+}
+.sos2-tl-shot-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.sos2-tl-shot-num { font-size: 11px; font-weight: 700; color: var(--sos-muted); }
+.sos2-tl-shot-move { font-size: 12px; font-weight: 600; flex: 1; }
+.sos2-tl-shot-actions { display: flex; gap: 4px; margin-left: auto; }
+.sos2-tl-btn {
+  width: 24px; height: 24px; border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px; background: rgba(255,255,255,0.06);
+  color: var(--sos-fg); font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; line-height: 1;
+}
+.sos2-tl-btn:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+.sos2-tl-btn:disabled { opacity: 0.3; cursor: default; }
+.sos2-tl-btn-del { color: #ff6b6b; }
+
+/* Duration +/− row */
+.sos2-tl-shot-dur {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.sos2-tl-dur-btn {
+  width: 28px; height: 28px; border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px; background: rgba(255,255,255,0.06);
+  color: var(--sos-fg); font-size: 16px; cursor: pointer; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.sos2-tl-dur-btn:hover:not(:disabled) { background: rgba(255,107,0,0.2); border-color: #ff6b00; }
+.sos2-tl-dur-btn:disabled { opacity: 0.3; cursor: default; }
+.sos2-tl-dur-val {
+  font-size: 13px; font-weight: 700; min-width: 28px; text-align: center;
+  color: #ff6b00;
+}
+.sos2-tl-move-sel,
+.sos2-tl-view-sel {
+  flex: 1; min-width: 80px; height: 28px; font-size: 11px;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 4px; color: var(--sos-fg); padding: 0 6px; cursor: pointer;
+}
+.sos2-tl-move-sel:disabled,
+.sos2-tl-view-sel:disabled { opacity: 0.4; cursor: default; }
+
+/* Add shot button */
+.sos2-tl-add {
+  width: 100%; padding: 8px 0; border: 1px dashed rgba(255,107,0,0.4);
+  border-radius: 6px; background: transparent; color: #ff6b00;
+  font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 0.04em;
+}
+.sos2-tl-add:hover:not(:disabled) { background: rgba(255,107,0,0.08); border-color: #ff6b00; }
+.sos2-tl-add:disabled { opacity: 0.35; cursor: default; border-color: rgba(255,255,255,0.1); color: var(--sos-muted); }
+.sos2-hint { font-size: 11px; color: var(--sos-muted); margin: 2px 0 0; }
+
+/* ── Whisper Tips ─────────────────────────────────────────── */
+.sos2-whisper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,107,0,0.12);
+  border: 1px solid rgba(255,107,0,0.35);
+  border-radius: 8px;
+  padding: 6px 10px 6px 12px;
+  margin-bottom: 8px;
+  animation: whisper-in 0.3s ease;
+}
+@keyframes whisper-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sos2-whisper-text {
+  flex: 1;
+  font-size: 11px;
+  color: #ffa050;
+  line-height: 1.4;
+}
+.sos2-whisper-x {
+  background: none;
+  border: none;
+  color: #ff6b00;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.sos2-whisper-x:hover { opacity: 1; }
+
+/* ── AI Prompt row (voice button) ──────────────────────────── */
+.ai-prompt-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.ai-mic-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  background: rgba(255,107,0,0.15);
+  border: 1px solid rgba(255,107,0,0.4);
+  border-radius: 6px;
+  color: #ff6b00;
+  font-size: 15px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s;
+}
+.ai-mic-btn:hover { background: rgba(255,107,0,0.28); }
+.ai-mic-active {
+  background: rgba(220,30,30,0.22) !important;
+  border-color: #e03030 !important;
+  color: #e03030 !important;
+  animation: mic-pulse 0.9s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,30,30,0.5); }
+  50%       { box-shadow: 0 0 0 5px rgba(220,30,30,0); }
+}
+
+/* ── BGM Player ─────────────────────────────────────────────── */
+.sos2-bgm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  margin-top: auto;
+  background: rgba(0,0,0,0.2);
+}
+.sos2-bgm-play {
+  background: rgba(255,107,0,0.18);
+  border: 1px solid rgba(255,107,0,0.45);
+  border-radius: 6px;
+  color: #ff6b00;
+  font-size: 14px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.sos2-bgm-prev, .sos2-bgm-next {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.sos2-bgm-prev:hover, .sos2-bgm-next:hover { color: #ccc; }
+.sos2-bgm-name {
+  flex: 1;
+  font-size: 10px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sos2-bgm-vol {
+  width: 52px;
+  accent-color: #ff6b00;
+  cursor: pointer;
+}
+
+/* ── Post Studio ─────────────────────────────────────────── */
+.sos2-posts { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+
+.sos2-posts-tabs { display: flex; gap: 4px; }
+.sos2-posts-tab {
+  flex: 1; padding: 5px 4px; font-size: 10px; font-weight: 600;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px; color: #aaa; cursor: pointer; transition: all 0.15s;
+  text-align: center;
+}
+.sos2-posts-tab.active, .sos2-posts-tab:hover {
+  background: rgba(255,107,0,0.18); border-color: rgba(255,107,0,0.5); color: #ff6b00;
+}
+
+.sos2-posts-preview-wrap {
+  width: 100%; border-radius: 10px; overflow: hidden;
+  background: #111; cursor: crosshair;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.sos2-posts-canvas {
+  width: 100%; height: 100%; display: block;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.sos2-posts-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.sos2-posts-chip {
+  flex: 1; padding: 4px 6px; font-size: 10px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px; color: #aaa; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s; text-align: center;
+}
+.sos2-posts-chip.active, .sos2-posts-chip:hover {
+  background: rgba(255,107,0,0.18); border-color: rgba(255,107,0,0.5); color: #ff6b00;
+}
+
+.sos2-posts-field {
+  display: flex; flex-direction: column; gap: 3px;
+}
+.sos2-posts-field span { font-size: 10px; color: #888; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+.sos2-posts-field input[type="text"], .sos2-posts-field input:not([type]) {
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px; color: #fff; padding: 6px 8px; font-size: 12px;
+}
+.sos2-posts-field input:focus { outline: none; border-color: rgba(255,107,0,0.55); }
+
+.sos2-posts-dl {
+  width: 100%; padding: 9px; background: #ff6b00; color: #fff;
+  border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: opacity 0.15s; margin-top: 4px;
+}
+.sos2-posts-dl:hover { opacity: 0.88; }
+
+.sos2-posts-pal {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent;
+  background: rgba(255,255,255,.08); cursor: pointer; display:flex; align-items:center; justify-content:center; padding:0;
+  transition: border-color .15s;
+}
+.sos2-posts-pal span { width:16px; height:16px; border-radius:50%; display:block; }
+.sos2-posts-pal.active { border-color: var(--pal, #ff6b00); }
+.sos2-posts-pal:hover { border-color: rgba(255,255,255,.4); }
+
+.sos2-posts-dl-gif { background: #1a1a2e; border: 1px solid rgba(255,107,0,.5); }
+.sos2-posts-dl-gif:disabled { opacity:.6; cursor:default; }
+
+/* ─── Parallax Environment Picker ─────────────────────────── */
+.sos2-env-wrap { padding: 12px 10px 8px; }
+.sos2-env-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.sos2-env-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.05); color: rgba(255,255,255,.75);
+  font-size: 11px; cursor: pointer; transition: all .15s;
+}
+.sos2-env-btn:hover { border-color: rgba(255,107,0,.5); color: #fff; }
+.sos2-env-btn.active { border-color: #ff6b00; background: rgba(255,107,0,.18); color: #fff; }
+.sos2-env-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,.15); flex-shrink: 0; }
+.sos2-env-label { white-space: nowrap; }
+.sos2-env-hint { margin: 8px 2px 0; font-size: 10px; color: rgba(255,255,255,.35); font-style: italic; }
+
+/* ── Anime Mode toggle (GradePanel → AnimeToggle) ────────────────────── */
+.sos2-anime-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid var(--rail-border, #333);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sos2-anime-btn:hover {
+  border-color: var(--accent, #e05a1a);
+}
+.sos2-anime-btn[data-on] {
+  border-color: var(--accent, #e05a1a);
+  background: color-mix(in srgb, var(--accent, #e05a1a) 15%, transparent);
+}
+.sos2-anime-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.sos2-anime-label {
+  flex: 1;
+  text-align: left;
+}
+
+/* ── Caption Generator ─────────────────────────────────────────────── */
+.caption-gen {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.caption-no-key {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, #e05a1a 12%, transparent);
+  border: 1px solid color-mix(in srgb, #e05a1a 40%, transparent);
+  font-size: 12px;
+  color: var(--text-secondary, #aaa);
+}
+.caption-notes {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1.5px solid var(--rail-border, #333);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary, #fff);
+  font-size: 12px;
+  resize: none;
+  box-sizing: border-box;
+}
+.caption-context-line {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  margin: 2px 0;
+}
+.caption-gen-btn {
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent, #e05a1a);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.caption-gen-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.caption-error {
+  font-size: 12px;
+  color: #f87;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: rgba(255,80,80,0.08);
+}
+.caption-results { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.caption-card {
+  padding: 10px 11px;
+  border: 1px solid var(--rail-border, #333);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.caption-text { font-size: 12.5px; line-height: 1.5; margin: 0; color: var(--text-primary, #fff); }
+.caption-hashtags { font-size: 11px; line-height: 1.6; margin: 0; color: var(--text-secondary, #888); word-break: break-word; }
+.caption-hashtag-card { border-style: dashed; }
+.caption-card-actions { display: flex; gap: 6px; }
+.caption-copy-btn {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--rail-border, #444);
+  background: transparent;
+  color: var(--text-secondary, #aaa);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.caption-copy-btn:hover { border-color: var(--accent, #e05a1a); color: var(--text-primary, #fff); }
+.caption-copy-combo { border-color: color-mix(in srgb, var(--accent, #e05a1a) 50%, transparent); }
+
+/* ==========================================================================
+   Occasion Auto-Badge — small animated corner badge over the 3D canvas
+   ========================================================================== */
+
+.sos-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Hint overlay shown when no sheet panel is open */
+.sos-canvas-hint {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  pointer-events: none;
+  background: rgba(15, 15, 15, 0.85);
+  border: 1px solid var(--manga-accent, #e05a1a);
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-family: var(--manga-body, "Oswald", sans-serif);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.75);
+  white-space: nowrap;
+  animation: hint-pulse 2s ease-in-out infinite;
+}
+.sos-canvas-hint strong {
+  color: var(--manga-accent, #e05a1a);
+}
+@keyframes hint-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* ==========================================================================
+   App Guide Overlay
+   ========================================================================== */
+
+.sos-guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+  cursor: pointer;
+}
+
+.sos-guide-inner {
+  position: relative;
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  cursor: default;
+  margin: auto;
+}
+
+/* X close button */
+.sos-guide-close {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(224, 90, 26, 0.5);
+  background: rgba(15, 15, 15, 0.95);
+  color: rgba(255,255,255,0.7);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  transition: border-color 0.15s, color 0.15s;
+}
+.sos-guide-close:hover {
+  border-color: var(--manga-accent, #e05a1a);
+  color: #fff;
+}
+
+.sos-guide-header {
+  position: relative;
+  padding: 20px 0 12px;
+  overflow: hidden;
+  border-bottom: 2px solid var(--manga-accent, #e05a1a);
+}
+
+.sos-guide-speedlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-conic-gradient(
+    from 0deg at 50% 120%,
+    rgba(224,90,26,0.07) 0deg,
+    transparent 2deg,
+    transparent 8deg
+  );
+  pointer-events: none;
+}
+
+.sos-guide-title-block {
+  position: relative;
+  text-align: center;
+}
+
+.sos-guide-eyebrow {
+  display: block;
+  font-family: var(--manga-display, "Saira Stencil One", sans-serif);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--manga-accent, #e05a1a);
+  margin-bottom: 4px;
+}
+
+.sos-guide-title {
+  font-family: var(--manga-display, "Saira Stencil One", sans-serif);
+  font-size: clamp(20px, 5vw, 32px);
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+.sos-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .sos-guide-grid { grid-template-columns: 1fr; }
+}
+
+.sos-guide-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: rgba(245, 240, 232, 0.05);
+  border: 1px solid rgba(224, 90, 26, 0.25);
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.sos-guide-card-glyph {
+  font-size: 20px;
+  color: var(--manga-accent, #e05a1a);
+  flex-shrink: 0;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.sos-guide-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sos-guide-card-name {
+  font-family: var(--manga-display, "Saira Stencil One", sans-serif);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--manga-accent, #e05a1a);
+}
+
+.sos-guide-card-headline {
+  font-family: var(--manga-body, "Oswald", sans-serif);
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  display: block;
+  margin-top: 1px;
+}
+
+.sos-guide-card-body {
+  font-family: var(--manga-body, "Oswald", sans-serif);
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.55);
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+
+.sos-guide-flow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  background: rgba(224, 90, 26, 0.08);
+  border: 1px solid rgba(224, 90, 26, 0.3);
+  border-radius: 4px;
+  padding: 10px 14px;
+}
+
+.sos-guide-flow-label {
+  font-family: var(--manga-display, "Saira Stencil One", sans-serif);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--manga-accent, #e05a1a);
+  margin-right: 8px;
+}
+
+.sos-guide-flow-step {
+  font-family: var(--manga-body, "Oswald", sans-serif);
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.75);
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sos-guide-flow-arrow {
+  color: var(--manga-accent, #e05a1a);
+  font-size: 10px;
+}
+
+.sos-guide-cta {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  background: var(--manga-accent, #e05a1a);
+  border: none;
+  border-radius: 4px;
+  font-family: var(--manga-display, "Saira Stencil One", sans-serif);
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sos-guide-cta:hover {
+  background: #f06a2a;
+}
+
+/* "?" button that reopens the guide */
+.sos-guide-btn {
+  background: none;
+  border: 1px solid rgba(224, 90, 26, 0.4);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  color: var(--manga-accent, #e05a1a);
+  font-family: var(--manga-body, "Oswald", sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.sos-guide-btn:hover {
+  background: rgba(224, 90, 26, 0.15);
+  border-color: var(--manga-accent, #e05a1a);
+}
+
+/* ==========================================================================
+   Occasion Badge
+   ========================================================================== */
+
+.sos-occasion-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 6px;
+  border-radius: 999px;
+  background: rgba(14, 17, 23, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  animation: occasion-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.sos-occasion-emoji {
+  font-size: 14px;
+  line-height: 1;
+  animation: occasion-bounce 1.2s ease-in-out infinite;
+}
+
+.sos-occasion-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+@keyframes occasion-pop {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes occasion-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sos-occasion-badge {
+    animation: none;
+  }
+  .sos-occasion-emoji {
+    animation: none;
+  }
+}
+
+/* ==========================================================================
+   Scene Presets — one-tap complete aesthetic setups
+   ========================================================================== */
+
+.sos-scene-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+
+.sos-scene-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sos-scene-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sos-line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sos-text-2);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--sos-fast), border-color var(--sos-fast), color var(--sos-fast);
+}
+
+.sos-scene-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--sos-line-2);
+  color: var(--sos-text);
+}
+
+.sos-scene-chip:focus-visible {
+  outline: 2px solid var(--sos-acc);
+  outline-offset: 2px;
+}
+
+.sos-scene-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.sos-scene-name {
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Manga redesign — toolbar, cream-paper sheets, canvas chrome, splash
+   --------------------------------------------------------------------------
+   Uses the --manga-* tokens defined at the top of this file. Sits last so it
+   wins over the graphite/brass skin above at equal specificity; the sheet
+   contents are re-skinned mostly by re-pointing the older tokens (--sos2-*,
+   --sos-*, --text-*) at the paper palette inside .sos2-sheet, plus targeted
+   fixes for the rules that hard-code light text for a dark panel.
+   ========================================================================== */
+
+/* -- toolbar: full-width ink strip along the bottom edge ------------------- */
+.sos2-dock {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: none;
+  height: var(--manga-bar-h);
+  justify-content: center;
+  gap: 0;
+  padding: 0 16px;
+  border-radius: 0;
+  border: 0;
+  border-top: 3px solid var(--manga-ink);
+  /* the thin orange line above the ink edge */
+  box-shadow: 0 -2px 0 var(--manga-accent);
+  background: var(--manga-bg);
+}
+.sos2-dock-btn {
+  flex: 1 1 0;
+  max-width: 132px;
+  width: auto;
+  height: 100%;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 0;
+  border: 0;
+  border-top: 3px solid transparent;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+}
+.sos2-dock-glyph {
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", system-ui, sans-serif;
+  font-size: 20px;
+  line-height: 1;
+}
+.sos2-dock-label {
+  font-family: var(--manga-head);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.sos2-dock-btn:hover {
+  color: var(--manga-text-on-dark);
+  background: transparent;
+  border-bottom-color: var(--manga-text-on-dark);
+}
+.sos2-dock-btn[data-on] {
+  color: var(--manga-accent);
+  background: linear-gradient(to bottom, rgba(224, 90, 26, 0.12), transparent 70%);
+  border-top-color: var(--manga-accent);
+}
+.sos2-dock-btn[data-on] .sos2-dock-label {
+  color: var(--manga-text-on-dark);
+}
+/* speed lines fanning out to the right, just above the active section */
+.sos2-dock-btn[data-on]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  width: 96px;
+  height: 30px;
+  margin-left: -48px;
+  pointer-events: none;
+  opacity: 0.15;
+  background:
+    linear-gradient(-22deg, transparent calc(50% - 1px), #fff 0 calc(50% + 1px), transparent 0),
+    linear-gradient(-11deg, transparent calc(50% - 1px), #fff 0 calc(50% + 1px), transparent 0),
+    linear-gradient(0deg, transparent calc(50% - 1.5px), #fff 0 calc(50% + 1.5px), transparent 0),
+    linear-gradient(11deg, transparent calc(50% - 1px), #fff 0 calc(50% + 1px), transparent 0),
+    linear-gradient(22deg, transparent calc(50% - 1px), #fff 0 calc(50% + 1px), transparent 0);
+  -webkit-mask-image: linear-gradient(90deg, transparent 50%, #000 62%, transparent);
+  mask-image: linear-gradient(90deg, transparent 50%, #000 62%, transparent);
+}
+.sos2-dock-btn:focus-visible {
+  outline: 2px solid var(--manga-accent);
+  outline-offset: -4px;
+}
+
+/* -- sheets: cream paper, ink frame, ink header ---------------------------- */
+.sos2-sheet {
+  /* the older skins' tokens, re-pointed at the paper palette */
+  --sos2-bg: var(--manga-panel);
+  --sos2-bg-2: var(--manga-panel-2);
+  --sos2-text: var(--manga-ink);
+  --sos2-text-2: var(--manga-ink-2);
+  --sos2-brass: var(--manga-ink); /* fills: selected chips, primary buttons */
+  --sos2-brass-ink: var(--manga-panel);
+  --sos2-line: var(--manga-ink);
+  --sos-text: var(--manga-ink);
+  --sos-text-2: var(--manga-ink-2);
+  --sos-text-3: #5c5850;
+  --sos-muted: var(--manga-ink-2);
+  --sos-line: rgba(17, 17, 17, 0.4);
+  --sos-line-2: var(--manga-ink);
+  --sos-border: rgba(17, 17, 17, 0.4);
+  --sos-glass: transparent;
+  --sos-glass-3: rgba(17, 17, 17, 0.05);
+  --sos-acc: var(--manga-accent);
+  --sos-acc-soft: rgba(224, 90, 26, 0.18);
+  --text-primary: var(--manga-ink);
+  --text-secondary: var(--manga-ink-2);
+  --rail-border: var(--manga-ink);
+  --accent: var(--manga-accent);
+
+  max-height: calc(100vh - 64px - var(--manga-bar-h) - 16px);
+  border-radius: var(--manga-radius);
+  background: var(--manga-panel);
+  color: var(--manga-ink);
+  border-top: var(--manga-border-thick);
+  border-left: var(--manga-border-thick);
+  border-right: var(--manga-border);
+  border-bottom: var(--manga-border);
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.55);
+}
+.sos2-sheet[data-tall] {
+  bottom: calc(var(--manga-bar-h) + 16px);
+  max-height: none;
+}
+.sos2-sheet-head {
+  /* the header is ink, so its controls go back to light-on-dark */
+  --sos2-text: var(--manga-text-on-dark);
+  --sos2-text-2: rgba(245, 240, 232, 0.72);
+  --sos2-line: rgba(245, 240, 232, 0.32);
+  --sos2-brass: var(--manga-accent);
+  padding: 8px 10px 8px 12px;
+  background: var(--manga-ink);
+}
+.sos2-sheet-tile {
+  color: var(--manga-accent);
+}
+.sos2-sheet-title {
+  font-family: var(--manga-head);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--manga-text-on-dark);
+}
+.sos2-sheet-head .sos2-icon-btn {
+  border-radius: var(--manga-radius);
+}
+.sos2-sheet-head .sos2-icon-btn:hover {
+  border-color: var(--manga-text-on-dark);
+}
+.sos2-peek-btn[data-on],
+.sos2-pin-btn[data-on] {
+  background: rgba(224, 90, 26, 0.18);
+}
+.sos2-sheet-body {
+  color: var(--manga-ink);
+  scrollbar-width: thin;
+  scrollbar-color: var(--manga-ink) var(--manga-panel-2);
+}
+.sos2-sheet-body::-webkit-scrollbar {
+  width: 8px;
+}
+.sos2-sheet-body::-webkit-scrollbar-track {
+  background: var(--manga-panel-2);
+}
+.sos2-sheet-body::-webkit-scrollbar-thumb {
+  background: var(--manga-ink);
+  border-radius: 0;
+}
+.sos2-sheet-subhead {
+  font-family: var(--manga-body);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--manga-ink);
+  border-left: 4px solid var(--manga-accent);
+  padding: 1px 0 1px 8px;
+  margin-bottom: 8px;
+}
+.sos2-sheet-divider {
+  height: 2px;
+  background: var(--manga-ink);
+  margin: 14px 0;
+}
+.sos2-count {
+  color: var(--manga-accent-ink);
+}
+.sos2-sheet-body input[type="range"] {
+  accent-color: var(--manga-accent);
+}
+.sos2-sheet-body :is(input, select, button, textarea):focus-visible,
+.sos2-sheet .sos2-input:focus-visible {
+  outline: 2px solid var(--manga-accent);
+  outline-offset: 2px;
+}
+
+/* chips and secondary buttons: paper with an ink border */
+.sos2-sheet :is(
+    .sos-pchip,
+    .sos-chip,
+    .sos-btn,
+    .sos2-btn,
+    .sos2-disclosure,
+    .sos2-ground-chip,
+    .sos2-look-chip,
+    .sos2-mood-chip,
+    .sos2-propgroup-chip,
+    .sos2-posts-chip,
+    .sos2-posts-tab,
+    .sos-scene-chip,
+    .sos2-env-btn,
+    .sos2-anime-btn,
+    .caption-copy-btn,
+    .reel-tpl-card,
+    .sos2-occ-card,
+    .sos2-tl-btn,
+    .sos2-tl-dur-btn,
+    .sos2-tl-add
+  ) {
+  background: var(--manga-panel);
+  border: var(--manga-border);
+  border-radius: var(--manga-radius);
+  color: var(--manga-ink);
+  font-family: var(--manga-body);
+  font-weight: 500;
+}
+.sos2-sheet :is(
+    .sos-pchip,
+    .sos-chip,
+    .sos-btn,
+    .sos2-btn,
+    .sos2-disclosure,
+    .sos2-ground-chip,
+    .sos2-look-chip,
+    .sos2-mood-chip,
+    .sos2-propgroup-chip,
+    .sos2-posts-chip,
+    .sos2-posts-tab,
+    .sos-scene-chip,
+    .sos2-env-btn,
+    .sos2-anime-btn,
+    .caption-copy-btn,
+    .reel-tpl-card,
+    .sos2-occ-card,
+    .sos2-tl-btn,
+    .sos2-tl-dur-btn,
+    .sos2-tl-add
+  ):hover:not(:disabled) {
+  background: var(--manga-panel-2);
+  border-color: var(--manga-ink);
+  color: var(--manga-ink);
+}
+/* selected: solid ink, cream text */
+.sos2-sheet :is(
+    .sos-pchip[data-on],
+    .sos-chip[data-on],
+    .sos2-ground-chip[aria-pressed="true"],
+    .sos2-look-chip[aria-pressed="true"],
+    .sos2-posts-chip.active,
+    .sos2-posts-tab.active,
+    .sos2-env-btn.active,
+    .sos2-anime-btn[data-on],
+    .reel-tpl-card[data-active],
+    .sos2-occ-card[data-active]
+  ),
+.sos2-sheet :is(
+    .sos-pchip[data-on],
+    .sos-chip[data-on],
+    .sos2-ground-chip[aria-pressed="true"],
+    .sos2-look-chip[aria-pressed="true"],
+    .sos2-posts-chip.active,
+    .sos2-posts-tab.active,
+    .sos2-env-btn.active,
+    .sos2-anime-btn[data-on],
+    .reel-tpl-card[data-active],
+    .sos2-occ-card[data-active]
+  ):hover:not(:disabled) {
+  background: var(--manga-ink);
+  border-color: var(--manga-ink);
+  color: var(--manga-panel);
+  box-shadow: none;
+}
+/* the text inside a selected card follows the card's cream */
+.sos2-sheet :is(.sos2-occ-card[data-active], .reel-tpl-card[data-active]) * {
+  color: inherit;
+}
+.sos2-sheet .sos2-propgroup-clear:hover:not(:disabled),
+.sos2-sheet .sos2-btn-danger {
+  color: var(--manga-danger-ink);
+  border-color: var(--manga-danger-ink);
+}
+
+/* primary actions: ink slab, stencil type, orange left edge */
+.sos2-sheet :is(.sos2-btn-primary, .ai-build-btn, .caption-gen-btn, .sos2-posts-dl) {
+  background: var(--manga-ink);
+  color: var(--manga-panel);
+  border: 0;
+  border-left: 3px solid var(--manga-accent);
+  border-radius: var(--manga-radius);
+  font-family: var(--manga-head);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sos2-sheet :is(.sos2-btn-primary, .ai-build-btn, .caption-gen-btn, .sos2-posts-dl):hover:not(:disabled) {
+  background: #2a2a2a;
+  border-color: var(--manga-accent);
+  color: var(--manga-panel);
+}
+.sos2-sheet [data-testid="capture-shot"] {
+  border: 0 !important;
+  border-left: 3px solid var(--manga-accent) !important;
+  border-radius: var(--manga-radius) !important;
+  font-family: var(--manga-head) !important;
+  letter-spacing: 0.08em;
+}
+.sos2-sheet .sos2-motionlab-toggle {
+  width: 100%;
+  padding: 10px 12px;
+}
+
+/* text fields on paper */
+.sos2-sheet :is(
+    .sos2-input,
+    .sos-field input,
+    .sos-field select,
+    .sos-search,
+    .sos-rename input,
+    .ai-key-input,
+    .ai-prompt-textarea,
+    .sos2-tl-view-sel,
+    .sos2-posts-field input[type="text"],
+    .sos2-posts-field input:not([type])
+  ) {
+  background: #fffdf8;
+  color: var(--manga-ink);
+  border: 2px solid var(--manga-ink);
+  border-radius: var(--manga-radius);
+}
+.sos2-sheet ::placeholder {
+  color: #77726a;
+}
+
+/* rules that hard-code light text for a dark panel */
+.sos2-sheet :is(
+    .sos-progress > em,
+    .sos2-look-row,
+    .sos2-look-row output,
+    .sos2-look-toggle strong,
+    .sos2-project-info strong,
+    .sos2-director-keys li,
+    .sos-slider-value,
+    .sos-star,
+    .sos-mat-star,
+    .ai-error,
+    .ai-product-badge strong,
+    .ai-error-dismiss:hover,
+    .reel-tpl-name,
+    .sos2-bgm-prev:hover,
+    .sos2-bgm-next:hover
+  ) {
+  color: var(--manga-ink);
+}
+.sos2-sheet :is(
+    .sos-drop,
+    .sos-msgs li,
+    .sos-field > em,
+    .sos2-project-info > span,
+    .sos-shelf-head,
+    .inspector-label,
+    .ai-error-dismiss,
+    .ai-product-badge,
+    .ai-hint,
+    .reel-templates-label,
+    .reel-tpl-meta,
+    .sos2-bgm-prev,
+    .sos2-bgm-next,
+    .sos2-bgm-name,
+    .sos2-posts-field span,
+    .sos2-env-hint,
+    .sos-pthumb-none
+  ) {
+  color: var(--manga-ink-2);
+}
+.sos2-sheet :is(
+    .sos-drop[data-over],
+    .sos-btn-gold,
+    .sos-star[data-on],
+    .sos-mat-star[data-on],
+    .sos-reel-why,
+    .sos2-occ-action,
+    .sos2-occ-action--set,
+    .sos2-occ-scene-note,
+    .ai-result,
+    .ai-mic-btn,
+    .sos2-tl-dur-val,
+    .sos2-whisper-text,
+    .sos2-whisper-x,
+    .sos2-bgm-play
+  ) {
+  color: var(--manga-accent-ink);
+}
+.sos2-sheet :is(.sos-btn-gold, .sos-star[data-on], .sos-mat-star[data-on]) {
+  border-color: var(--manga-accent);
+}
+.sos2-sheet :is(.sos-key-warning, .caption-error, .sos2-tl-btn-del, .sos-msgs li[data-level="error"]) {
+  color: var(--manga-danger-ink);
+}
+.sos2-sheet .sos-msgs li[data-level="warn"] {
+  color: #8a5a00;
+}
+.sos2-sheet :is(.sos-msgs li[data-level="success"], .sos-tag-imp) {
+  color: var(--manga-ok-ink);
+}
+.sos2-sheet .sos-asset[data-active="true"] {
+  border-color: var(--manga-accent);
+  background: rgba(224, 90, 26, 0.1);
+  box-shadow: inset 0 0 0 1.5px var(--manga-accent);
+}
+.sos2-sheet .sos-star {
+  background: transparent;
+}
+
+/* Engine controls portaled in from StudioControls style themselves inline for
+   its dark panel; re-ink them (same attribute-selector approach as the
+   "lift the greys" rule above). */
+.sos2-sheet-body [style*="color: rgba(255, 255, 255"],
+.sos2-sheet-body [style*="color: rgb(255, 255, 255)"] {
+  color: var(--manga-ink) !important;
+}
+.sos2-sheet-body [style*="color: rgba(255, 255, 255, 0.2"],
+.sos2-sheet-body [style*="color: rgba(255, 255, 255, 0.3"],
+.sos2-sheet-body [style*="color: rgba(255, 255, 255, 0.4"],
+.sos2-sheet-body [style*="color: rgba(255, 255, 255, 0.5"] {
+  color: var(--manga-ink-2) !important;
+}
+.sos2-sheet-body [style*="color: rgb(232, 181, 77)"] {
+  color: var(--manga-accent-ink) !important;
+}
+.sos2-sheet-body [style*="background: rgba(10, 10, 10"],
+.sos2-sheet-body [style*="background: rgba(5, 5, 5"] {
+  background: var(--manga-panel) !important;
+}
+.sos2-sheet-body [style*="border: 1px solid rgba(255, 255, 255"] {
+  border-color: rgba(17, 17, 17, 0.5) !important;
+}
+.sos2-sheet-body [style*="background: rgba(232, 181, 77"] {
+  background: rgba(224, 90, 26, 0.14) !important;
+}
+.sos2-sheet-body [style*="border: 1px solid rgba(232, 181, 77"] {
+  border-color: var(--manga-accent) !important;
+}
+.sos2-sheet-body [style*="background: rgba(255, 255, 255, 0.92)"] {
+  background: var(--manga-ink) !important;
+  color: var(--manga-panel) !important;
+}
+
+/* -- canvas chrome --------------------------------------------------------- */
+/* the stage's own dark backdrop: the R3F canvas div carries an inline #050505
+   while no parallax environment is active (transparent otherwise, left alone) */
+.sos-canvas-manga-frame > div[style*="background: rgb(5, 5, 5)"] {
+  background: var(--manga-bg) !important;
+}
+/* orange frame + halftone dots over the visible viewport (above the canvas at
+   z 0, below the shell at z 8); its bottom edge meets the toolbar's orange line */
+.sos-canvas-manga-frame::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 var(--manga-bar-h) 0;
+  z-index: 1;
+  pointer-events: none;
+  border: 3px solid var(--manga-accent);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.04) 0.75px, transparent 1.25px);
+  background-size: 12px 12px;
+}
+.sos-canvas-manga-frame::after {
+  content: "STUDIO OF SIDECARS";
+  position: fixed;
+  left: 16px;
+  bottom: calc(var(--manga-bar-h) + 12px);
+  z-index: 1;
+  pointer-events: none;
+  font-family: var(--manga-head);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: #fff;
+  opacity: 0.25;
+}
+
+/* -- loading splash (restyles components/LoadingScreen) -------------------- */
+.loading-screen[data-loading] {
+  gap: 18px;
+  overflow: hidden;
+  background: var(--manga-bg);
+  color: var(--manga-text-on-dark);
+  font-family: var(--manga-body);
+}
+.loading-screen[data-loading]::before {
+  content: "STUDIO OF SIDECARS";
+  position: relative;
+  z-index: 1;
+  padding: 0 16px;
+  font-family: var(--manga-head);
+  font-size: 48px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--manga-text-on-dark);
+  text-shadow: 3px 3px 0 var(--manga-accent);
+}
+/* five speed lines radiating from behind the title (its centre sits ~28px
+   above the screen centre: title 48 + gap 18 + label + gap 18 + bar 3) */
+.loading-screen[data-loading]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(50% - 28px);
+  width: min(1100px, 150vw);
+  height: 280px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.35;
+  background:
+    linear-gradient(-14deg, transparent calc(50% - 1px), var(--manga-text-on-dark) 0 calc(50% + 1px), transparent 0),
+    linear-gradient(-7deg, transparent calc(50% - 1.5px), var(--manga-text-on-dark) 0 calc(50% + 1.5px), transparent 0),
+    linear-gradient(0deg, transparent calc(50% - 2px), var(--manga-accent) 0 calc(50% + 2px), transparent 0),
+    linear-gradient(7deg, transparent calc(50% - 1.5px), var(--manga-text-on-dark) 0 calc(50% + 1.5px), transparent 0),
+    linear-gradient(14deg, transparent calc(50% - 1px), var(--manga-text-on-dark) 0 calc(50% + 1px), transparent 0);
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent 22%, #000 42%, transparent 72%);
+  mask-image: radial-gradient(ellipse at center, transparent 22%, #000 42%, transparent 72%);
+}
+.loading-screen[data-loading] .loading-screen__spinner,
+.loading-screen[data-loading] .loading-screen__pct {
+  display: none;
+}
+/* the label element keeps its "Loading studio" text for screen readers; the
+   visible line is the splash's own */
+.loading-screen[data-loading] .loading-screen__label {
+  font-size: 0;
+  letter-spacing: 0;
+}
+.loading-screen[data-loading] .loading-screen__label::after {
+  content: "Loading scene…";
+  font-family: var(--manga-body);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--manga-text-on-dark);
+  opacity: 0.5;
+}
+.loading-screen[data-loading] .loading-screen__bar {
+  width: 160px;
+  border-radius: 0;
+  background: rgba(245, 240, 232, 0.12);
+}
+.loading-screen[data-loading] .loading-screen__fill {
+  background: var(--manga-accent);
 }

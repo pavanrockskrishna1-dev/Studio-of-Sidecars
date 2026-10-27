@@ -2,6 +2,10 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 
+// Isolated manager keeps thumbnail loads out of drei's useProgress so the
+// full-screen LoadingScreen never fires for prop thumbnails.
+const thumbLoadingManager = new THREE.LoadingManager();
+
 // Shared off-screen renderer — created lazily on first requestThumb call.
 let renderer = null;
 let camera = null;
@@ -49,9 +53,9 @@ function processQueue() {
   running = true;
   const { id, modelPath } = queue.shift();
 
-  const dracoLoader = new DRACOLoader();
+  const dracoLoader = new DRACOLoader(thumbLoadingManager);
   dracoLoader.setDecoderPath("/draco/");
-  const gltfLoader = new GLTFLoader();
+  const gltfLoader = new GLTFLoader(thumbLoadingManager);
   gltfLoader.setDRACOLoader(dracoLoader);
 
   gltfLoader.load(
