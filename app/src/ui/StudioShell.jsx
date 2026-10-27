@@ -7,18 +7,12 @@ import useIdleFade from "./useIdleFade";
 import useSessionUi from "./useSessionUi";
 import usePosterKitDefault from "./usePosterKitDefault";
 import {
-  CreatorBody,
-  MaterialsBody,
-  CameraBody,
-  LightBody,
-  SaveBody,
-  CaptureBody,
-  GarageBody,
-  PosterBody,
-  PosterMakerBody,
-  ReelBody,
-  OccasionBody,
-  AiBody,
+  SceneBody,
+  StyleBody,
+  PropsBody,
+  CreateBody,
+  ReelSectionBody,
+  ExportBody,
 } from "./SheetContents";
 import OccasionParticles from "./OccasionParticles";
 import OccasionBackground from "./OccasionBackground";
@@ -36,8 +30,9 @@ import * as measure from "../garage/measure";
 /* ==========================================================================
    StudioShell — the creator UI (Agent #2 · UI ONLY)
    --------------------------------------------------------------------------
-   Slice U1, Stage B2: the shell is the capsule, the dock and the dock's nine
-   sheets. Every dock icon opens its own floating Sheet with the real controls
+   Slice U1, Stage B2: the shell is the capsule, the dock and the dock's
+   sheets (manga redesign: six toolbar sections, each grouping the older tool
+   sheets). Every toolbar section opens its own floating Sheet with the real controls
    moved in (ui/SheetContents.jsx, ui/slots.js, ui/lightSlot.js); the old
    left Asset Library, right StudioControls panel and InspectorRail never
    render from any icon any more (their files are still in the repo for a later
@@ -53,30 +48,25 @@ import * as measure from "../garage/measure";
    Z-order: shell 8 < StudioControls 10 < SelectionInspector 20 < Capture 40.
    ========================================================================== */
 
-// The nine sheets. Slice U2: no sheet opens in the middle of the screen (it
-// would cover the product); every sheet docks to the right edge, from below the
-// capsule to just above the dock row, and scrolls inside. `tall` sheets always
-// stretch to the dock row; the others are as tall as their content.
+// The six toolbar sections (manga redesign). Each sheet stacks the old tool
+// sheets it groups (see the section bodies in SheetContents.jsx). Slice U2: no
+// sheet opens in the middle of the screen (it would cover the product); every
+// sheet docks to an edge, from below the capsule to just above the toolbar,
+// and scrolls inside.
 const SHEETS = {
-  creator: { title: "Creator", icon: "cube", tall: true },
-  materials: { title: "Materials", icon: "palette", tall: true },
-  camera: { title: "Camera", icon: "camera" },
-  light: { title: "Light", icon: "sun" },
-  garage: { title: "Garage", icon: "frame", tall: true },
-  poster: { title: "Poster", icon: "swatch", tall: true },
+  scene: { title: "Scene", icon: "cube", tall: true },
+  style: { title: "Style", icon: "sun", tall: true },
+  props: { title: "Props", icon: "frame", tall: true },
+  create: { title: "Create", icon: "star", tall: true },
   reel: { title: "Reel", icon: "film", tall: true },
-  posterMaker: { title: "Poster Maker", icon: "render" },
-  occasions: { title: "Occasions", icon: "occasions", tall: true },
-  ai: { title: "AI Builder", icon: "star" },
-  save: { title: "Save", icon: "save" },
-  capture: { title: "Capture", icon: "aperture" },
+  export: { title: "Export", icon: "aperture", tall: true },
 };
 
 // Placement of up to two open sheets: the first one docks to the right edge; a
 // second open sheet (the pinned one keeps its place) docks to the LEFT edge, so
 // two sheets are never on the same side. At 1366x768 the left (16-396) and
-// right (970-1350) columns never overlap each other or the dock (440-927,
-// bottom row), and the middle of the view stays free.
+// right (970-1350) columns never overlap each other, both stop above the
+// full-width toolbar, and the middle of the view stays free.
 function placeSheets(pinnedId, normalId) {
   const out = {};
   if (pinnedId) out[pinnedId] = "right";
@@ -112,7 +102,6 @@ export default function StudioShell() {
   const openIds = [pinnedId, normalId].filter(Boolean);
 
   const handleDockSelect = (id) => {
-    if (id === "animate") { setMotionLabOpen((v) => !v); return; }
     if (id === pinnedId) setPinnedId(null);
     else if (id === normalId) setNormalId(null);
     else setNormalId(id);
@@ -131,14 +120,14 @@ export default function StudioShell() {
 
   // Esc closes only the unpinned sheet. It stays out of the way while Esc has
   // another job on the stage: stopping a turntable preview / export, and the
-  // Garage clearing its part selection or its measure pair (the canvas
-  // handlers act on the same keypress; a second Esc then closes the sheet).
+  // Garage (in Props) clearing its part selection or its measure pair (the
+  // canvas handlers act on the same keypress; a second Esc then closes the sheet).
   useEffect(() => {
     if (!normalId) return undefined;
     const onKey = (e) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       if (animationStore.getSnapshot().mode !== "idle") return;
-      if (normalId === "garage") {
+      if (normalId === "props") {
         const m = measure.getSnapshot();
         if (garageStore.getSnapshot().selectionCount > 0 || m.pointA || m.pointB) return;
       }
@@ -151,30 +140,20 @@ export default function StudioShell() {
   const sides = placeSheets(pinnedId, normalId);
   const body = (id) => {
     switch (id) {
-      case "creator":
-        return <CreatorBody selection={assets} onSelect={assets.select} />;
-      case "materials":
-        return <MaterialsBody productId={assets.productId} />;
-      case "camera":
-        return <CameraBody />;
-      case "light":
-        return <LightBody />;
-      case "garage":
-        return <GarageBody />;
-      case "poster":
-        return <PosterBody />;
+      case "scene":
+        return <SceneBody selection={assets} onSelect={assets.select} />;
+      case "style":
+        return <StyleBody productId={assets.productId} />;
+      case "props":
+        return <PropsBody />;
+      case "create":
+        return <CreateBody productId={assets.productId} />;
       case "reel":
-        return <ReelBody />;
-      case "posterMaker":
-        return <PosterMakerBody />;
-      case "occasions":
-        return <OccasionBody />;
-      case "ai":
-        return <AiBody productId={assets.productId} />;
-      case "save":
-        return <SaveBody session={session} />;
-      case "capture":
-        return <CaptureBody />;
+        return (
+          <ReelSectionBody motionLabOpen={motionLabOpen} onToggleMotionLab={() => setMotionLabOpen((v) => !v)} />
+        );
+      case "export":
+        return <ExportBody session={session} />;
       default:
         return null;
     }

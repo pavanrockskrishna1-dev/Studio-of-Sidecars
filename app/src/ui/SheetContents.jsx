@@ -28,6 +28,7 @@ import LookPanel from "./LookPanel";
 import MoodPanel from "./MoodPanel";
 import StagePanel from "./StagePanel";
 import ProjectsPanel from "./ProjectsPanel";
+import OccasionSheet from "./OccasionSheet";
 import { hydrateRuntimeAssets, useRuntimeAssets } from "../assets/runtimeRegistry";
 import { slotRef } from "./slots";
 
@@ -92,15 +93,6 @@ export function CreatorBody({ selection, onSelect }) {
             onSelect={(id) => onSelect?.(group.kind, id)}
           />
           {group.kind === "product" ? <BbqReference /> : null}
-          {group.kind === "product" ? (
-            <>
-              <div className="sos2-sheet-divider" aria-hidden="true" />
-              <PropGroupShelf />
-              <div className="sos2-sheet-divider" aria-hidden="true" />
-              <span className="sos2-sheet-subhead">Props</span>
-              <PropsShelf />
-            </>
-          ) : null}
         </section>
       ))}
     </>
@@ -267,3 +259,95 @@ export function AiBody({ productId }) {
 }
 
 export { default as OccasionBody } from "./OccasionSheet";
+
+/* --------------------------------------------------------------------------
+   Manga redesign — the six toolbar sections. Each one stacks the existing
+   bodies above in one scrolling sheet; every slot (slotRef / lightSlotRef)
+   still appears in exactly one section, so a pinned and an open sheet never
+   claim the same portal target.
+   -------------------------------------------------------------------------- */
+
+export function SceneBody({ selection, onSelect }) {
+  return (
+    <>
+      <CreatorBody selection={selection} onSelect={onSelect} />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Camera</span>
+      <CameraBody />
+    </>
+  );
+}
+
+export function StyleBody({ productId }) {
+  return (
+    <>
+      <LightBody />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Materials</span>
+      <MaterialsBody productId={productId} />
+    </>
+  );
+}
+
+// The prop shelves moved here from the Creator body.
+export function PropsBody() {
+  return (
+    <>
+      <PropGroupShelf />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Props</span>
+      <PropsShelf />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Garage</span>
+      <GarageBody />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Occasions</span>
+      <OccasionSheet />
+    </>
+  );
+}
+
+export function CreateBody({ productId }) {
+  return (
+    <>
+      <PosterBody />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <AiBody productId={productId} />
+    </>
+  );
+}
+
+// Motion Lab is a full-screen overlay owned by StudioShell, not a sheet, so the
+// Reel section carries its toggle.
+export function ReelSectionBody({ motionLabOpen, onToggleMotionLab }) {
+  return (
+    <>
+      <button
+        type="button"
+        className="sos2-btn sos2-btn-primary sos2-motionlab-toggle"
+        aria-pressed={motionLabOpen}
+        data-testid="ui2-reel-motionlab"
+        onClick={onToggleMotionLab}
+      >
+        {motionLabOpen ? "Close Motion Lab" : "Open Motion Lab"}
+      </button>
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <ReelBody />
+    </>
+  );
+}
+
+export function ExportBody({ session }) {
+  return (
+    <>
+      <span className="sos2-sheet-subhead">Capture</span>
+      <CaptureBody />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Poster Maker</span>
+      <PosterMakerBody />
+      <div className="sos2-sheet-divider" aria-hidden="true" />
+      <span className="sos2-sheet-subhead">Save</span>
+      <SaveBody session={session} />
+    </>
+  );
+}

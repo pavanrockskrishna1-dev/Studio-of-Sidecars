@@ -333,7 +333,7 @@ export default function App() {
   return (
     <>
       <ParallaxBg />
-      <div className="sos-canvas-wrapper">
+      <div className="sos-canvas-wrapper sos-canvas-manga-frame">
         <StudioCanvas
           transparent={!!parallaxEnv}
           product={product}

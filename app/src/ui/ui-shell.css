@@ -21,6 +21,39 @@
      engine panels never sit on top of the new UI.
    ========================================================================== */
 
+/* Manga redesign: the two faces the theme (and the poster / Brand Art canvas
+   drawing, which already names them) uses. Must stay the first rule. */
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Saira+Stencil+One&display=swap");
+
+/* ==========================================================================
+   Manga theme — design tokens
+   --------------------------------------------------------------------------
+   Applied by the "Manga redesign" block at the END of this file (it has to
+   sit last to win the cascade over the older skins it restyles).
+   Contrast on the cream paper (#f5f0e8): ink 17.0:1, ink-2 8.3:1,
+   accent-ink 4.7:1.
+   ========================================================================== */
+:root {
+  --manga-bg: #0f0f0f;
+  --manga-panel: #f5f0e8; /* cream paper */
+  --manga-panel-2: #e9e1d2; /* pressed / field fill on the paper */
+  --manga-ink: #111111; /* thick ink black */
+  --manga-ink-2: #4a4640; /* secondary text on the paper */
+  --manga-accent: #e05a1a; /* BBQ orange */
+  --manga-accent-ink: #b8460f; /* orange text on the paper */
+  --manga-accent2: #f0a500; /* warm gold accent */
+  --manga-danger-ink: #b3261e;
+  --manga-ok-ink: #1f7a46;
+  --manga-border: 2.5px solid #111;
+  --manga-border-thick: 4px solid #111;
+  --manga-text-on-dark: #f5f0e8;
+  --manga-text-on-light: #111111;
+  --manga-radius: 4px; /* manga panels are nearly square-cornered */
+  --manga-head: "Saira Stencil One", "Oswald", Impact, sans-serif;
+  --manga-body: "Oswald", "Arial Narrow", Arial, sans-serif;
+  --manga-bar-h: 76px;
+}
+
 .sos-shell {
   /* --- materials (design/redesign tokens: deeper room, glass that is glass) */
   --sos-bg: #05060a;
@@ -4218,4 +4251,572 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
 
 .sos-scene-name {
   white-space: nowrap;
+}
+
+/* ==========================================================================
+   Manga redesign — toolbar, cream-paper sheets, canvas chrome, splash
+   --------------------------------------------------------------------------
+   Uses the --manga-* tokens defined at the top of this file. Sits last so it
+   wins over the graphite/brass skin above at equal specificity; the sheet
+   contents are re-skinned mostly by re-pointing the older tokens (--sos2-*,
+   --sos-*, --text-*) at the paper palette inside .sos2-sheet, plus targeted
+   fixes for the rules that hard-code light text for a dark panel.
+   ========================================================================== */
+
+/* -- toolbar: full-width ink strip along the bottom edge ------------------- */
+.sos2-dock {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: none;
+  height: var(--manga-bar-h);
+  justify-content: center;
+  gap: 0;
+  padding: 0 16px;
+  border-radius: 0;
+  border: 0;
+  border-top: 3px solid var(--manga-ink);
+  /* the thin orange line above the ink edge */
+  box-shadow: 0 -2px 0 var(--manga-accent);
+  background: var(--manga-bg);
+}
+.sos2-dock-btn {
+  flex: 1 1 0;
+  max-width: 132px;
+  width: auto;
+  height: 100%;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 0;
+  border: 0;
+  border-top: 3px solid transparent;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+}
+.sos2-dock-glyph {
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", system-ui, sans-serif;
+  font-size: 20px;
+  line-height: 1;
+}
+.sos2-dock-label {
+  font-family: var(--manga-head);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.sos2-dock-btn:hover {
+  color: var(--manga-text-on-dark);
+  background: transparent;
+  border-bottom-color: var(--manga-text-on-dark);
+}
+.sos2-dock-btn[data-on] {
+  color: var(--manga-accent);
+  background: linear-gradient(to bottom, rgba(224, 90, 26, 0.12), transparent 70%);
+  border-top-color: var(--manga-accent);
+}
+.sos2-dock-btn[data-on] .sos2-dock-label {
+  color: var(--manga-text-on-dark);
+}
+/* speed lines fanning out to the right, just above the active section */
+.sos2-dock-btn[data-on]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  width: 96px;
+  height: 30px;
+  margin-left: -48px;
+  pointer-events: none;
+  opacity: 0.15;
+  background:
+    linear-gradient(-22deg, transparent calc(50% - 1px), #fff 0 calc(50% + 1px), transparent 0),
+    linear-gradient(-11deg, transparent calc(50% - 1px), #fff 0 calc(50% + 1px), transparent 0),
+    linear-gradient(0deg, transparent calc(50% - 1.5px), #fff 0 calc(50% + 1.5px), transparent 0),
+    linear-gradient(11deg, transparent calc(50% - 1px), #fff 0 calc(50% + 1px), transparent 0),
+    linear-gradient(22deg, transparent calc(50% - 1px), #fff 0 calc(50% + 1px), transparent 0);
+  -webkit-mask-image: linear-gradient(90deg, transparent 50%, #000 62%, transparent);
+  mask-image: linear-gradient(90deg, transparent 50%, #000 62%, transparent);
+}
+.sos2-dock-btn:focus-visible {
+  outline: 2px solid var(--manga-accent);
+  outline-offset: -4px;
+}
+
+/* -- sheets: cream paper, ink frame, ink header ---------------------------- */
+.sos2-sheet {
+  /* the older skins' tokens, re-pointed at the paper palette */
+  --sos2-bg: var(--manga-panel);
+  --sos2-bg-2: var(--manga-panel-2);
+  --sos2-text: var(--manga-ink);
+  --sos2-text-2: var(--manga-ink-2);
+  --sos2-brass: var(--manga-ink); /* fills: selected chips, primary buttons */
+  --sos2-brass-ink: var(--manga-panel);
+  --sos2-line: var(--manga-ink);
+  --sos-text: var(--manga-ink);
+  --sos-text-2: var(--manga-ink-2);
+  --sos-text-3: #5c5850;
+  --sos-muted: var(--manga-ink-2);
+  --sos-line: rgba(17, 17, 17, 0.4);
+  --sos-line-2: var(--manga-ink);
+  --sos-border: rgba(17, 17, 17, 0.4);
+  --sos-glass: transparent;
+  --sos-glass-3: rgba(17, 17, 17, 0.05);
+  --sos-acc: var(--manga-accent);
+  --sos-acc-soft: rgba(224, 90, 26, 0.18);
+  --text-primary: var(--manga-ink);
+  --text-secondary: var(--manga-ink-2);
+  --rail-border: var(--manga-ink);
+  --accent: var(--manga-accent);
+
+  max-height: calc(100vh - 64px - var(--manga-bar-h) - 16px);
+  border-radius: var(--manga-radius);
+  background: var(--manga-panel);
+  color: var(--manga-ink);
+  border-top: var(--manga-border-thick);
+  border-left: var(--manga-border-thick);
+  border-right: var(--manga-border);
+  border-bottom: var(--manga-border);
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.55);
+}
+.sos2-sheet[data-tall] {
+  bottom: calc(var(--manga-bar-h) + 16px);
+  max-height: none;
+}
+.sos2-sheet-head {
+  /* the header is ink, so its controls go back to light-on-dark */
+  --sos2-text: var(--manga-text-on-dark);
+  --sos2-text-2: rgba(245, 240, 232, 0.72);
+  --sos2-line: rgba(245, 240, 232, 0.32);
+  --sos2-brass: var(--manga-accent);
+  padding: 8px 10px 8px 12px;
+  background: var(--manga-ink);
+}
+.sos2-sheet-tile {
+  color: var(--manga-accent);
+}
+.sos2-sheet-title {
+  font-family: var(--manga-head);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--manga-text-on-dark);
+}
+.sos2-sheet-head .sos2-icon-btn {
+  border-radius: var(--manga-radius);
+}
+.sos2-sheet-head .sos2-icon-btn:hover {
+  border-color: var(--manga-text-on-dark);
+}
+.sos2-peek-btn[data-on],
+.sos2-pin-btn[data-on] {
+  background: rgba(224, 90, 26, 0.18);
+}
+.sos2-sheet-body {
+  color: var(--manga-ink);
+  scrollbar-width: thin;
+  scrollbar-color: var(--manga-ink) var(--manga-panel-2);
+}
+.sos2-sheet-body::-webkit-scrollbar {
+  width: 8px;
+}
+.sos2-sheet-body::-webkit-scrollbar-track {
+  background: var(--manga-panel-2);
+}
+.sos2-sheet-body::-webkit-scrollbar-thumb {
+  background: var(--manga-ink);
+  border-radius: 0;
+}
+.sos2-sheet-subhead {
+  font-family: var(--manga-body);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--manga-ink);
+  border-left: 4px solid var(--manga-accent);
+  padding: 1px 0 1px 8px;
+  margin-bottom: 8px;
+}
+.sos2-sheet-divider {
+  height: 2px;
+  background: var(--manga-ink);
+  margin: 14px 0;
+}
+.sos2-count {
+  color: var(--manga-accent-ink);
+}
+.sos2-sheet-body input[type="range"] {
+  accent-color: var(--manga-accent);
+}
+.sos2-sheet-body :is(input, select, button, textarea):focus-visible,
+.sos2-sheet .sos2-input:focus-visible {
+  outline: 2px solid var(--manga-accent);
+  outline-offset: 2px;
+}
+
+/* chips and secondary buttons: paper with an ink border */
+.sos2-sheet :is(
+    .sos-pchip,
+    .sos-chip,
+    .sos-btn,
+    .sos2-btn,
+    .sos2-disclosure,
+    .sos2-ground-chip,
+    .sos2-look-chip,
+    .sos2-mood-chip,
+    .sos2-propgroup-chip,
+    .sos2-posts-chip,
+    .sos2-posts-tab,
+    .sos-scene-chip,
+    .sos2-env-btn,
+    .sos2-anime-btn,
+    .caption-copy-btn,
+    .reel-tpl-card,
+    .sos2-occ-card,
+    .sos2-tl-btn,
+    .sos2-tl-dur-btn,
+    .sos2-tl-add
+  ) {
+  background: var(--manga-panel);
+  border: var(--manga-border);
+  border-radius: var(--manga-radius);
+  color: var(--manga-ink);
+  font-family: var(--manga-body);
+  font-weight: 500;
+}
+.sos2-sheet :is(
+    .sos-pchip,
+    .sos-chip,
+    .sos-btn,
+    .sos2-btn,
+    .sos2-disclosure,
+    .sos2-ground-chip,
+    .sos2-look-chip,
+    .sos2-mood-chip,
+    .sos2-propgroup-chip,
+    .sos2-posts-chip,
+    .sos2-posts-tab,
+    .sos-scene-chip,
+    .sos2-env-btn,
+    .sos2-anime-btn,
+    .caption-copy-btn,
+    .reel-tpl-card,
+    .sos2-occ-card,
+    .sos2-tl-btn,
+    .sos2-tl-dur-btn,
+    .sos2-tl-add
+  ):hover:not(:disabled) {
+  background: var(--manga-panel-2);
+  border-color: var(--manga-ink);
+  color: var(--manga-ink);
+}
+/* selected: solid ink, cream text */
+.sos2-sheet :is(
+    .sos-pchip[data-on],
+    .sos-chip[data-on],
+    .sos2-ground-chip[aria-pressed="true"],
+    .sos2-look-chip[aria-pressed="true"],
+    .sos2-posts-chip.active,
+    .sos2-posts-tab.active,
+    .sos2-env-btn.active,
+    .sos2-anime-btn[data-on],
+    .reel-tpl-card[data-active],
+    .sos2-occ-card[data-active]
+  ),
+.sos2-sheet :is(
+    .sos-pchip[data-on],
+    .sos-chip[data-on],
+    .sos2-ground-chip[aria-pressed="true"],
+    .sos2-look-chip[aria-pressed="true"],
+    .sos2-posts-chip.active,
+    .sos2-posts-tab.active,
+    .sos2-env-btn.active,
+    .sos2-anime-btn[data-on],
+    .reel-tpl-card[data-active],
+    .sos2-occ-card[data-active]
+  ):hover:not(:disabled) {
+  background: var(--manga-ink);
+  border-color: var(--manga-ink);
+  color: var(--manga-panel);
+  box-shadow: none;
+}
+/* the text inside a selected card follows the card's cream */
+.sos2-sheet :is(.sos2-occ-card[data-active], .reel-tpl-card[data-active]) * {
+  color: inherit;
+}
+.sos2-sheet .sos2-propgroup-clear:hover:not(:disabled),
+.sos2-sheet .sos2-btn-danger {
+  color: var(--manga-danger-ink);
+  border-color: var(--manga-danger-ink);
+}
+
+/* primary actions: ink slab, stencil type, orange left edge */
+.sos2-sheet :is(.sos2-btn-primary, .ai-build-btn, .caption-gen-btn, .sos2-posts-dl) {
+  background: var(--manga-ink);
+  color: var(--manga-panel);
+  border: 0;
+  border-left: 3px solid var(--manga-accent);
+  border-radius: var(--manga-radius);
+  font-family: var(--manga-head);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sos2-sheet :is(.sos2-btn-primary, .ai-build-btn, .caption-gen-btn, .sos2-posts-dl):hover:not(:disabled) {
+  background: #2a2a2a;
+  border-color: var(--manga-accent);
+  color: var(--manga-panel);
+}
+.sos2-sheet [data-testid="capture-shot"] {
+  border: 0 !important;
+  border-left: 3px solid var(--manga-accent) !important;
+  border-radius: var(--manga-radius) !important;
+  font-family: var(--manga-head) !important;
+  letter-spacing: 0.08em;
+}
+.sos2-sheet .sos2-motionlab-toggle {
+  width: 100%;
+  padding: 10px 12px;
+}
+
+/* text fields on paper */
+.sos2-sheet :is(
+    .sos2-input,
+    .sos-field input,
+    .sos-field select,
+    .sos-search,
+    .sos-rename input,
+    .ai-key-input,
+    .ai-prompt-textarea,
+    .sos2-tl-view-sel,
+    .sos2-posts-field input[type="text"],
+    .sos2-posts-field input:not([type])
+  ) {
+  background: #fffdf8;
+  color: var(--manga-ink);
+  border: 2px solid var(--manga-ink);
+  border-radius: var(--manga-radius);
+}
+.sos2-sheet ::placeholder {
+  color: #77726a;
+}
+
+/* rules that hard-code light text for a dark panel */
+.sos2-sheet :is(
+    .sos-progress > em,
+    .sos2-look-row,
+    .sos2-look-row output,
+    .sos2-look-toggle strong,
+    .sos2-project-info strong,
+    .sos2-director-keys li,
+    .sos-slider-value,
+    .sos-star,
+    .sos-mat-star,
+    .ai-error,
+    .ai-product-badge strong,
+    .ai-error-dismiss:hover,
+    .reel-tpl-name,
+    .sos2-bgm-prev:hover,
+    .sos2-bgm-next:hover
+  ) {
+  color: var(--manga-ink);
+}
+.sos2-sheet :is(
+    .sos-drop,
+    .sos-msgs li,
+    .sos-field > em,
+    .sos2-project-info > span,
+    .sos-shelf-head,
+    .inspector-label,
+    .ai-error-dismiss,
+    .ai-product-badge,
+    .ai-hint,
+    .reel-templates-label,
+    .reel-tpl-meta,
+    .sos2-bgm-prev,
+    .sos2-bgm-next,
+    .sos2-bgm-name,
+    .sos2-posts-field span,
+    .sos2-env-hint,
+    .sos-pthumb-none
+  ) {
+  color: var(--manga-ink-2);
+}
+.sos2-sheet :is(
+    .sos-drop[data-over],
+    .sos-btn-gold,
+    .sos-star[data-on],
+    .sos-mat-star[data-on],
+    .sos-reel-why,
+    .sos2-occ-action,
+    .sos2-occ-action--set,
+    .sos2-occ-scene-note,
+    .ai-result,
+    .ai-mic-btn,
+    .sos2-tl-dur-val,
+    .sos2-whisper-text,
+    .sos2-whisper-x,
+    .sos2-bgm-play
+  ) {
+  color: var(--manga-accent-ink);
+}
+.sos2-sheet :is(.sos-btn-gold, .sos-star[data-on], .sos-mat-star[data-on]) {
+  border-color: var(--manga-accent);
+}
+.sos2-sheet :is(.sos-key-warning, .caption-error, .sos2-tl-btn-del, .sos-msgs li[data-level="error"]) {
+  color: var(--manga-danger-ink);
+}
+.sos2-sheet .sos-msgs li[data-level="warn"] {
+  color: #8a5a00;
+}
+.sos2-sheet :is(.sos-msgs li[data-level="success"], .sos-tag-imp) {
+  color: var(--manga-ok-ink);
+}
+.sos2-sheet .sos-asset[data-active="true"] {
+  border-color: var(--manga-accent);
+  background: rgba(224, 90, 26, 0.1);
+  box-shadow: inset 0 0 0 1.5px var(--manga-accent);
+}
+.sos2-sheet .sos-star {
+  background: transparent;
+}
+
+/* Engine controls portaled in from StudioControls style themselves inline for
+   its dark panel; re-ink them (same attribute-selector approach as the
+   "lift the greys" rule above). */
+.sos2-sheet-body [style*="color: rgba(255, 255, 255"],
+.sos2-sheet-body [style*="color: rgb(255, 255, 255)"] {
+  color: var(--manga-ink) !important;
+}
+.sos2-sheet-body [style*="color: rgba(255, 255, 255, 0.2"],
+.sos2-sheet-body [style*="color: rgba(255, 255, 255, 0.3"],
+.sos2-sheet-body [style*="color: rgba(255, 255, 255, 0.4"],
+.sos2-sheet-body [style*="color: rgba(255, 255, 255, 0.5"] {
+  color: var(--manga-ink-2) !important;
+}
+.sos2-sheet-body [style*="color: rgb(232, 181, 77)"] {
+  color: var(--manga-accent-ink) !important;
+}
+.sos2-sheet-body [style*="background: rgba(10, 10, 10"],
+.sos2-sheet-body [style*="background: rgba(5, 5, 5"] {
+  background: var(--manga-panel) !important;
+}
+.sos2-sheet-body [style*="border: 1px solid rgba(255, 255, 255"] {
+  border-color: rgba(17, 17, 17, 0.5) !important;
+}
+.sos2-sheet-body [style*="background: rgba(232, 181, 77"] {
+  background: rgba(224, 90, 26, 0.14) !important;
+}
+.sos2-sheet-body [style*="border: 1px solid rgba(232, 181, 77"] {
+  border-color: var(--manga-accent) !important;
+}
+.sos2-sheet-body [style*="background: rgba(255, 255, 255, 0.92)"] {
+  background: var(--manga-ink) !important;
+  color: var(--manga-panel) !important;
+}
+
+/* -- canvas chrome --------------------------------------------------------- */
+/* the stage's own dark backdrop: the R3F canvas div carries an inline #050505
+   while no parallax environment is active (transparent otherwise, left alone) */
+.sos-canvas-manga-frame > div[style*="background: rgb(5, 5, 5)"] {
+  background: var(--manga-bg) !important;
+}
+/* orange frame + halftone dots over the visible viewport (above the canvas at
+   z 0, below the shell at z 8); its bottom edge meets the toolbar's orange line */
+.sos-canvas-manga-frame::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 var(--manga-bar-h) 0;
+  z-index: 1;
+  pointer-events: none;
+  border: 3px solid var(--manga-accent);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.04) 0.75px, transparent 1.25px);
+  background-size: 12px 12px;
+}
+.sos-canvas-manga-frame::after {
+  content: "STUDIO OF SIDECARS";
+  position: fixed;
+  left: 16px;
+  bottom: calc(var(--manga-bar-h) + 12px);
+  z-index: 1;
+  pointer-events: none;
+  font-family: var(--manga-head);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: #fff;
+  opacity: 0.25;
+}
+
+/* -- loading splash (restyles components/LoadingScreen) -------------------- */
+.loading-screen[data-loading] {
+  gap: 18px;
+  overflow: hidden;
+  background: var(--manga-bg);
+  color: var(--manga-text-on-dark);
+  font-family: var(--manga-body);
+}
+.loading-screen[data-loading]::before {
+  content: "STUDIO OF SIDECARS";
+  position: relative;
+  z-index: 1;
+  padding: 0 16px;
+  font-family: var(--manga-head);
+  font-size: 48px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--manga-text-on-dark);
+  text-shadow: 3px 3px 0 var(--manga-accent);
+}
+/* five speed lines radiating from behind the title (its centre sits ~28px
+   above the screen centre: title 48 + gap 18 + label + gap 18 + bar 3) */
+.loading-screen[data-loading]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(50% - 28px);
+  width: min(1100px, 150vw);
+  height: 280px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.35;
+  background:
+    linear-gradient(-14deg, transparent calc(50% - 1px), var(--manga-text-on-dark) 0 calc(50% + 1px), transparent 0),
+    linear-gradient(-7deg, transparent calc(50% - 1.5px), var(--manga-text-on-dark) 0 calc(50% + 1.5px), transparent 0),
+    linear-gradient(0deg, transparent calc(50% - 2px), var(--manga-accent) 0 calc(50% + 2px), transparent 0),
+    linear-gradient(7deg, transparent calc(50% - 1.5px), var(--manga-text-on-dark) 0 calc(50% + 1.5px), transparent 0),
+    linear-gradient(14deg, transparent calc(50% - 1px), var(--manga-text-on-dark) 0 calc(50% + 1px), transparent 0);
+  -webkit-mask-image: radial-gradient(ellipse at center, transparent 22%, #000 42%, transparent 72%);
+  mask-image: radial-gradient(ellipse at center, transparent 22%, #000 42%, transparent 72%);
+}
+.loading-screen[data-loading] .loading-screen__spinner,
+.loading-screen[data-loading] .loading-screen__pct {
+  display: none;
+}
+/* the label element keeps its "Loading studio" text for screen readers; the
+   visible line is the splash's own */
+.loading-screen[data-loading] .loading-screen__label {
+  font-size: 0;
+  letter-spacing: 0;
+}
+.loading-screen[data-loading] .loading-screen__label::after {
+  content: "Loading scene…";
+  font-family: var(--manga-body);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--manga-text-on-dark);
+  opacity: 0.5;
+}
+.loading-screen[data-loading] .loading-screen__bar {
+  width: 160px;
+  border-radius: 0;
+  background: rgba(245, 240, 232, 0.12);
+}
+.loading-screen[data-loading] .loading-screen__fill {
+  background: var(--manga-accent);
 }
