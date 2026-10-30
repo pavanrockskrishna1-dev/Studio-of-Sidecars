@@ -207,6 +207,7 @@ export function LightBody() {
       <MangaPanel />
       <div className="sos2-sheet-divider" aria-hidden="true" />
       <span className="sos2-sheet-subhead">Fine-tune</span>
+      <p className="sos2-look-hint">Manual adjustment for individual light settings.</p>
       <div ref={lightSlotRef} data-testid="ui2-light-slot" />
     </>
   );

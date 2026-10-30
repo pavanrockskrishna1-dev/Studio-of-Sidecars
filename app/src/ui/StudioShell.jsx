@@ -58,9 +58,9 @@ const SHEETS = {
   scene: { title: "Scene", icon: "cube", tall: true },
   style: { title: "Style", icon: "sun", tall: true },
   props: { title: "Props", icon: "frame", tall: true },
-  create: { title: "Create", icon: "star", tall: true },
+  create: { title: "Posters & AI", icon: "star", tall: true },
   reel: { title: "Reel", icon: "film", tall: true },
-  export: { title: "Export", icon: "aperture", tall: true },
+  export: { title: "Export & Save", icon: "aperture", tall: true },
 };
 
 // Placement of up to two open sheets: the first one docks to the right edge; a

@@ -15,6 +15,7 @@ export default function MoodPanel() {
   return (
     <div className="sos2-mood-panel" data-testid="ui-mood-panel">
       <span className="sos2-sheet-subhead">Mood</span>
+      <p className="sos2-look-hint">One tap sets stage, grade, look and occasion.</p>
       <div className="sos2-mood-grid">
         {MOOD_PRESETS.map((m) => (
           <button

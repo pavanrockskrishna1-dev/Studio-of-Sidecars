@@ -12,9 +12,9 @@ const TOOLS = [
   { id: "scene", label: "Scene", glyph: "◉" },
   { id: "style", label: "Style", glyph: "✦" },
   { id: "props", label: "Props", glyph: "⬡" },
-  { id: "create", label: "Create", glyph: "▲" },
+  { id: "create", label: "Posters & AI", glyph: "▲" },
   { id: "reel", label: "Reel", glyph: "▷" },
-  { id: "export", label: "Export", glyph: "↓" },
+  { id: "export", label: "Export & Save", glyph: "↓" },
 ];
 
 export default function StudioDock({ openIds = [], onSelect, idle, onGuide }) {
