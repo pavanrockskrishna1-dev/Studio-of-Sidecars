@@ -73,6 +73,16 @@ export function BrandingSection({ sequence, busy }) {
           The {kit.name} kit has no logo yet. Add one in the Poster sheet.
         </p>
       ) : null}
+      {b.logo ? (
+        <>
+          <span className="sos-label">Logo style</span>
+          <div className="sos-frow">
+            {[["raw","Raw"],["neon-orange","Neon ◉"],["neon-violet","Violet ◈"],["glass","Glass"],["chrome-gold","Gold ✦"],["light","Light"]].map(([s, label]) => (
+              <button key={s} type="button" className="sos-pchip" data-on={b.logoStyle === s || undefined} disabled={busy} onClick={() => brandingState.setLogoStyle(s)}>{label}</button>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       <OnOff
         label={`End card (last ${END_CARD_S.toFixed(1)} s)`}
@@ -91,9 +101,17 @@ export function BrandingSection({ sequence, busy }) {
         </p>
       ) : null}
       {b.endCard ? (
-        <p className="sos-reel-why" style={{ color: "var(--sos2-text-2)" }} data-testid="ui-branding-endcard-len">
-          The Reel becomes {reelS + END_CARD_S} s (limit {REEL_MAX_S} s).
-        </p>
+        <>
+          <p className="sos-reel-why" style={{ color: "var(--sos2-text-2)" }} data-testid="ui-branding-endcard-len">
+            The Reel becomes {reelS + END_CARD_S} s (limit {REEL_MAX_S} s).
+          </p>
+          <span className="sos-label">Card style</span>
+          <div className="sos-frow">
+            {[["classic","Classic"],["glass","Glass ◈"],["neon","Neon ✦"],["fire","Fire ◉"]].map(([s, label]) => (
+              <button key={s} type="button" className="sos-pchip" data-on={b.cardStyle === s || undefined} disabled={busy} onClick={() => brandingState.setCardStyle(s)}>{label}</button>
+            ))}
+          </div>
+        </>
       ) : null}
       {notice ? <p className="sos-reel-why">{notice}</p> : null}
       <label className="sos-field">

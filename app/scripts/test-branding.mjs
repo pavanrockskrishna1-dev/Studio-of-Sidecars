@@ -301,7 +301,7 @@ function defaultHandle(id) {
   check("one title alone makes a spec", spec(BBQ, OFF, [{ move: "orbit", startView: "3/4", durationS: 4, title: { text: "Hi", pos: "top" } }]) !== null);
   check("drawing a null spec draws nothing and does not throw", (() => { const c = fakeCtx(); b.drawBranding(c, 1080, 1920, null, 1); return c.calls.length === 0; })());
   check("drawing at t < 0 or NaN draws nothing", (() => { const c = fakeCtx(); b.drawBranding(c, 1080, 1920, spec(BBQ), -1); b.drawBranding(c, 1080, 1920, spec(BBQ), NaN); return c.calls.length === 0; })());
-  check("default branding state is all off", json(b.createBrandingState().getSnapshot()) === json({ logo: false, endCard: false, endText: "", handle: null }));
+  check("default branding state is all off", json(b.createBrandingState().getSnapshot()) === json({ logo: false, endCard: false, endText: "", endText2: "", handle: null, cardStyle: "classic", logoStyle: "raw" }));
   check("endHoldS is 0 with the end card off, 2 with it on", (() => { b.brandingState.reset(); const a = b.endHoldS(); b.brandingState.setEndCard(true, 8); const c = b.endHoldS(); b.brandingState.reset(); return a === 0 && c === 2; })());
   // the shot list without titles is exactly what it was before R1
   const old = [{ move: "orbit", startView: "3/4", durationS: 8 }];
@@ -359,11 +359,11 @@ function defaultHandle(id) {
   // what studioSession.saveSession writes
   const snap = JSON.parse(JSON.stringify({ reel: store.sequenceForSession(), branding: b.brandingState.forSession() }));
   check("the session carries the titles inside the shots", snap.reel[0].title.text === "Own the fire\nBuilt in India" && snap.reel[0].title.pos === "top" && snap.reel[1].title.pos === "bottom");
-  check("the session carries logo, end card, its line and the handle", json(snap.branding) === json({ logo: true, endCard: true, endText: "Franchise enquiries — DM us", handle: "@mine" }));
+  check("the session carries logo, end card, its line and the handle", json(snap.branding) === json({ logo: true, endCard: true, endText: "Franchise enquiries — DM us", endText2: "", handle: "@mine", cardStyle: "classic", logoStyle: "raw" }));
   // Reset (what studioSession.resetSession calls)
   store.resetSequence();
   b.brandingState.reset();
-  check("Reset: branding is all off again", json(b.brandingState.getSnapshot()) === json({ logo: false, endCard: false, endText: "", handle: null }));
+  check("Reset: branding is all off again", json(b.brandingState.getSnapshot()) === json({ logo: false, endCard: false, endText: "", endText2: "", handle: null, cardStyle: "classic", logoStyle: "raw" }));
   check("Reset: the shot list is the default single shot with no title", store.getSnapshot().sequence.length === 1 && !store.getSnapshot().sequence[0].title);
   // Restore (what studioSession.restoreSession calls)
   store.restoreSequence(snap.reel);
@@ -383,7 +383,7 @@ function defaultHandle(id) {
   // sanitizing
   check("restore refuses a non-object", b.brandingState.restore(null, 8) === false && b.brandingState.restore("x", 8) === false);
   b.brandingState.restore({ logo: "yes", endCard: 1, endText: 5, handle: 7 }, 8);
-  check("restore: wrong types become off / empty / follow-the-kit", json(b.brandingState.getSnapshot()) === json({ logo: false, endCard: false, endText: "", handle: null }));
+  check("restore: wrong types become off / empty / follow-the-kit", json(b.brandingState.getSnapshot()) === json({ logo: false, endCard: false, endText: "", endText2: "", handle: null, cardStyle: "classic", logoStyle: "raw" }));
   b.brandingState.restore({ logo: true, endCard: true, endText: "x".repeat(500), handle: "h".repeat(500) }, 28);
   check("restore: the end card stays off when the Reel is 28 s", b.brandingState.getSnapshot().endCard === false && b.brandingState.getSnapshot().logo === true);
   check("restore: text fields are length-limited", b.brandingState.getSnapshot().endText.length === b.MAX_END_TEXT_CHARS && b.brandingState.getSnapshot().handle.length === b.MAX_HANDLE_CHARS);
@@ -407,7 +407,7 @@ function defaultHandle(id) {
   check("the preview overlay draws with branding.drawBranding", /import \{[^}]*drawBranding[^}]*\} from "\.\.\/poster\/branding"/.test(overlay) && /drawBranding\(/.test(overlay));
   check("both build the spec with getBrandingSpec", /getBrandingSpec\(/.test(exporter) && /getBrandingSpec\(/.test(overlay));
   check("no second drawing code in the exporter or the overlay (no fillText / drawImage of branding)", !/fillText|\.fillRect/.test(exporter) && !/fillText|fillRect/.test(overlay));
-  check("with no spec the exporter hands the encoder the stage canvas, untouched", /let source = canvas;\s*\n\s*if \(spec\) \{/.test(exporter.replace(/\r/g, "")));
+  check("with no spec the exporter hands the encoder the stage canvas, untouched", /let source = canvas;\s*\n\s*if \(comp\) \{/.test(exporter.replace(/\r/g, "")));
   // the same call at two sizes is the same drawing scaled
   const sp = spec(BBQ);
   const a = fakeCtx();

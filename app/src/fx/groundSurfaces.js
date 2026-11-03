@@ -21,6 +21,8 @@ export const GROUND_SURFACES = Object.freeze({
   asphalt: { label: "Asphalt", swatch: "#565248", textured: true, tileMeters: 4.5 },
   sand: { label: "Sand", swatch: "#b59e71", textured: true, tileMeters: 3.2 },
   deck: { label: "Wooden deck", swatch: "#9e7147", textured: true, tileMeters: 2.6 },
+  // black glass that mirrors the props and glows with fire (GroundSurface.jsx); no texture files
+  fireglass: { label: "Fire glass", swatch: "#1a0604", textured: false, glossy: true },
 });
 export const GROUND_IDS = Object.keys(GROUND_SURFACES);
 export const DEFAULT_GROUND = { night: "soil", day: "grass" };

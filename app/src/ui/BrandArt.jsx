@@ -88,6 +88,10 @@ const TEMPLATES = [
   { id: "neon-speed", label: "NEON SPEED" },
   { id: "cinematic", label: "CINEMATIC" },
   { id: "story-ad", label: "STORY AD" },
+  { id: "violet-glass", label: "VIOLET GLASS" },
+  { id: "ember-night", label: "EMBER NIGHT" },
+  { id: "haunted-story", label: "HAUNTED STORY" },
+  { id: "neon-midnight", label: "NEON MIDNIGHT" },
 ];
 
 const DEFAULT_OPTS = {
@@ -97,6 +101,10 @@ const DEFAULT_OPTS = {
   "neon-speed":   { headline: "FULL THROTTLE",    sub: "Speed Meets Flavor",      price: "₹99" },
   "cinematic":    { headline: "THE RIDE",         sub: "Cinematic BBQ Journey",   price: "₹99" },
   "story-ad":     { headline: "SWIPE UP",         sub: "Limited Spots Available", price: "₹99" },
+  "violet-glass":  { headline: "RIDE NIGHT",       sub: "Every Friday 7PM",        price: "₹99" },
+  "ember-night":   { headline: "FULL THROTTLE",    sub: "Served Hot Every Night",  price: "₹149" },
+  "haunted-story": { headline: "THE DARK RIDE",    sub: "Pumpkin Spiced BBQ",      price: "₹199" },
+  "neon-midnight": { headline: "NIGHT MARKET",     sub: "Open Midnight–4AM",        price: "₹99" },
 };
 
 const SIZES = { "1:1": { w: 1080, h: 1080 }, "9:16": { w: 1080, h: 1920 } };
@@ -686,6 +694,315 @@ function drawStoryAd(ctx, W, H, t, cache, sceneImg, opts) {
 
 /* ── draw dispatch ─────────────────────────────────────────── */
 
+function drawNeonMidnight(ctx, W, H, t, cache, sceneImg, opts) {
+  // Black background
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw scene
+  drawScene(ctx, sceneImg, W / 2, H * 0.45, 860, 700);
+
+  // Scanline shimmer
+  for (let y = 0; y < H; y += 8) {
+    ctx.fillStyle = `rgba(201,255,71,${0.025 + 0.015 * Math.sin(t * 3 + y / H * 8)})`;
+    ctx.fillRect(0, y, W, 1);
+  }
+
+  // Neon corner brackets around scene frame
+  const sceneX = W / 2 - 430;
+  const sceneY = H * 0.1;
+  const sceneW = 860;
+  const sceneH = 700;
+
+  ctx.save();
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = "#c9ff47";
+
+  // Top-left bracket
+  ctx.beginPath();
+  ctx.moveTo(sceneX, sceneY);
+  ctx.lineTo(sceneX - 72, sceneY);
+  ctx.lineTo(sceneX - 72, sceneY - 72);
+  ctx.lineTo(sceneX, sceneY - 72);
+  ctx.closePath();
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = "#c9ff47";
+  ctx.stroke();
+
+  // Top-right bracket
+  ctx.beginPath();
+  ctx.moveTo(sceneX + sceneW, sceneY);
+  ctx.lineTo(sceneX + sceneW + 72, sceneY);
+  ctx.lineTo(sceneX + sceneW + 72, sceneY - 72);
+  ctx.lineTo(sceneX + sceneW, sceneY - 72);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Bottom-left bracket
+  ctx.beginPath();
+  ctx.moveTo(sceneX, sceneY + sceneH);
+  ctx.lineTo(sceneX - 72, sceneY + sceneH);
+  ctx.lineTo(sceneX - 72, sceneY + sceneH + 72);
+  ctx.lineTo(sceneX, sceneY + sceneH + 72);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Bottom-right bracket
+  ctx.beginPath();
+  ctx.moveTo(sceneX + sceneW, sceneY + sceneH);
+  ctx.lineTo(sceneX + sceneW + 72, sceneY + sceneH);
+  ctx.lineTo(sceneX + sceneW + 72, sceneY + sceneH + 72);
+  ctx.lineTo(sceneX + sceneW, sceneY + sceneH + 72);
+  ctx.closePath();
+  ctx.stroke();
+
+  ctx.restore();
+  ctx.shadowBlur = 0;
+
+  // Headline
+  ctx.fillStyle = "#fff";
+  ctx.font = "600 58px Oswald";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.headline, W / 2, H * 0.73);
+
+  // Sub
+  ctx.fillStyle = "#c9ff47";
+  ctx.font = "22px Oswald";
+  ctx.fillText(opts.sub, W / 2, H * 0.73 + 70);
+
+  // Price (no pill, just text)
+  ctx.fillStyle = "#c9ff47";
+  ctx.font = "700 56px Oswald";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.price, W / 2, H * 0.85);
+}
+
+function drawHauntedStory(ctx, W, H, t, cache, sceneImg, opts) {
+  // Linear gradient bg
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, "#1a0535");
+  bgGrad.addColorStop(1, "#1a0600");
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Top brand bar
+  ctx.fillStyle = "#0d0015";
+  ctx.fillRect(0, 0, W, 110);
+
+  // Text "BBQ RIDE"
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 28px 'Saira Stencil One'";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("BBQ RIDE", W / 2, 46);
+
+  // Text "THIS HALLOWEEN"
+  ctx.fillStyle = "#b47eff";
+  ctx.font = "400 16px Oswald";
+  ctx.fillText("THIS HALLOWEEN", W / 2, 82);
+
+  // Draw scene
+  drawScene(ctx, sceneImg, W / 2, H * 0.44, 820, 660);
+
+  // Orange glow under scene
+  const glowGrad = ctx.createRadialGradient(W / 2, H * 0.65, 0, W / 2, H * 0.65, 340);
+  glowGrad.addColorStop(0, "rgba(224,90,26,0.32)");
+  glowGrad.addColorStop(1, "transparent");
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Bat sprites
+  if (!cache.bats) {
+    cache.bats = [];
+    for (let i = 0; i < 6; i++) {
+      cache.bats.push({
+        x: -60,
+        y: Math.random() * H * 0.55,
+        speed: 1.2 + Math.random() * 2,
+        phase: Math.random() * 6,
+      });
+    }
+  }
+
+  const bats = cache.bats;
+  for (const bat of bats) {
+    bat.x += bat.speed * (1 / 60) * W * 0.5;
+    if (bat.x > W + 60) {
+      bat.x = -60;
+      bat.y = Math.random() * H * 0.55;
+    }
+
+    // Draw bat wing shape
+    ctx.save();
+    ctx.translate(bat.x, bat.y);
+    ctx.fillStyle = "rgba(160,40,240,0.55)";
+    ctx.beginPath();
+    // Left wing
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-22, -12, -40, 8, -30, 2);
+    // Right wing
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(22, -12, 40, 8, 30, 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Horizontal glow line
+  ctx.fillStyle = opts.accent;
+  ctx.fillRect(0, H * 0.64 - 1, W, 2);
+
+  // Text block
+  ctx.fillStyle = "#fff";
+  ctx.font = "600 62px Oswald";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.headline, W / 2, H * 0.72);
+
+  ctx.fillStyle = "#b47eff";
+  ctx.font = "24px Oswald";
+  ctx.fillText(opts.sub, W / 2, H * 0.72 + 76);
+
+  // Price pill at H*0.84
+  drawPill(ctx, W / 2, H * 0.84, 200, 54, 27, opts.accent, "#000", 2);
+}
+
+function drawEmberNight(ctx, W, H, t, cache, sceneImg, opts) {
+  // Black background
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw scene
+  drawScene(ctx, sceneImg, W / 2, H * 0.45, 880, 700);
+
+  // Radial orange glow at bottom
+  const glowGrad = ctx.createRadialGradient(W / 2, H * 0.88, 0, W / 2, H * 0.88, 480);
+  glowGrad.addColorStop(0, "rgba(224,90,26,0.5)");
+  glowGrad.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Ember particles
+  if (!cache.embers) {
+    cache.embers = [];
+    for (let i = 0; i < 28; i++) {
+      cache.embers.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: -40 - Math.random() * 60,
+        r: 2 + Math.random() * 3,
+        hue: 25 + Math.random() * 30,
+      });
+    }
+  }
+
+  const embers = cache.embers;
+  for (const ember of embers) {
+    ember.y += ember.vy * (1 / 60);
+    ember.x += ember.vx * (1 / 60);
+    if (ember.y < -10) {
+      ember.y = H + 10;
+      ember.x = Math.random() * W;
+    }
+    ctx.fillStyle = `hsla(${ember.hue},100%,65%,0.7)`;
+    ctx.beginPath();
+    ctx.arc(ember.x, ember.y, ember.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Bottom glass bar
+  const barY = H * 0.82;
+  const barW = W - 80;
+  const barH = 96;
+  const barX = 40;
+
+  ctx.fillStyle = "rgba(0,0,0,0.72)";
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW, barH, 8);
+  ctx.fill();
+  ctx.strokeStyle = opts.accent;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Headline inside glass bar
+  ctx.fillStyle = "#fff";
+  ctx.font = "600 48px Oswald";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.headline, W / 2, barY + 30);
+
+  // Sub inside glass bar
+  ctx.fillStyle = opts.accent;
+  ctx.font = "20px Oswald";
+  ctx.fillText(opts.sub, W / 2, barY + 56);
+
+  // Left accent stripe
+  ctx.fillStyle = opts.accent;
+  ctx.fillRect(0, 0, 6, H);
+}
+
+function drawVioletGlass(ctx, W, H, t, cache, sceneImg, opts) {
+  // Draw background
+  const bg = ctx.createLinearGradient(0, H * 0.35, 0, H * 0.65);
+  bg.addColorStop(0, "#0d0018");
+  bg.addColorStop(0.5, "#1a0535");
+  bg.addColorStop(1, "#100808");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Dark overlay
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(0, 0, W, H);
+
+  // Frosted glass panel - centered at W/2, H*0.72, size 760×300px
+  const panelX = W / 2;
+  const panelY = H * 0.72;
+  const panelW = 760;
+  const panelH = 300;
+  const scaleIn = Math.min(1, t / 0.4);
+
+  ctx.save();
+  ctx.translate(panelX, panelY);
+  ctx.scale(scaleIn, scaleIn);
+  ctx.translate(-panelX, -panelY);
+
+  ctx.shadowBlur = 28;
+  ctx.shadowColor = "rgba(140,60,255,0.55)";
+
+  // Rounded rectangle panel
+  const radius = 16;
+  ctx.beginPath();
+  ctx.roundRect(panelX - panelW / 2, panelY - panelH / 2, panelW, panelH, radius);
+  ctx.fillStyle = "rgba(70,20,160,0.50)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(200,160,255,0.6)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Inside panel: headline
+  ctx.fillStyle = "#fff";
+  ctx.font = "600 54px Oswald";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(opts.headline, panelX, panelY - 30);
+
+  // Inside panel: sub
+  ctx.fillStyle = opts.accent;
+  ctx.font = "400 22px Oswald";
+  ctx.fillText(opts.sub, panelX, panelY + 26);
+
+  // Price pill below panel
+  drawPill(ctx, W / 2, H * 0.82, 220, 54, 27, opts.accent, "#000", 2);
+
+  // Reset shadow
+  ctx.shadowBlur = 0;
+}
+
 function drawFrame(ctx, W, H, t, cache, sceneImg, opts) {
   ctx.clearRect(0, 0, W, H);
   switch (opts.tmpl) {
@@ -695,12 +1012,27 @@ function drawFrame(ctx, W, H, t, cache, sceneImg, opts) {
     case "neon-speed":    drawNeonSpeed(ctx, W, H, t, cache, sceneImg, opts); break;
     case "cinematic":     drawCinematic(ctx, W, H, t, cache, sceneImg, opts); break;
     case "story-ad":      drawStoryAd(ctx, W, H, t, cache, sceneImg, opts); break;
+    case "violet-glass":  drawVioletGlass(ctx, W, H, t, cache, sceneImg, opts); break;
+    case "ember-night":   drawEmberNight(ctx, W, H, t, cache, sceneImg, opts); break;
+    case "haunted-story": drawHauntedStory(ctx, W, H, t, cache, sceneImg, opts); break;
+    case "neon-midnight": drawNeonMidnight(ctx, W, H, t, cache, sceneImg, opts); break;
   }
 }
 
 /* ═══════════════════════════════════════════════════════════════
    COMPONENT
 ════════════════════════════════════════════════════════════════ */
+
+async function loadGifJs() {
+  if (window.GIF) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("gif.js failed to load"));
+    document.head.appendChild(s);
+  });
+}
 
 export default function BrandArt() {
   const [art, setArt]     = useState("torn-reveal");
@@ -878,13 +1210,3 @@ export default function BrandArt() {
 }
 
 /* ── GIF loader ───────────────────────────────────────────── */
-
-function loadGifJs() {
-  return new Promise(res => {
-    if (window.GIF) { res(); return; }
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js";
-    s.onload = res;
-    document.head.appendChild(s);
-  });
-}

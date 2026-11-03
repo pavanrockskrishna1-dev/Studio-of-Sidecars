@@ -3935,6 +3935,10 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.sos2-bgm-err {
+  color: #e55;
+  font-size: 10px;
+}
 .sos2-bgm-vol {
   width: 52px;
   accent-color: #ff6b00;

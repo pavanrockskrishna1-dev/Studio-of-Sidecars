@@ -72,7 +72,7 @@ const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 // optional line. handle: null follows the active kit's handle; a string (even
 // "") is the user's own and wins.
 export function createBrandingState() {
-  const initial = Object.freeze({ logo: false, endCard: false, endText: "", endText2: "", handle: null });
+  const initial = Object.freeze({ logo: false, endCard: false, endText: "", endText2: "", handle: null, cardStyle: "classic", logoStyle: "raw" });
   let snapshot = initial;
   const listeners = new Set();
   const set = (patch) => {
@@ -98,6 +98,8 @@ export function createBrandingState() {
     setEndText: (s) => set({ endText: str(s, MAX_END_TEXT_CHARS) }),
     setEndText2: (s) => set({ endText2: str(s, MAX_END_TEXT_CHARS) }),
     setHandle: (s) => set({ handle: s === null ? null : str(s, MAX_HANDLE_CHARS) }),
+    setCardStyle: (v) => set({ cardStyle: v }),
+    setLogoStyle: (v) => set({ logoStyle: v }),
     reset: () => set({ ...initial }),
     // The plain form saved with the session.
     forSession: () => ({ ...snapshot }),
@@ -150,7 +152,7 @@ export function buildBrandingSpec({ state, sequence, kit, logoImage }) {
     t0 += s.durationS;
   }
   const reelS = t0;
-  const logo = state.logo && logoImage ? { img: logoImage } : null;
+  const logo = state.logo && logoImage ? { img: logoImage, style: state.logoStyle } : null;
   const endCard =
     state.endCard && endCardFits(reelS).ok
       ? {
@@ -158,6 +160,7 @@ export function buildBrandingSpec({ state, sequence, kit, logoImage }) {
           handle: String(state.handle ?? kit.handle1 ?? "").trim(),
           text: String(state.endText ?? "").trim(),
           text2: String(state.endText2 ?? "").trim(),
+          style: state.cardStyle,
         }
       : null;
   if (!logo && !shots.length && !endCard) return null;
@@ -323,12 +326,148 @@ export function layoutBranding(ctx, spec, t) {
   return out;
 }
 
-/* ------------------------------- drawing ------------------------------- */
-
 function drawTextLine(ctx, text, x, y, size, family, weight, color) {
   ctx.font = `${weight} ${size}px "${family}"`;
   ctx.fillStyle = color;
   ctx.fillText(text, x, y);
+}
+
+/* ------------------------------- drawing ------------------------------- */
+
+function drawStyledLogo(ctx, img, x, y, w, h, style, t) {
+  // x,y is the CENTER of the logo area
+  const lx = x - w / 2, ly = y - h / 2;
+  ctx.save();
+  switch (style) {
+    case "neon-orange":
+      ctx.shadowBlur = 30 + 10 * Math.sin((t || 0) * 2);
+      ctx.shadowColor = "#ff6a1a";
+      ctx.drawImage(img, lx, ly, w, h);
+      ctx.shadowBlur = 0;
+      break;
+    case "neon-violet":
+      ctx.shadowBlur = 30 + 10 * Math.sin((t || 0) * 2);
+      ctx.shadowColor = "#b47eff";
+      ctx.drawImage(img, lx, ly, w, h);
+      ctx.shadowBlur = 0;
+      break;
+    case "glass": {
+      const pad = 10, r = 10;
+      ctx.beginPath();
+      ctx.roundRect(lx - pad, ly - pad, w + pad * 2, h + pad * 2, r);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.11)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.drawImage(img, lx, ly, w, h);
+      break;
+    }
+    case "chrome-gold": {
+      ctx.drawImage(img, lx, ly, w, h);
+      ctx.globalCompositeOperation = "source-atop";
+      const gr = ctx.createLinearGradient(lx, ly, lx, ly + h);
+      gr.addColorStop(0, "#f4e077");
+      gr.addColorStop(0.4, "#c8960c");
+      gr.addColorStop(0.7, "#f4e077");
+      gr.addColorStop(1, "#a67c00");
+      ctx.fillStyle = gr;
+      ctx.globalAlpha = 0.75;
+      ctx.fillRect(lx, ly, w, h);
+      break;
+    }
+    case "light":
+      ctx.drawImage(img, lx, ly, w, h);
+      ctx.globalCompositeOperation = "source-atop";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(lx, ly, w, h);
+      break;
+    default: // "raw"
+      ctx.drawImage(img, lx, ly, w, h);
+  }
+  ctx.restore();
+}
+
+// Draw the text parts (handle, line, line2) from a card layout object.
+// If skipLogo is true, the logo was already drawn elsewhere.
+function drawCardContent(ctx, w, h, card, skipLogo) {
+  // Extract text-drawing from the existing drawBranding card section
+  // Handles: handle, line, line2
+  // Colors come from card.layout colors (accessed via spec.colors)
+  if (!skipLogo && card.logo) {
+    drawStyledLogo(ctx, card.logo.img, card.logo.x + card.logo.w / 2,
+      card.logo.y + card.logo.h / 2, card.logo.w, card.logo.h, card.logo.style || "raw", 0);
+  }
+  if (card.handle) {
+    ctx.font = `600 ${card.handle.size}px "Saira Stencil One"`;
+    ctx.fillStyle = card.handle.color || "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(card.handle.text, card.handle.x, card.handle.y);
+  }
+  if (card.line) {
+    ctx.font = `500 ${card.line.size}px "Saira Stencil One"`;
+    ctx.fillStyle = card.line.color || "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(card.line.text, card.line.x, card.line.y);
+  }
+  if (card.line2) {
+    ctx.font = `400 ${card.line2.size}px "Saira Stencil One"`;
+    ctx.fillStyle = card.line2.color || "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(card.line2.text, card.line2.x, card.line2.y);
+  }
+}
+
+function drawEndCardGlass(ctx, card, spec, t) {
+  const tLocal = Math.max(0, t - spec.reelS);
+  const sc = Math.min(1, 0.85 + 0.15 * (tLocal / 0.3));
+  const cx = FRAME_W / 2, cy = FRAME_H / 2;
+  const pw = 800, ph = 480;
+  ctx.fillStyle = "rgba(0,0,0,0.72)"; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  ctx.save();
+  ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.translate(-cx, -cy);
+  ctx.shadowBlur = 30; ctx.shadowColor = "rgba(140,60,255,0.6)";
+  ctx.beginPath(); ctx.roundRect(cx - pw / 2, cy - ph / 2, pw, ph, 22);
+  ctx.fillStyle = "rgba(55,18,140,0.55)"; ctx.fill();
+  ctx.strokeStyle = "rgba(190,140,255,0.65)"; ctx.lineWidth = 1; ctx.stroke();
+  ctx.shadowBlur = 0;
+  drawCardContent(ctx, FRAME_W, FRAME_H, card, false);
+  ctx.restore();
+}
+
+function drawEndCardNeon(ctx, card, spec, t) {
+  const tLocal = Math.max(0, t - spec.reelS);
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  for (let i = 0; i < 3; i++) {
+    const r = 180 + i * 80 + tLocal * 120;
+    const alpha = Math.max(0, 0.25 - tLocal * 0.15 - i * 0.06);
+    if (alpha <= 0) continue;
+    ctx.beginPath(); ctx.arc(FRAME_W / 2, FRAME_H / 2, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(224,90,26,${alpha})`; ctx.lineWidth = 2; ctx.stroke();
+  }
+  if (card.logo) {
+    drawStyledLogo(ctx, card.logo.img,
+      card.logo.x + card.logo.w / 2, card.logo.y + card.logo.h / 2,
+      card.logo.w, card.logo.h, "neon-orange", tLocal);
+  }
+  drawCardContent(ctx, FRAME_W, FRAME_H, card, true);
+}
+
+function drawEndCardFire(ctx, card, spec) {
+  const rg = ctx.createRadialGradient(FRAME_W / 2, FRAME_H * 0.45, 0, FRAME_W / 2, FRAME_H * 0.45, Math.max(FRAME_W, FRAME_H) * 0.75);
+  rg.addColorStop(0, "#d44000"); rg.addColorStop(0.5, "#4a1000"); rg.addColorStop(1, "#0a0300");
+  ctx.fillStyle = rg; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  ctx.fillStyle = "rgba(255,100,0,0.18)";
+  ctx.fillRect(0, FRAME_H / 2 - 60, FRAME_W, 120);
+  if (card.logo) {
+    drawStyledLogo(ctx, card.logo.img,
+      card.logo.x + card.logo.w / 2, card.logo.y + card.logo.h / 2,
+      card.logo.w, card.logo.h, "light", 0);
+  }
+  drawCardContent(ctx, FRAME_W, FRAME_H, card, true);
 }
 
 // The one draw function (preview overlay AND export). Paints over whatever is
@@ -356,7 +495,7 @@ export function drawBranding(ctx, w, h, spec, t) {
   }
   if (L.logo) {
     ctx.globalAlpha = L.logo.alpha;
-    ctx.drawImage(L.logo.img, L.logo.x, L.logo.y, L.logo.w, L.logo.h);
+    drawStyledLogo(ctx, L.logo.img, L.logo.x + L.logo.w / 2, L.logo.y + L.logo.h / 2, L.logo.w, L.logo.h, spec.logo.style || "raw", t);
   }
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -371,14 +510,21 @@ export function drawBranding(ctx, w, h, spec, t) {
   }
   if (L.card) {
     ctx.globalAlpha = 1;
-    if (L.card.logo) {
-      ctx.shadowColor = "transparent";
-      ctx.drawImage(L.card.logo.img, L.card.logo.x, L.card.logo.y, L.card.logo.w, L.card.logo.h);
-      ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
+    ctx.shadowBlur = 0; ctx.shadowColor = "transparent";
+    const cardStyle = spec.endCard?.style ?? "classic";
+    if (cardStyle === "glass") drawEndCardGlass(ctx, L.card, spec, t);
+    else if (cardStyle === "neon") drawEndCardNeon(ctx, L.card, spec, t);
+    else if (cardStyle === "fire") drawEndCardFire(ctx, L.card, spec, t);
+    else {
+      // classic
+      if (L.card.logo) {
+        drawStyledLogo(ctx, L.card.logo.img, L.card.logo.x + L.card.logo.w / 2, L.card.logo.y + L.card.logo.h / 2, L.card.logo.w, L.card.logo.h, spec.logo?.style || "raw", t);
+      }
+      ctx.shadowColor = "rgba(0, 0, 0, 0.55)"; ctx.shadowBlur = 10;
+      if (L.card.handle) drawTextLine(ctx, L.card.handle.text, L.card.handle.x, L.card.handle.y, L.card.handle.size, FONT_BODY, "600", colors.accent);
+      if (L.card.line) drawTextLine(ctx, L.card.line.text, L.card.line.x, L.card.line.y, L.card.line.size, FONT_BODY, "500", colors.text);
+      if (L.card.line2) drawTextLine(ctx, L.card.line2.text, L.card.line2.x, L.card.line2.y, L.card.line2.size, FONT_BODY, "400", colors.text);
     }
-    if (L.card.handle) drawTextLine(ctx, L.card.handle.text, L.card.handle.x, L.card.handle.y, L.card.handle.size, FONT_BODY, "600", colors.accent);
-    if (L.card.line) drawTextLine(ctx, L.card.line.text, L.card.line.x, L.card.line.y, L.card.line.size, FONT_BODY, "500", colors.text);
-    if (L.card.line2) drawTextLine(ctx, L.card.line2.text, L.card.line2.x, L.card.line2.y, L.card.line2.size, FONT_BODY, "400", colors.text);
   }
   ctx.restore();
 }

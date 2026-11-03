@@ -4,6 +4,7 @@ import * as THREE from "three";
 import * as lookStore from "./lookStore";
 import * as animation from "../animation/animationStore";
 import GroundSurface from "./GroundSurface";
+import HauntedSky, { HAUNTED_HORIZON } from "./HauntedSky";
 
 // The "night" stage look: its own sky, a wide ground the props stand on (it
 // takes their shadows; the selectable surface - soil by default - is the
@@ -33,21 +34,23 @@ export default function NightStage({ floorY = 0, center, ground = "soil" }) {
   const scene = useThree((s) => s.scene);
   const sky = useMemo(skyTexture, []);
 
+  // the "fireglass" ground goes with the Halloween set's purple haunted sky
+  const haunted = ground === "fireglass";
   useEffect(() => {
     const prevBg = scene.background;
     const prevEnv = scene.environmentIntensity;
     const prevFog = scene.fog;
-    scene.background = sky;
+    scene.background = haunted ? new THREE.Color(HAUNTED_HORIZON) : sky;
     scene.environmentIntensity = 0.12; // the studio's HDRI/probe barely reaches a night set
     // a dark, short fog fades the ground and far props into the night sky
     // near the edge of the ground disc, so its texture tiling is never obvious
-    scene.fog = new THREE.Fog(0x0a1230, 16, 40);
+    scene.fog = haunted ? new THREE.Fog(HAUNTED_HORIZON, 9, 34) : new THREE.Fog(0x0a1230, 16, 40);
     return () => {
-      if (scene.background === sky) scene.background = prevBg;
+      scene.background = prevBg;
       scene.environmentIntensity = prevEnv ?? 1;
       scene.fog = prevFog ?? null;
     };
-  }, [scene, sky]);
+  }, [scene, sky, haunted]);
 
   useEffect(() => () => sky.dispose(), [sky]);
 
@@ -92,6 +95,7 @@ export default function NightStage({ floorY = 0, center, ground = "soil" }) {
       <directionalLight position={[cx + 5, floorY + 4, cz - 6]} intensity={1.8} color={0xa8c0ff} />
       <directionalLight position={[cx - 4, floorY + 3, cz + 6]} intensity={0.9} color={0x6a80d8} />
       <directionalLight position={[cx + 4, floorY + 4, cz + 5]} intensity={1.8} color={0xd6dcff} />
+      {haunted && <HauntedSky />}
       <GroundSurface surface={ground} floorY={floorY} center={center} radius={40} />
     </>
   );

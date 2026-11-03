@@ -377,7 +377,10 @@ export default function OccasionParticles() {
     const occ = getOccasion(occasionId);
     const particleType = occ?.particles ?? null;
     const sys = SYSTEMS[particleType] ?? null;
-    if (!sys) return; // 'none' or no particles defined
+    if (!sys) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
 
     // Size canvas to viewport — use window dimensions for a fixed full-viewport
     // canvas; offsetWidth is 0 at mount time before browser layout completes.

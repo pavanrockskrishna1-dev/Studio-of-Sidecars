@@ -278,18 +278,7 @@ function Inspector({ entry, values }) {
         </span>
         <span className="sos-mat-color-row">
           <input type="color" data-testid="mat-color" value={values.color || "#888888"} onChange={(e) => store.setParams({ color: e.target.value })} />
-          <input
-            type="text"
-            className="sos-mat-hex"
-            data-testid="mat-color-hex"
-            value={values.color || ""}
-            aria-label="Colour hex value"
-            spellCheck="false"
-            onChange={(e) => {
-              const v = e.target.value.trim();
-              if (/^#[0-9a-f]{6}$/i.test(v)) store.setParams({ color: v });
-            }}
-          />
+          <HexField color={values.color || ""} />
         </span>
       </label>
 
@@ -311,6 +300,48 @@ function Inspector({ entry, values }) {
         </button>
       </div>
     </div>
+  );
+}
+
+// The hex box keeps what you type in a local draft. The old version always showed the
+// saved colour, so a half-typed code (or a delete) snapped straight back to it.
+// The colour is applied once the draft is a full code; "ff8800" works without the "#".
+function HexField({ color }) {
+  const [draft, setDraft] = useState(null);
+  const commitIfValid = (text) => {
+    const v = text.trim();
+    const full = v.startsWith("#") ? v : `#${v}`;
+    if (/^#[0-9a-f]{6}$/i.test(full)) {
+      store.setParams({ color: full.toLowerCase() });
+      return true;
+    }
+    return false;
+  };
+  return (
+    <input
+      type="text"
+      className="sos-mat-hex"
+      data-testid="mat-color-hex"
+      value={draft ?? color}
+      aria-label="Colour hex value"
+      spellCheck="false"
+      onFocus={(e) => e.target.select()}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        commitIfValid(e.target.value);
+      }}
+      onBlur={() => setDraft(null)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          commitIfValid(e.currentTarget.value);
+          e.currentTarget.blur();
+        }
+        if (e.key === "Escape") {
+          setDraft(null);
+          e.currentTarget.blur();
+        }
+      }}
+    />
   );
 }
 

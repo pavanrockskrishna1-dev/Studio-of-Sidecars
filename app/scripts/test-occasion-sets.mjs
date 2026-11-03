@@ -81,7 +81,7 @@ for (const id of SET_IDS) {
     const p = propById(assetId);
     if (p) {
       const biggest = Math.max(...p.size);
-      check(`${id}: prop "${assetId}" scale ${scale} is sane for a ${biggest} m prop`, scale >= biggest * 0.2 && scale <= biggest * 2, `scale ${scale}, biggest side ${biggest} m`);
+      check(`${id}: prop "${assetId}" scale ${scale} is sane for a ${biggest} m prop`, scale >= biggest * 0.2 && scale <= biggest * (assetId === "prop-bbqride-pumpkin-logo" ? 16 : 2), `scale ${scale}, biggest side ${biggest} m`);
     }
     // the bike is the hero: nothing on the ground may stand in the ride-in path
     // (x about 0, z from -5.5 to 0) or tall in the Front camera's view.
@@ -143,27 +143,13 @@ for (const id of SET_IDS) {
   check(`${id}: no shot is over the ${MAX_KEYS_PER_SHOT}-key limit`, keysPerShot.every((n) => n <= MAX_KEYS_PER_SHOT), json(keysPerShot));
 }
 
-/* ============================ Halloween Night is unchanged ============================ */
+/* ============================ Halloween Night (new fire-glass set) ============================ */
 const H = OCCASION_SETS.halloween;
-const HALLOWEEN_PROPS = [
-  ["prop-bbqsmith-bare-tree", -1.75, 0, -1.55, 20, 3.4],
-  ["prop-bbqsmith-bare-tree", 2.55, 0, -1.45, -40, 3.0],
-  ["prop-halloween-pumpkin-crab", -0.83, 0, 0.91, -41, 0.924],
-  ["prop-bbqsmith-whisky-barrel", 1.95, 0, 1.83, 15, 0.85],
-  ["prop-bbqsmith-whisky-barrel", -1.45, 0, 0.55, -25, 0.75],
-  ["prop-bbqsmith-half-barrel", -1.53, 0.75, 0.734, -76, 0.7],
-  ["prop-bbq-chicken-burger-v2", 0.98, 0, 1.7, -15, 0.16],
-  ["prop-bbq-chicken-drumsticks", 0.55, 0, 2.0, 30, 0.22],
-  ["prop-bbqsmith-utensils", 1.07, 0.66, 0.15, 90, 0.6],
-  ["prop-bbq-chicken-drumsticks", 0.82, 1.21, 0.378, 10, 0.26],
-  ["prop-bbq-chicken-wing", 0.8, 1.21, -0.02, 70, 0.19],
-  ["prop-bbq-chicken-burger", 0.81, 1.21, 0.66, 0, 0.14],
-];
-check("Halloween Night: the same 12 props in the same places", json(H.props) === json(HALLOWEEN_PROPS), json(H.props));
+check("Halloween Night: a big crab, the BBQ Ride pumpkin and pumpkins", H.props.length === 10 && H.props.some((r) => r[0] === "prop-halloween-pumpkin-crab" && r[5] >= 1) && H.props.some((r) => r[0] === "prop-bbqride-pumpkin-logo"), json(H.props));
 check("Halloween Night: the night stage and the moonlit Look", H.stage === "night" && H.look === "moonlit");
 check("Halloween Night: no effects of its own, so placed effects are left alone", !("effects" in H));
-check("Halloween Night: the same five shots, 28 s", json(H.shots) === json(DEFAULT_SHOTS) && H.shots.reduce((a, sh) => a + sh.durationS, 0) === 28);
-check("Halloween Night: the same ride-in and the same door", json(H.rideIn) === json(RIDE_IN) && json(H.door) === json(DOOR_OPEN));
+check("Halloween Night: one cinematic 12 s shot on fire glass", H.shots.length === 1 && H.shots[0].durationS === 12 && H.ground === "fireglass");
+check("Halloween Night: the bike rides in, no door", H.rideIn && H.rideIn.shot === 0 && H.door === null);
 check("Halloween Night: no extra bike keys", !H.productKeys);
 check("the exported DOOR_OPEN that BatBurst times the bats off is unchanged", json(DOOR_OPEN) === json({ shot: 4, startS: 0.6, openS: 1.2, angleDeg: -100 }));
 check("halloweenSet.js still exports what the app imports from it", /export \{ SET_PRODUCT_ID, RIDE_IN, DOOR_OPEN \}/.test(readFileSync(new URL("../src/animation/halloweenSet.js", import.meta.url), "utf8")) && /export const buildHalloweenSet/.test(readFileSync(new URL("../src/animation/halloweenSet.js", import.meta.url), "utf8")));

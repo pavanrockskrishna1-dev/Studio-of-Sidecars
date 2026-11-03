@@ -69,7 +69,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { FilmPass } from "three/examples/jsm/postprocessing/FilmPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
-import { useSyncExternalStore } from "react";
+import { Component, useSyncExternalStore } from "react";
 import * as gradeStore from "../fx/gradeStore.js";
 import { GRADES, GradeShader } from "../fx/gradeShader.js";
 import * as shotStore from "../animation/shotStore";
@@ -81,6 +81,44 @@ import { isPartKey } from "../animation/reelKeys.js";
 // live-viewport feature only). renderExportFrame / stepExport live at module
 // scope, so they reach this ref directly; StudioStage syncs its own copy.
 export const exportRenderRef = { current: false };
+
+// A failed GLB/HDR load (useGLTF / RGBELoader throw) otherwise takes the whole
+// app to a white screen with no way back. Keep the failure inside the canvas
+// area and offer a reload instead.
+class CanvasErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(err) {
+    console.error("[StudioCanvas] render error:", err);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#050505",
+            color: "#fff",
+            zIndex: 0,
+            fontSize: 14,
+          }}
+        >
+          Scene failed to load. Reload the page.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const FOV = 45;
 
@@ -4015,15 +4053,15 @@ function StudioStage({
       // too (a hit selects the WHOLE object); with Parts OFF the targets are
       // exactly the model's meshes, as before.
       const pickMode = garageMode.getSnapshot().pickMode;
+      // Props (added objects) are always pickable, Parts on or off, so a set's
+      // props can be clicked and moved/turned with the gizmo straight away.
       const objectTargets = [];
-      if (pickMode) {
-        objectsRootRef.current?.updateWorldMatrix(true, true);
-        for (const entry of objectPoolRef.current.values()) {
-          if (!entry.attached || !entry.anchor.visible) continue;
-          entry.scene.traverseVisible((m) => {
-            if (m.isMesh && m.geometry) objectTargets.push(m);
-          });
-        }
+      objectsRootRef.current?.updateWorldMatrix(true, true);
+      for (const entry of objectPoolRef.current.values()) {
+        if (!entry.attached || !entry.anchor.visible) continue;
+        entry.scene.traverseVisible((m) => {
+          if (m.isMesh && m.geometry) objectTargets.push(m);
+        });
       }
       const hits = raycaster.intersectObjects(
         objectTargets.length ? [...modelMeshes.filter((m) => m.visible), ...objectTargets] : modelMeshes.filter((m) => m.visible),
@@ -4048,6 +4086,14 @@ function StudioStage({
         }
         return;
       }
+      const propItemId = hits.length > 0 ? objectItemIdOf(hits[0].object) : null;
+      if (propItemId) {
+        const entry = { itemId: propItemId, partId: sceneObjects.OBJECT_PART_ID };
+        if (e.shiftKey) garageStore.toggle(entry);
+        else garageStore.select([entry]);
+        return;
+      }
+      if (garageStore.getSnapshot().selection.length > 0) garageStore.clearSelection();
       if (hits.length > 0) {
         onSelect({
           name: product.name,
@@ -4309,60 +4355,62 @@ export default function StudioCanvas({
 
   return (
     <>
-      <Canvas
-        // three r186 removed PCFSoftShadowMap and warns on every shadow
-        // render if it is requested; "percentage" = PCFShadowMap, the exact
-        // behavior the renderer already falls back to. Same verified visuals,
-        // clean console.
-        shadows="percentage"
-        // Smooth mode (lookStore): the live view renders at 1x instead of up to
-        // 2x device pixels. Exports set their own size and are unaffected.
-        dpr={smoothLive ? 1 : [1, 2]}
-        camera={{ fov: FOV, near: 0.1, far: 500, position: [0, 2, 5] }}
-        // preserveDrawingBuffer keeps the rendered frame readable after the
-        // compositor swaps, so Capture Shot can PNG-encode the exact current
-        // presentation at any moment. No visual or scene-state change.
-        // alpha:true is always on so the context supports transparency from
-        // creation — it is a WebGL context attribute that cannot be changed
-        // at runtime. The CSS background toggles between #050505 and
-        // "transparent" to control what shows through when parallax is off/on.
-        gl={{ preserveDrawingBuffer: true, alpha: true }}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: transparent ? "transparent" : "#050505",
-          zIndex: 0,
-        }}
-      >
-        <EnvironmentLighting environment={environment} />
-        {/* Own Suspense boundary: a not-yet-loaded model suspends only the
-            stage, so the canvas-level EnvironmentLighting above is never
-            hidden (which would drop its cached environment) on product switch. */}
-        <Suspense fallback={null}>
-          {/* key=product.id: switching products remounts the stage cleanly */}
-          <StudioStage
-            key={product.id}
-            product={product}
-            environment={environment}
-            transform={transform}
-            selected={selection !== null}
-            onSelect={handleSelect}
-            onClear={handleClear}
-            cameraRequest={cameraRequest}
-            customView={customView}
-            cameraApiRef={cameraApiRef}
-            lighting={lighting}
-            viewLive={viewLive}
-            onViewLive={onViewLive}
-            focusLock={focusLock}
-            onLockChange={onLockChange}
-            reelViewRef={reelViewRef}
-            transparent={transparent}
-          />
-        </Suspense>
-        <CaptureBridge captureRef={captureRef} reelViewRef={reelViewRef} />
-        <PosterBridge />
-      </Canvas>
+      <CanvasErrorBoundary>
+        <Canvas
+          // three r186 removed PCFSoftShadowMap and warns on every shadow
+          // render if it is requested; "percentage" = PCFShadowMap, the exact
+          // behavior the renderer already falls back to. Same verified visuals,
+          // clean console.
+          shadows="percentage"
+          // Smooth mode (lookStore): the live view renders at 1x instead of up to
+          // 2x device pixels. Exports set their own size and are unaffected.
+          dpr={smoothLive ? 1 : [1, 2]}
+          camera={{ fov: FOV, near: 0.1, far: 500, position: [0, 2, 5] }}
+          // preserveDrawingBuffer keeps the rendered frame readable after the
+          // compositor swaps, so Capture Shot can PNG-encode the exact current
+          // presentation at any moment. No visual or scene-state change.
+          // alpha:true is always on so the context supports transparency from
+          // creation — it is a WebGL context attribute that cannot be changed
+          // at runtime. The CSS background toggles between #050505 and
+          // "transparent" to control what shows through when parallax is off/on.
+          gl={{ preserveDrawingBuffer: true, alpha: true }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: transparent ? "transparent" : "#050505",
+            zIndex: 0,
+          }}
+        >
+          <EnvironmentLighting environment={environment} />
+          {/* Own Suspense boundary: a not-yet-loaded model suspends only the
+              stage, so the canvas-level EnvironmentLighting above is never
+              hidden (which would drop its cached environment) on product switch. */}
+          <Suspense fallback={null}>
+            {/* key=product.id: switching products remounts the stage cleanly */}
+            <StudioStage
+              key={product.id}
+              product={product}
+              environment={environment}
+              transform={transform}
+              selected={selection !== null}
+              onSelect={handleSelect}
+              onClear={handleClear}
+              cameraRequest={cameraRequest}
+              customView={customView}
+              cameraApiRef={cameraApiRef}
+              lighting={lighting}
+              viewLive={viewLive}
+              onViewLive={onViewLive}
+              focusLock={focusLock}
+              onLockChange={onLockChange}
+              reelViewRef={reelViewRef}
+              transparent={transparent}
+            />
+          </Suspense>
+          <CaptureBridge captureRef={captureRef} reelViewRef={reelViewRef} />
+          <PosterBridge />
+        </Canvas>
+      </CanvasErrorBoundary>
       {selection && (
         <SelectionInspector
           name={selection.name}

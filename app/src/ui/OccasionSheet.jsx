@@ -10,6 +10,8 @@ import * as currentProduct from '../products/currentProduct';
 import { buildHalloweenSet, SET_PRODUCT_ID } from '../animation/halloweenSet';
 import { buildOccasionSet, OCCASION_SETS } from '../animation/occasionSets';
 import { setLookPreset } from '../fx/lookStore';
+import * as placeMode from '../garage/placeMode';
+import { PROPS } from '../products/props';
 
 /* ==========================================================================
    OccasionSheet — Occasion Pack selector within the Studio's "Occasions" sheet.
@@ -58,6 +60,7 @@ function buildHalloweenReel() {
 }
 
 export default function OccasionSheet() {
+  const place = useSyncExternalStore(placeMode.subscribe, placeMode.getSnapshot, placeMode.getSnapshot);
   const [crabStatus, setCrabStatus] = useState('');
   const [reelStatus, setReelStatus] = useState('');
   const [setStatus, setSetStatus] = useState({ busy: false, text: '', notes: [] });
@@ -142,11 +145,15 @@ export default function OccasionSheet() {
                 disabled={setStatus.busy || productId !== SET_PRODUCT_ID}
                 onClick={async () => {
                   setSetStatus({ busy: true, text: 'Building the set…', notes: [] });
-                  const r = await buildHalloweenSet({
-                    productId,
-                    onProgress: (text) => setSetStatus((s) => ({ ...s, text })),
-                  });
-                  setSetStatus({ busy: false, text: r.message, notes: r.warnings || [] });
+                  try {
+                    const r = await buildHalloweenSet({
+                      productId,
+                      onProgress: (text) => setSetStatus((s) => ({ ...s, text })),
+                    });
+                    setSetStatus({ busy: false, text: r.message, notes: r.warnings || [] });
+                  } catch (e) {
+                    setSetStatus({ busy: false, text: 'Build failed — please try again.', notes: [] });
+                  }
                 }}
               >
                 🎃 Build Halloween Night set
@@ -183,6 +190,27 @@ export default function OccasionSheet() {
                 <p className="sos2-occ-scene-note">{crabStatus}</p>
               )}
 
+              <p className="sos2-occ-label">Halloween props</p>
+              <div className="sos2-occ-grid">
+                {PROPS.filter((p) => p.seasonal === 'halloween').map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="sos2-occ-card"
+                    data-active={place.assetId === p.id || undefined}
+                    aria-pressed={place.assetId === p.id}
+                    onClick={() => (place.assetId === p.id ? placeMode.stopPlacing('') : placeMode.startPlacing(p.id))}
+                  >
+                    <span className="sos2-occ-name">{p.name}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="sos2-occ-scene-sub">
+                {place.assetId
+                  ? 'Click the ground to place it · Esc to cancel'
+                  : 'Pick a prop, then click the ground. Click any prop in the scene to move (W), turn (E) or scale (R) it with the gizmo.'}
+              </p>
+
               <button
                 type="button"
                 className="sos2-occ-action sos2-occ-action--reel"
@@ -213,11 +241,15 @@ export default function OccasionSheet() {
                 disabled={setStatus.busy || productId !== SET_PRODUCT_ID}
                 onClick={async () => {
                   setSetStatus({ busy: true, text: 'Building the set…', notes: [] });
-                  const r = await buildOccasionSet(occasionId, {
-                    productId,
-                    onProgress: (text) => setSetStatus((s) => ({ ...s, text })),
-                  });
-                  setSetStatus({ busy: false, text: r.message, notes: r.warnings || [] });
+                  try {
+                    const r = await buildOccasionSet(occasionId, {
+                      productId,
+                      onProgress: (text) => setSetStatus((s) => ({ ...s, text })),
+                    });
+                    setSetStatus({ busy: false, text: r.message, notes: r.warnings || [] });
+                  } catch (e) {
+                    setSetStatus({ busy: false, text: 'Build failed — please try again.', notes: [] });
+                  }
                 }}
               >
                 {OCCASION_SETS[occasionId].emoji} Build {OCCASION_SETS[occasionId].name} set

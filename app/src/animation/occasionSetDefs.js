@@ -53,25 +53,25 @@ const GRATE = [
 
 export const OCCASION_SETS = Object.freeze({
   halloween: {
-    name: "Halloween Night", emoji: "🎃", stage: "night", look: "moonlit",
-    blurb: "Bare trees, barrels, the pumpkin crab and food. The bike rides in, its door flips open in the finale.",
+    name: "Halloween Night", emoji: "🎃", stage: "night", look: "moonlit", ground: "fireglass",
+    blurb: "Fire-glass ground, bare trees, a pumpkin crab, the BBQ Ride jack-o-lantern and a purple haunted sky. One cinematic shot: the bike rides in.",
     props: [
-      ["prop-bbqsmith-bare-tree", -1.75, 0, -1.55, 20, 3.4],
-      ["prop-bbqsmith-bare-tree", 2.55, 0, -1.45, -40, 3.0],
-      ["prop-halloween-pumpkin-crab", -0.83, 0, 0.91, -41, 0.924],
-      ["prop-bbqsmith-whisky-barrel", 1.95, 0, 1.83, 15, 0.85],
-      ["prop-bbqsmith-whisky-barrel", -1.45, 0, 0.55, -25, 0.75],
-      ["prop-bbqsmith-half-barrel", -1.53, 0.75, 0.734, -76, 0.7], // stacked on the barrel above
-      ["prop-bbq-chicken-burger-v2", 0.98, 0, 1.7, -15, 0.16],
-      ["prop-bbq-chicken-drumsticks", 0.55, 0, 2.0, 30, 0.22],
-      UTENSILS,
-      ...GRATE,
+      ["prop-bbqsmith-bare-tree", -2.2, 0, -2.3, 20, 3.8],
+      ["prop-bbqsmith-bare-tree", 2.7, 0, -2.1, -40, 3.4],
+      ["prop-bbqsmith-bare-tree", -1.4, 0, -3.8, 70, 3.0],
+      ["prop-halloween-pumpkin-crab", -1.7, 0, 1.0, -35, 1.15], // the crab, front left
+      ["prop-bbqride-pumpkin-logo", 2.5, 0, 0.9, -30, 2.8], // the big BBQ Ride jack-o-lantern, front right
+      ["prop-pumpkin", 1.0, 0, 1.9, 40, 0.36],
+      ["prop-pumpkin", -0.45, 0, 2.15, 10, 0.34],
+      ["prop-pumpkin", -2.4, 0, 0.3, 0, 0.4],
+      ["prop-bbqsmith-whisky-barrel", -1.55, 0, -0.9, 25, 0.8],
+      ["prop-bbqsmith-whisky-barrel", 2.35, 0, -0.45, 15, 0.85],
     ],
     // no effects of its own: the bats are the occasion pack's overlay, so the
     // placed effects are left exactly as the owner left them
-    shots: DEFAULT_SHOTS,
-    rideIn: RIDE_IN,
-    door: DOOR_OPEN,
+    shots: [{ move: "push-in", startView: "Low Hero", durationS: 12 }], // one cinematic shot: the bike rides in
+    rideIn: { shot: 0, distance: 5.5, arriveS: 9 },
+    door: null,
   },
 
   christmas: {
@@ -236,6 +236,42 @@ export const OCCASION_SETS = Object.freeze({
       ["fireflies", 0, 0, 1.2],
       ["smoke", 1.6, -0.6, 0.5],
     ],
+    shots: DEFAULT_SHOTS,
+    rideIn: RIDE_IN,
+    door: DOOR_OPEN,
+  },
+
+  "press-coverage": {
+    name: "As Seen In", emoji: "📰", stage: "day", look: "studio", ground: "cobblestone",
+    blurb: "Clean press-day daylight: the smoker to one side, a laid barrel table, BBQ letters and a whisky barrel. Shot for the papers.",
+    props: [
+      ["prop-bbqsmith-smoker-wagon", -2.5, 0, -1.3, 35, 1.2],
+      ["prop-bbqsmith-barrel-table", 2.0, 0, 1.4, 0, 0.9],
+      ["prop-bbqsmith-bbq-letters", -1.4, 0, 1.9, 25, 0.85],
+      ["prop-bbqsmith-whisky-barrel", 2.4, 0, -0.5, -20, 0.5],
+      UTENSILS,
+      ...GRATE,
+    ],
+    effects: [["dust", 0, 2.2, 0.6]],
+    shots: DEFAULT_SHOTS,
+    rideIn: RIDE_IN,
+    door: DOOR_OPEN,
+  },
+
+  "franchise-map": {
+    name: "Franchise Map", emoji: "🗺️", stage: "day", look: "sunset", ground: "asphalt",
+    blurb: "Fifty-plus cities, one bike: smoker, laid tables, whisky barrels, BBQ letters and a warm sunset over the asphalt.",
+    props: [
+      ["prop-bbqsmith-smoker-wagon", -2.5, 0, -1.3, 35, 1.2],
+      ["prop-bbqsmith-barrel-table", 1.9, 0, 1.5, 0, 0.9],
+      ["prop-bbq-chicken-burger-v2", 1.9, 0.9, 1.5, -15, 0.16],
+      ["prop-bbqsmith-bbq-letters", -0.9, 0, 1.9, 15, 0.85],
+      ["prop-bbqsmith-whisky-barrel", 2.3, 0, 0.2, 15, 0.85],
+      ["prop-bbqsmith-half-barrel", 2.3, 0, -0.4, 15, 0.5],
+      UTENSILS,
+      ...GRATE,
+    ],
+    effects: [["fireflies", 0, 0, 1.0], ["dust", 0, 2.2, 0.6]],
     shots: DEFAULT_SHOTS,
     rideIn: RIDE_IN,
     door: DOOR_OPEN,

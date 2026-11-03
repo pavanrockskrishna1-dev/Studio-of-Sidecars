@@ -54,6 +54,7 @@ export const PROPS = Object.freeze([
   { id: "prop-street-light",    name: "Street Light",    label: "Street Light",    modelPath: "/models/props/prop-street-light.glb",    thumbUrl: null, size: [1.458, 2.394, 2.135] },
   { id: "prop-lemon",           name: "Lemon",           label: "Lemon",           modelPath: "/models/props/prop-lemon.glb",           thumbUrl: null, size: [0.106, 0.087, 0.118] },
   { id: "prop-stone",           name: "Stone",           label: "Stone",           modelPath: "/models/props/prop-stone.glb",           thumbUrl: null, size: [1.155, 1.135, 1.261] },
+  { id: "prop-bbqride-pumpkin-logo", name: "BBQ Ride Pumpkin", label: "BBQ Ride Pumpkin", modelPath: "/models/props/bbqride-pumpkin-logo.glb", thumbUrl: null, size: [0.293, 0.2125, 0.307], seasonal: "halloween" },
   { id: "prop-pumpkin",         name: "Pumpkin",         label: "Pumpkin",         modelPath: "/models/props/prop-pumpkin.glb",         thumbUrl: null, size: [0.345, 0.303, 0.343], seasonal: "halloween" },
   { id: "prop-oak-tree",        name: "Oak Tree",        label: "Oak Tree",        modelPath: "/models/props/prop-oak-tree.glb",        thumbUrl: null, size: [4.336, 3.63, 3.312] },
   { id: "prop-jack-o-lantern",  name: "Jack-o-Lantern",  label: "Jack-o-Lantern",  modelPath: "/models/props/prop-jack-o-lantern.glb",  thumbUrl: null, size: [2.397, 2.546, 2.028], seasonal: "halloween" },

@@ -71,7 +71,7 @@ export function materialGroups(root) {
           meshCount: 0,
           currentMaterial: mat,
           originalMaterial: mat,
-          snapshot: captureMaterial(mat),
+          snapshot: originalSnapshot(mat),
           upgraded: false,
         };
         byId.set(mat.uuid, entry);
@@ -136,6 +136,20 @@ export function captureMaterial(mat) {
   const snap = { color: hexOf(mat.color), textures: {} };
   for (const k of SCALARS) if (k in mat) snap[k] = mat[k];
   for (const k of TEXTURES) if (k in mat && mat[k]) snap.textures[k] = mat[k];
+  return snap;
+}
+
+// The loader cache hands the same material instances back every time a model is
+// rebuilt, so a snapshot taken at rebuild time can already contain the user's edit
+// (then "Reset" restores the edit). Keep the FIRST snapshot per material instead.
+// A WeakMap, not userData: Material.clone() deep-copies userData through JSON.
+const firstSnapshots = new WeakMap();
+function originalSnapshot(mat) {
+  let snap = firstSnapshots.get(mat);
+  if (!snap) {
+    snap = captureMaterial(mat);
+    firstSnapshots.set(mat, snap);
+  }
   return snap;
 }
 
