@@ -227,7 +227,7 @@ export default function ReelTimeline() {
                           disabled={busy}
                           className="sos2-tl-move-sel"
                           style={{ height: "24px", fontSize: "11px", width: "80px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "white", padding: "0 4px" }}
-                          placeholder={t}
+                          placeholder={motions.find(m => m.id === shot.motion.id).fieldLabels?.[idx] || t}
                           value={shot.motion.texts && shot.motion.texts[idx] !== undefined ? shot.motion.texts[idx] : ""}
                           onChange={(e) => {
                             const val = e.target.value;

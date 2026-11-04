@@ -1,6 +1,6 @@
 export function normMotion(v) {
   if (!v || typeof v !== "object") return undefined;
-  if (typeof v.id !== "string" || (!v.id.startsWith("b:") && !v.id.startsWith("o:"))) return undefined;
+  if (typeof v.id !== "string" || (!v.id.startsWith("b:") && !v.id.startsWith("o:") && !v.id.startsWith("t:"))) return undefined;
   
   let texts = undefined;
   if (Array.isArray(v.texts)) {
