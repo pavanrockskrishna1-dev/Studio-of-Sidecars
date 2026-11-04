@@ -2288,11 +2288,76 @@ function renderProject(ctx,P,t,opt){
   // Only runs when opt.grade is true (export mode or explicit snapshot).
   if(P.grade&&P.grade.enabled&&opt.grade){
     applyGrade(ctx,P.grade,P.w,P.h);}
+  // scene bloom — after all layers (and the grade), before editor overlays.
+  // A motion-blur render draws its samples without bloom and applies it once.
+  if(P.bloom&&P.bloom.on&&!opt._noBloom)applyBloom(ctx,P);
   if(opt.grid||opt.safe)drawGuides(ctx,P,opt);
   if(opt.sel&&opt.sel._bb)drawSelBox(ctx,opt.sel);
   if(opt.pen)drawPenOverlay(ctx);
   ctx.restore();
 }
+// ---------- scene bloom (project-level, After-Effects-style glow) ----------
+// Runs as the last pass over everything drawn so far. The bright parts of the
+// picture (above P.bloom.threshold) are kept in their own colours, blurred at
+// four widths, and added back on top ('lighter'), so lit things get a soft hot
+// halo that falls off naturally. Works on a quarter-size copy (cheap and
+// deterministic: same pixels in, same pixels out, no random numbers).
+// P.bloom = {on, threshold 0..1, intensity 0..3, radius 0.25..3}
+const BLOOM_DOWN=6;                 // working size = project size / 6 (bloom is soft, so this is plenty)
+const BLOOM_RADII=[1,2.7,6.5,16],BLOOM_WEIGHTS=[0.3,0.3,0.25,0.2]; // blur px at the working size
+const bloomPool=[null,null,null];
+function bloomCanvas(i,w,h){
+  let c=bloomPool[i];
+  if(!c){c=document.createElement('canvas');bloomPool[i]=c;}
+  if(c.width!==w||c.height!==h){c.width=w;c.height=h;}
+  return c;}
+function sanitizeBloom(b){
+  if(!b||typeof b!=='object')return null;
+  const num=(v,d,lo,hi)=>clamp(isFinite(+v)&&v!==null&&v!==''?+v:d,lo,hi);
+  return{on:b.on===true,threshold:num(b.threshold,0.55,0,0.95),
+    intensity:num(b.intensity,0.9,0,3),radius:num(b.radius,1,0.25,3)};}
+function applyBloom(ctx,P){
+  const b=P.bloom;
+  if(!b||!b.on||!(b.intensity>0))return;
+  const W=P.w,H=P.h,cw=ctx.canvas.width,ch=ctx.canvas.height;
+  const sw=Math.max(8,Math.round(W/BLOOM_DOWN)),sh=Math.max(8,Math.round(H/BLOOM_DOWN));
+  // 1) quarter-size copy of everything drawn so far (read in raw pixels)
+  const base=bloomCanvas(0,sw,sh),cb=base.getContext('2d',{willReadFrequently:true});
+  cb.setTransform(1,0,0,1,0,0);cb.globalCompositeOperation='source-over';cb.globalAlpha=1;cb.filter='none';
+  cb.clearRect(0,0,sw,sh);cb.imageSmoothingEnabled=true;cb.imageSmoothingQuality='high';
+  cb.drawImage(ctx.canvas,0,0,cw,ch,0,0,sw,sh);
+  // 2) bright pass: keep each colour, scale it by how far its brightest channel
+  // is above the threshold (so orange stays orange, white goes white)
+  const img=cb.getImageData(0,0,sw,sh),d=img.data,T=b.threshold*255,inv=1/Math.max(1,255-T);
+  for(let i=0;i<d.length;i+=4){
+    if(d[i+3]===0)continue;
+    const m=Math.max(d[i],d[i+1],d[i+2]),v=m>T?(m-T)*inv:0;
+    d[i]=d[i]*v;d[i+1]=d[i+1]*v;d[i+2]=d[i+2]*v;}
+  cb.putImageData(img,0,0);
+  // 3) blur at four widths and stack them into one glow image
+  const acc=bloomCanvas(1,sw,sh),ca=acc.getContext('2d');
+  ca.setTransform(1,0,0,1,0,0);ca.filter='none';ca.globalAlpha=1;
+  ca.globalCompositeOperation='source-over';ca.clearRect(0,0,sw,sh);
+  ca.globalCompositeOperation='lighter';
+  const tmp=bloomCanvas(2,sw,sh),ct=tmp.getContext('2d');
+  const hasFilter='filter' in ct;
+  for(let k=0;k<BLOOM_RADII.length;k++){
+    const r=BLOOM_RADII[k]*b.radius;
+    ct.setTransform(1,0,0,1,0,0);ct.globalCompositeOperation='source-over';ct.globalAlpha=1;
+    ct.clearRect(0,0,sw,sh);
+    if(hasFilter){ct.filter='blur('+r.toFixed(2)+'px)';ct.drawImage(base,0,0);ct.filter='none';}
+    else ct.drawImage(base,0,0); // no canvas filters in this browser: sharp (weaker) glow, never a crash
+    ca.globalAlpha=BLOOM_WEIGHTS[k];
+    ca.drawImage(tmp,0,0);}
+  ca.globalAlpha=1;ca.globalCompositeOperation='source-over';
+  // 4) add the glow back over the picture (whole turns at full strength, then the remainder)
+  const prevOp=ctx.globalCompositeOperation,prevA=ctx.globalAlpha;
+  ctx.globalCompositeOperation='lighter';
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  let left=b.intensity;
+  while(left>0.001){ctx.globalAlpha=Math.min(1,left);ctx.drawImage(acc,0,0,sw,sh,0,0,W,H);left-=1;}
+  ctx.globalAlpha=prevA;ctx.globalCompositeOperation=prevOp;}
+
 // DOF blur radius for a layer at depth lz — 0 if inside dofRange/2 of the
 // focus plane, otherwise a linear ramp from 0 (at dofRange/2) to dofMax
 // (at dofRange and beyond). Returns 0 when there is no camera or DOF is off.
@@ -2330,7 +2395,7 @@ function renderMotionBlur(ctx,P,t,opt){
   cb.fillStyle=P.bg;cb.fillRect(0,0,W,H);
   // transparent sub-project for the sample renders — the bg is on the blend
   // canvas, so each sample only contributes the blurred layer pixels
-  const sampleP=Object.assign({},P,{bg:'rgba(0,0,0,0)'});
+  const sampleP=Object.assign({},P,{bg:'rgba(0,0,0,0)',bloom:null});
   // sample canvas — each sub-frame render goes here
   const samp=mbBuf(1,W,H);
   // render each sample
@@ -2356,7 +2421,8 @@ function renderMotionBlur(ctx,P,t,opt){
     grade:opt.grade});
   cb.drawImage(staticBuf,0,0);
   // composite the final blend onto the destination ctx
-  ctx.drawImage(blend,0,0);}
+  ctx.drawImage(blend,0,0);
+  if(P.bloom&&P.bloom.on)applyBloom(ctx,P);}
 
 // ---------- keyframes / model ----------
 function B(v){return{base:v,keys:null};}
@@ -3672,6 +3738,7 @@ function sanitize(P){
   // color grading — project-level (applied as a final pass after all layers).
   // Same structure as per-layer grade. See applyGrade() for the pixel pipeline.
   P.grade=sanitizeGrade(P.grade);
+  P.bloom=sanitizeBloom(P.bloom);              // scene bloom (null = off)
   // timeline markers — named sync points on the ruler. Each has a time (s),
   // label, and colour. Double-click the ruler to add one.
   P.markers=Array.isArray(P.markers)?P.markers.filter(m=>m&&isFinite(+m.t))
@@ -9313,6 +9380,20 @@ function buildInspector(){
     const mbHint=div('hintp');mbHint.style.padding='4px 2px 0';mbHint.style.lineHeight='1.5';
     mbHint.textContent='Motion blur smears fast-moving layers across sub-frame samples. Active during export only — live preview shows a ghost-frame approximation. Disable per-layer in TRANSFORM to save render time on static backgrounds.';
     el.appendChild(mbHint);
+    // BLOOM — soft hot glow around everything bright (applies in preview and export)
+    el.appendChild(secEl('BLOOM'));
+    const blRow=div('prow2');blRow.appendChild(span('plabel2','ENABLED'));
+    const blChk=div('chk');
+    blChk.innerHTML='<input type="checkbox" '+(project.bloom&&project.bloom.on?'checked':'')+'><span>SCENE BLOOM</span>';
+    blChk.querySelector('input').addEventListener('change',ev=>{
+      project.bloom=sanitizeBloom(Object.assign({},project.bloom||{},{on:ev.target.checked}));
+      touch();dirty=true;buildInspector();});
+    blRow.appendChild(blChk);el.appendChild(blRow);
+    if(project.bloom&&project.bloom.on){
+      const setBl=(k,v)=>{project.bloom=sanitizeBloom(Object.assign({},project.bloom,{[k]:v,on:true}));touch();dirty=true;};
+      el.appendChild(rowNumS('THRESHOLD',project.bloom.threshold,v=>setBl('threshold',v)));
+      el.appendChild(rowNumS('INTENSITY',project.bloom.intensity,v=>setBl('intensity',v)));
+      el.appendChild(rowNumS('RADIUS',project.bloom.radius,v=>setBl('radius',v)));}
     // ONION SKIN — editor-only ghost frames. Toggle also in the stage bar.
     el.appendChild(secEl('ONION SKIN'));
     const onRow=div('prow2');onRow.appendChild(span('plabel2','ENABLED'));
@@ -12092,7 +12173,7 @@ addEventListener('resize',()=>{if(project)buildTimelineRows();});
   });
   $('#pbExit').addEventListener('click',exitPresentMode);
 
-  window.KINEMA={renderProject:renderProject,BUILTINS:BUILTINS,OCCASIONS:OCCASIONS,seed:__seed,pj:pj};
+  window.KINEMA={renderProject:renderProject,BUILTINS:BUILTINS,OCCASIONS:OCCASIONS,seed:__seed,pj:pj,mkText:mkText,mkShape:mkShape,mkImage:mkImage,mkParticle:mkParticle,mkPath:mkPath,mkNull:mkNull,mkCamera:mkCamera,K:K,B:B,fo:fo};
 requestAnimationFrame(tick);
 })();
 </script>
