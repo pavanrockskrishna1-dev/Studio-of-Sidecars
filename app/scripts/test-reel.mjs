@@ -1,6 +1,6 @@
 // Slice C2b — checks for the multi-shot Reel: app/src/animation/reelSequence.js
 // (sequence total duration, shot frame ranges at 30 fps, cut frame indices,
-// the 5-shot and 30 s limits, add / delete / reorder / per-shot edits, the
+// the 8-shot and 30 s limits, add / delete / reorder / per-shot edits, the
 // anim Play and Export run, the frame -> shot lookup) and the shot list in
 // app/src/animation/animationStore.js (edits only while idle, durationS kept
 // equal to the total, and the session form: save, JSON round trip, restore,
@@ -22,9 +22,9 @@ const json = (v) => JSON.stringify(v);
 const shot = (move, startView, durationS) => ({ move, startView, durationS });
 
 /* ============================ constants / default ============================ */
-check("MAX_SHOTS is 5", r.MAX_SHOTS === 5);
+check("MAX_SHOTS is 8", r.MAX_SHOTS === 8);
 check("MAX_TOTAL_S is 30", r.MAX_TOTAL_S === 30);
-check("durations are 4, 8, 12", json(r.SHOT_DURATIONS) === "[4,8,12]");
+check("durations are 1.5, 2, 3, 4, 8, 12", json(r.SHOT_DURATIONS) === "[1.5,2,3,4,8,12]");
 check("moves: turntable + the 5 camera moves", json(r.REEL_MOVES) === json(["turntable", "orbit", "push-in", "pull-back", "slide", "crane"]));
 check("start views: 6 presets + custom", json(r.REEL_START_VIEWS) === json(["Front", "Side", "3/4", "Rear", "Top", "Low Hero", "custom"]));
 const def = r.defaultSequence();
@@ -73,11 +73,12 @@ check("preview t = 3.999 s plays shot 1", r.reelShotAtTime(seqAnim, 3.999).index
 check("preview t = 4.0 s plays shot 2 (the cut)", r.reelShotAtTime(seqAnim, 4).index === 1 && r.reelShotAtTime(seqAnim, 4).local === 0);
 check("preview t = 11.9 s plays shot 3", r.reelShotAtTime(seqAnim, 11.9).index === 2);
 check("preview t = 12 s (the end) plays nothing", r.reelShotAtTime(seqAnim, 12) === null);
-check("buildReelAnim refuses 6 shots", r.buildReelAnim(Array.from({ length: 6 }, () => shot("orbit", "3/4", 4)), 30) === null);
+check("buildReelAnim refuses 9 shots", r.buildReelAnim(Array.from({ length: 9 }, () => shot("orbit", "3/4", 2)), 30) === null);
+check("buildReelAnim accepts 8 shots", r.buildReelAnim(Array.from({ length: 8 }, () => shot("orbit", "3/4", 2)), 30) !== null);
 check("buildReelAnim refuses 36 s", r.buildReelAnim([shot("orbit", "3/4", 12), shot("orbit", "3/4", 12), shot("orbit", "3/4", 12)], 30) === null);
 check("buildReelAnim refuses an unknown move", r.buildReelAnim([shot("zoom", "3/4", 4)], 30) === null);
 
-/* ============================ the 30 s and 5-shot limits ============================ */
+/* ============================ the 30 s and 8-shot limits ============================ */
 let s = r.defaultSequence(); // 8
 let res;
 for (let i = 0; i < 3; i += 1) {
@@ -86,22 +87,27 @@ for (let i = 0; i < 3; i += 1) {
 }
 check("adding 3 shots to the default (8 s): 8+8+8, then the 4th new shot gets 4 s (8 would pass 30) = 28 s", s.length === 4 && r.totalDuration(s) === 28 && s[3].durationS === 4, json(s.map((x) => x.durationS)));
 res = r.canAdd(s);
-check("at 28 s a new shot (needs 4 s) is refused with the 30 s reason", !res.ok && res.reason === "The Reel is already 28 s; a new shot needs at least 4 s and the limit is 30 s.", res.reason);
+check("at 28 s a new shot fits 2 s (remaining time is 2 s)", res.ok && res.durationS === 2);
+res = r.addShot(s);
+s = res.seq;
+check("at 30 s a new shot is refused with the 30 s reason", !r.canAdd(s).ok && r.canAdd(s).reason === "The Reel is already 30 s; a new shot needs at least 1.5 s and the limit is 30 s.", r.canAdd(s).reason);
 const refused = r.addShot(s);
-check("addShot at 28 s: ok false, sequence unchanged (same object)", !refused.ok && refused.seq === s);
-const five = [shot("orbit", "3/4", 4), shot("orbit", "3/4", 4), shot("orbit", "3/4", 4), shot("orbit", "3/4", 4), shot("orbit", "3/4", 4)];
-res = r.canAdd(five);
-check("a 6th shot is refused (5 shots, 20 s) with the 5-shot reason", !res.ok && res.reason === "A Reel can have at most 5 shots.", res.reason);
-check("canAdd with 4 x 4 s gives a new 8 s shot", r.canAdd(five.slice(0, 4)).ok && r.canAdd(five.slice(0, 4)).durationS === 8);
-check("canAdd at 24 s gives a new 4 s shot (8 would pass 30)", r.canAdd([shot("orbit", "3/4", 12), shot("orbit", "3/4", 12)]).durationS === 4);
+check("addShot at 30 s: ok false, sequence unchanged (same object)", !refused.ok && refused.seq === s);
+const eight = Array.from({ length: 8 }, () => shot("orbit", "3/4", 2));
+res = r.canAdd(eight);
+check("a 9th shot is refused (8 shots, 16 s) with the 8-shot reason", !res.ok && res.reason === "A Reel can have at most 8 shots.", res.reason);
+check("canAdd with 7 x 2 s gives a new 8 s shot", r.canAdd(eight.slice(0, 7)).ok && r.canAdd(eight.slice(0, 7)).durationS === 8);
+check("canAdd at 28.5 s gives a new 1.5 s shot", r.canAdd([shot("orbit", "3/4", 12), shot("orbit", "3/4", 12), shot("orbit", "3/4", 3), shot("orbit", "3/4", 1.5)]).durationS === 1.5);
 const twentyEight = [shot("orbit", "3/4", 12), shot("orbit", "3/4", 12), shot("orbit", "3/4", 4)];
 res = r.durationAllowed(twentyEight, 2, 8);
 check("8 s on the 4 s shot of a 28 s Reel is refused (32 s)", !res.ok && res.reason === "8 s would make the Reel 32 s; the limit is 30 s.", res.reason);
 res = r.setShot(twentyEight, 2, { durationS: 12 });
 check("setShot 12 s there is refused (36 s), unchanged", !res.ok && res.seq === twentyEight && res.reason === "12 s would make the Reel 36 s; the limit is 30 s.", res.reason);
 check("4 s on a 12 s shot is allowed (20 s)", r.setShot(twentyEight, 0, { durationS: 4 }).ok);
-check("28 s, the largest total 4/8/12 s shots can reach under 30, is allowed (12+8+4 -> 12+8+8)", r.setShot([shot("orbit", "3/4", 12), shot("orbit", "3/4", 8), shot("orbit", "3/4", 4)], 2, { durationS: 8 }).ok);
-check("2 s is not a duration", !r.setShot(def, 0, { durationS: 2 }).ok);
+check("28 s, setting 4 s to 2 s is allowed (26 s)", r.setShot(twentyEight, 2, { durationS: 2 }).ok && r.setShot(twentyEight, 2, { durationS: 2 }).seq[2].durationS === 2);
+check("setting to 1.5 s is allowed", r.setShot(twentyEight, 2, { durationS: 1.5 }).ok && r.setShot(twentyEight, 2, { durationS: 1.5 }).seq[2].durationS === 1.5);
+check("2.5 s is not a duration", !r.setShot(def, 0, { durationS: 2.5 }).ok);
+check("durationAllowed lists allowed durations for 2.5 s", !r.durationAllowed(def, 0, 2.5).ok && r.durationAllowed(def, 0, 2.5).reason === "Durations are 1.5, 2, 3, 4, 8 or 12 s.");
 check("an unknown move is refused", !r.setShot(def, 0, { move: "zoom" }).ok);
 check("an unknown start view is refused", !r.setShot(def, 0, { startView: "Under" }).ok);
 check("move and start view edits apply", json(r.setShot(def, 0, { move: "crane", startView: "Low Hero" }).seq[0]) === json(shot("crane", "Low Hero", 8)));
@@ -129,8 +135,28 @@ check("session form is plain JSON with the 3 shots", json(saved.reel) === json(a
 check("sequenceFromSession restores the same 3 shots", json(r.sequenceFromSession(saved.reel)) === json(abc));
 check("sequenceFromSession(null / not an array / []) is null", r.sequenceFromSession(null) === null && r.sequenceFromSession({}) === null && r.sequenceFromSession([]) === null);
 check("sequenceFromSession drops bad shots", json(r.sequenceFromSession([shot("zoom", "3/4", 4), abc[0], shot("orbit", "3/4", 5)])) === json([abc[0]]));
-check("sequenceFromSession keeps at most 5 shots", r.sequenceFromSession(Array.from({ length: 7 }, () => shot("orbit", "3/4", 4))).length === 5);
+check("sequenceFromSession keeps at most 8 shots", r.sequenceFromSession(Array.from({ length: 10 }, () => shot("orbit", "3/4", 2))).length === 8);
 check("sequenceFromSession enforces the 30 s limit", r.totalDuration(r.sequenceFromSession([shot("orbit", "3/4", 12), shot("orbit", "3/4", 12), shot("orbit", "3/4", 12)])) === 24);
+
+/* ============================ short shots and 8-shot Reel additions ============================ */
+check("a 1.5 s shot is accepted by isShot", r.isShot(shot("orbit", "3/4", 1.5)));
+const seq15 = [shot("orbit", "3/4", 1.5)];
+check("a 1.5 s shot survives sequenceToSession then sequenceFromSession unchanged", json(r.sequenceFromSession(r.sequenceToSession(seq15))) === json(seq15));
+const eightShots = Array.from({ length: 8 }, () => shot("orbit", "3/4", 2));
+check("8 shots are accepted by buildReelAnim", r.buildReelAnim(eightShots, 30) !== null);
+check("canAdd refuses an 8-shot sequence", !r.canAdd(eightShots).ok && r.canAdd(eightShots).reason === "A Reel can have at most 8 shots.");
+const nineShots = [...eightShots, shot("orbit", "3/4", 2)];
+check("a 9th shot is refused by buildReelAnim", r.buildReelAnim(nineShots, 30) === null);
+const over30 = [shot("orbit", "3/4", 12), shot("orbit", "3/4", 12), shot("orbit", "3/4", 8)];
+check("a total over 30 s (32 s) is refused by buildReelAnim", r.buildReelAnim(over30, 30) === null);
+check("durationAllowed refuses total over 30 s", !r.durationAllowed([shot("orbit", "3/4", 12), shot("orbit", "3/4", 12), shot("orbit", "3/4", 4)], 2, 8).ok);
+const mixedShort = [shot("orbit", "3/4", 1.5), shot("slide", "Side", 2), shot("crane", "Top", 3), shot("push-in", "Front", 4)];
+const mixedRanges = r.shotFrameRanges(mixedShort, 30);
+check("mixed sequence (1.5, 2, 3, 4) ranges are [0,45) [45,105) [105,195) [195,315)", json(mixedRanges) === json([{ start: 0, end: 45 }, { start: 45, end: 105 }, { start: 105, end: 195 }, { start: 195, end: 315 }]));
+const noGapsNoOverlaps = mixedRanges[0].start === 0 && mixedRanges.slice(1).every((rng, idx) => rng.start === mixedRanges[idx].end);
+const rangesSum = mixedRanges.reduce((acc, rng) => acc + (rng.end - rng.start), 0);
+check("frame ranges of mixed sequence (1.5, 2, 3, 4) have no gaps and no overlaps", noGapsNoOverlaps);
+check("frame ranges of mixed sequence (1.5, 2, 3, 4) sum to totalFrames", rangesSum === r.totalFrames(mixedShort, 30) && rangesSum === 315);
 
 /* ============================ animation store: the shot list ============================ */
 check("store starts with the default sequence and durationS 8", json(store.getSequence()) === json(def) && store.getSnapshot().durationS === 8);
@@ -176,6 +202,60 @@ const sess = readFileSync(new URL("../src/session/studioSession.js", import.meta
 check("studioSession saves reel: animationStore.sequenceForSession()", /reel:\s*animationStore\.sequenceForSession\(\)/.test(sess));
 check("studioSession restores the saved reel", /animationStore\.restoreSequence\(snap\.reel\)/.test(sess));
 check("studioSession Reset resets the shot list", /animationStore\.resetSequence\(\)/.test(sess));
+
+/* ============================ transitions ============================ */
+const seqWithTrans = [
+  shot("orbit", "3/4", 4),
+  { ...shot("push-in", "Side", 4), transition: { type: "flash", frames: 9 } },
+  { ...shot("crane", "Low Hero", 4), transition: { type: "dip", frames: 12 } },
+];
+const transSession = r.sequenceToSession(seqWithTrans);
+const restoredTrans = r.sequenceFromSession(transSession);
+check(
+  "a shot with a transition survives sequenceToSession then sequenceFromSession",
+  json(restoredTrans) === json(seqWithTrans)
+);
+
+const seqTransOn1 = [
+  { ...shot("orbit", "3/4", 4), transition: { type: "flash", frames: 6 } },
+  shot("crane", "Side", 4),
+];
+const restoredTransOn1 = r.sequenceFromSession(seqTransOn1);
+check("a transition on shot 1 is dropped", restoredTransOn1[0].transition === undefined);
+
+// Also check setTransition on shot 0
+const resTransOn0 = r.setTransition(proof, 0, { type: "flash", frames: 6 });
+check("setTransition on shot 1 is refused", !resTransOn0.ok);
+
+// Transition longer than shot duration (45 frames at 30 fps for 1.5s shot)
+const shortSeq = [shot("orbit", "3/4", 4), shot("orbit", "Side", 1.5)];
+const resTooLong = r.setTransition(shortSeq, 1, { type: "flash", frames: 50 });
+check("a transition with frames longer than the shot is refused", !resTooLong.ok);
+
+// Saved transition longer than shot is clamped
+const rawOverlong = [
+  shot("orbit", "3/4", 4),
+  { ...shot("orbit", "Side", 1.5), transition: { type: "whip", frames: 50 } },
+];
+const clampedSess = r.sequenceFromSession(rawOverlong);
+check(
+  "a saved transition that is too long is clamped when loaded",
+  clampedSess[1].transition?.frames === 18
+);
+
+// Frame ranges, cutFrames, and totalFrames identical with and without transitions
+const rangesWithout = r.shotFrameRanges(proof, 30);
+const rangesWith = r.shotFrameRanges(seqWithTrans, 30);
+const cutsWithout = r.cutFrames(proof, 30);
+const cutsWith = r.cutFrames(seqWithTrans, 30);
+const totalWithout = r.totalFrames(proof, 30);
+const totalWith = r.totalFrames(seqWithTrans, 30);
+check(
+  "frame ranges, cutFrames and totalFrames are identical with and without transitions",
+  json(rangesWithout) === json(rangesWith) &&
+    json(cutsWithout) === json(cutsWith) &&
+    totalWithout === totalWith
+);
 
 /* ============================ purity ============================ */
 const src = readFileSync(new URL("../src/animation/reelSequence.js", import.meta.url), "utf8");

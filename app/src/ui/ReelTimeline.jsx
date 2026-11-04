@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import WhisperTip from "./WhisperTip";
 import * as animationStore from "../animation/animationStore";
 import { canAdd, durationAllowed, MAX_TOTAL_S } from "../animation/reelSequence";
+import { TRANSITION_FRAMES } from "../animation/transitions";
 
 const MOVE_LABELS = {
   turntable: "Turntable", orbit: "Orbit", "push-in": "Push In",
@@ -9,6 +10,8 @@ const MOVE_LABELS = {
 };
 
 const SHOT_COLORS = ["#ff6b00", "#e05500", "#c94400", "#b33300", "#9d2200"];
+
+const fmtDur = (s) => (Number.isInteger(s) ? `${s}` : `${Number(s.toFixed(1))}`);
 
 export default function ReelTimeline() {
   const { sequence, mode, durationS } = useSyncExternalStore(
@@ -24,7 +27,7 @@ export default function ReelTimeline() {
     <div className="sos2-timeline">
       <WhisperTip id="reel-timeline" text="↑↓ reorder shots · −/+ change duration · × remove · Add Shot for more" />
       {/* Duration bar */}
-      <div className="sos2-tl-bar-wrap" title={`${durationS}s of ${MAX_TOTAL_S}s max`}>
+      <div className="sos2-tl-bar-wrap" title={`${fmtDur(durationS)}s of ${MAX_TOTAL_S}s max`}>
         <div className="sos2-tl-bar-track">
           {sequence.map((shot, i) => {
             const w = (shot.durationS / MAX_TOTAL_S) * 100;
@@ -33,7 +36,7 @@ export default function ReelTimeline() {
                 key={i}
                 className="sos2-tl-bar-seg"
                 style={{ width: `${w}%`, background: SHOT_COLORS[i % SHOT_COLORS.length] }}
-                title={`Shot ${i + 1}: ${shot.durationS}s`}
+                title={`Shot ${i + 1}: ${fmtDur(shot.durationS)}s`}
               >
                 <span className="sos2-tl-bar-label">S{i + 1}</span>
               </div>
@@ -41,7 +44,7 @@ export default function ReelTimeline() {
           })}
           <div className="sos2-tl-bar-empty" style={{ width: `${100 - pct}%` }} />
         </div>
-        <span className="sos2-tl-dur">{durationS}s / {MAX_TOTAL_S}s</span>
+        <span className="sos2-tl-dur">{fmtDur(durationS)}s / {MAX_TOTAL_S}s</span>
       </div>
 
       {/* Shot cards */}
@@ -94,15 +97,15 @@ export default function ReelTimeline() {
                 type="button"
                 className="sos2-tl-dur-btn"
                 disabled={busy || !canMinus}
-                title={canMinus ? `Decrease to ${animationStore.DURATIONS[durIdx - 1]}s` : "Minimum duration"}
+                title={canMinus ? `Decrease to ${fmtDur(animationStore.DURATIONS[durIdx - 1])}s` : "Minimum duration"}
                 onClick={() => animationStore.setShot(i, { durationS: animationStore.DURATIONS[durIdx - 1] })}
               >−</button>
-              <span className="sos2-tl-dur-val">{shot.durationS}s</span>
+              <span className="sos2-tl-dur-val">{fmtDur(shot.durationS)}s</span>
               <button
                 type="button"
                 className="sos2-tl-dur-btn"
                 disabled={busy || !canPlus}
-                title={canPlus ? `Increase to ${animationStore.DURATIONS[durIdx + 1]}s` : "Maximum duration"}
+                title={canPlus ? `Increase to ${fmtDur(animationStore.DURATIONS[durIdx + 1])}s` : "Maximum duration"}
                 onClick={() => animationStore.setShot(i, { durationS: animationStore.DURATIONS[durIdx + 1] })}
               >+</button>
 
@@ -132,6 +135,53 @@ export default function ReelTimeline() {
                 ))}
               </select>
             </div>
+
+            {/* Transition (every shot after the first) */}
+            {i > 0 && (
+              <div className="sos2-tl-shot-trans" style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "4px" }}>
+                <span style={{ fontSize: "11px", opacity: 0.6, flexShrink: 0 }}>Into:</span>
+                <select
+                  className="sos2-tl-move-sel"
+                  style={{ height: "24px", minWidth: "60px", fontSize: "11px" }}
+                  disabled={busy}
+                  value={shot.transition?.type ?? "cut"}
+                  aria-label={`Shot ${i + 1} transition`}
+                  onChange={(e) => {
+                    const type = e.target.value;
+                    if (type === "cut") {
+                      animationStore.setShot(i, { transition: undefined });
+                    } else {
+                      const frames = shot.transition?.frames ?? 9;
+                      animationStore.setShot(i, { transition: { type, frames } });
+                    }
+                  }}
+                >
+                  <option value="cut">Cut</option>
+                  <option value="flash">Flash</option>
+                  <option value="dip">Dip</option>
+                  <option value="whip">Whip</option>
+                </select>
+                {shot.transition?.type && shot.transition.type !== "cut" && (
+                  <select
+                    className="sos2-tl-view-sel"
+                    style={{ height: "24px", minWidth: "48px", width: "52px", flex: "none", fontSize: "11px" }}
+                    disabled={busy}
+                    value={shot.transition?.frames ?? 9}
+                    aria-label={`Shot ${i + 1} transition frames`}
+                    onChange={(e) => {
+                      const frames = Number(e.target.value);
+                      animationStore.setShot(i, {
+                        transition: { type: shot.transition.type, frames },
+                      });
+                    }}
+                  >
+                    {TRANSITION_FRAMES.map((f) => (
+                      <option key={f} value={f}>{f}f</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
           </div>
         );
       })}

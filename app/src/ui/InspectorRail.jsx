@@ -14,7 +14,7 @@ import {
 import * as materialStore from "../materials/store";
 import * as cameraStudio from "../camera/cameraStudio";
 import * as animationStore from "../animation/animationStore";
-import { canAdd, durationAllowed } from "../animation/reelSequence";
+import { canAdd, durationAllowed, MAX_SHOTS } from "../animation/reelSequence";
 import * as reelKeys from "../animation/reelKeys";
 import * as reelCycles from "../animation/reelCycles";
 import ReelSection from "./ReelSection";
@@ -3159,7 +3159,7 @@ export function AnimatePanel() {
                 : `${seq.length === 1 ? "One shot" : `${seq.length} shots with hard cuts`}, ${total} s, each easing in and out. The camera returns to your view afterwards.`}
       </Hint>
       <ReelTemplates busy={animBusy} onApplied={() => setSelected(0)} />
-      <ReelSection id="shots" title="Shots" summary={`${seq.length} of 5 · ${total} s`}>
+      <ReelSection id="shots" title="Shots" summary={`${seq.length} of ${MAX_SHOTS} · ${total} s`}>
         <ReelTimeline />
       </ReelSection>
       <ReelSection id="director" title="Camera director" summary={`${shotTag}${hasCamKeys(shot) ? `${shot.cam.keys.length} camera keys` : "uses its move"}`}>

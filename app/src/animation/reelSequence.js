@@ -2,7 +2,7 @@
    ---------------------------------------------------------------------------
    A sequence is an array of 1 to MAX_SHOTS shots { move, startView, durationS }:
    move is "turntable" or a C2a camera move, startView one of the 6 camera
-   presets or "custom", durationS 4, 8 or 12. The total never passes
+   presets or "custom", durationS 1.5, 2, 3, 4, 8 or 12. The total never passes
    MAX_TOTAL_S. Every edit returns { seq, ok, reason }: on a refused edit seq is
    the unchanged input and reason is the sentence the Reel sheet shows. Shots
    are joined by hard cuts: shot k owns frames [start, end) at the export fps,
@@ -22,24 +22,48 @@ import { keysToSession, sanitizeKeys } from "./reelKeys.js";
 import { cyclesToSession, sanitizeCycles } from "./reelCycles.js";
 import { isTitle, normTitle } from "./shotTitle.js";
 import { sanitizeCam } from "./cameraKeys.js";
+import { TRANSITION_TYPES, TRANSITION_FRAMES } from "./transitions.js";
 
-export const MAX_SHOTS = 5;
+export const MAX_SHOTS = 8;
 export const MAX_TOTAL_S = 30;
-export const SHOT_DURATIONS = Object.freeze([4, 8, 12]);
+export const SHOT_DURATIONS = Object.freeze([1.5, 2, 3, 4, 8, 12]);
 export const REEL_MOVES = Object.freeze(["turntable", ...SHOT_MOVES]);
 export const REEL_START_VIEWS = Object.freeze(["Front", "Side", "3/4", "Rear", "Top", "Low Hero", "custom"]);
 
 export const defaultShot = () => Object.freeze({ move: "orbit", startView: "3/4", durationS: 8 });
 export const defaultSequence = () => Object.freeze([defaultShot()]);
 
-const isShot = (s) =>
+export const isTransition = (t, durationS) => {
+  if (t === undefined) return true;
+  if (!t || typeof t !== "object") return false;
+  if (t.type === "cut") return true;
+  if (!TRANSITION_TYPES.includes(t.type)) return false;
+  if (!TRANSITION_FRAMES.includes(t.frames)) return false;
+  if (durationS !== undefined) {
+    const maxF = Math.round(durationS * 30);
+    if (t.frames > maxF) return false;
+  }
+  return true;
+};
+
+export const isShot = (s) =>
   !!s &&
   REEL_MOVES.includes(s.move) &&
   REEL_START_VIEWS.includes(s.startView) &&
   SHOT_DURATIONS.includes(s.durationS) &&
   (s.frameOn === undefined || s.frameOn === "start" || s.frameOn === "end") &&
   (s.title === undefined || isTitle(s.title)) &&
-  (s.cam === undefined || s.cam === null || !!sanitizeCam(s.cam));
+  (s.cam === undefined || s.cam === null || !!sanitizeCam(s.cam)) &&
+  isTransition(s.transition, s.durationS);
+
+const normTransition = (t, durationS) => {
+  if (!t || typeof t !== "object" || t.type === "cut") return undefined;
+  if (!TRANSITION_TYPES.includes(t.type) || !TRANSITION_FRAMES.includes(t.frames)) return undefined;
+  const maxF = Math.round((durationS || 0) * 30);
+  if (t.frames > maxF) return undefined;
+  return { type: t.type, frames: t.frames };
+};
+
 // frameOn is stored only as "start" ("end" is the default and is dropped); a
 // title is stored only when it has visible text or a non-default position
 const normShot = (s) => {
@@ -51,20 +75,33 @@ const normShot = (s) => {
   const cam = sanitizeCam(rest.cam);
   if (cam) rest.cam = cam;
   else delete rest.cam;
+  const trans = normTransition(rest.transition, rest.durationS);
+  if (trans) rest.transition = trans;
+  else delete rest.transition;
   return rest;
 };
 
 export const totalDuration = (seq) => seq.reduce((n, s) => n + s.durationS, 0);
 
-const done = (seq) => ({ seq: Object.freeze(seq.map((s) => Object.freeze({ ...s }))), ok: true, reason: "" });
+const done = (seq) => ({
+  seq: Object.freeze(
+    seq.map((s, idx) => {
+      const copy = { ...s };
+      if (idx === 0 && copy.transition) delete copy.transition;
+      return Object.freeze(copy);
+    })
+  ),
+  ok: true,
+  reason: "",
+});
 const refuse = (seq, reason) => ({ seq, ok: false, reason });
 
 // Can one more shot be added? { ok, reason, durationS (the new shot's length) }
 export function canAdd(seq) {
   if (seq.length >= MAX_SHOTS) return { ok: false, reason: `A Reel can have at most ${MAX_SHOTS} shots.`, durationS: 0 };
   const left = MAX_TOTAL_S - totalDuration(seq);
-  const fit = [8, 4].find((d) => d <= left);
-  if (!fit) return { ok: false, reason: `The Reel is already ${totalDuration(seq)} s; a new shot needs at least 4 s and the limit is ${MAX_TOTAL_S} s.`, durationS: 0 };
+  const fit = [8, 4, 3, 2, 1.5].find((d) => d <= left);
+  if (!fit) return { ok: false, reason: `The Reel is already ${totalDuration(seq)} s; a new shot needs at least 1.5 s and the limit is ${MAX_TOTAL_S} s.`, durationS: 0 };
   return { ok: true, reason: "", durationS: fit };
 }
 
@@ -92,7 +129,10 @@ export function moveShot(seq, i, dir) {
 
 // Would setting shot i to n seconds keep the total within the limit?
 export function durationAllowed(seq, i, n) {
-  if (!SHOT_DURATIONS.includes(n)) return { ok: false, reason: "Durations are 4, 8 or 12 s." };
+  if (!SHOT_DURATIONS.includes(n)) {
+    const list = `${SHOT_DURATIONS.slice(0, -1).join(", ")} or ${SHOT_DURATIONS[SHOT_DURATIONS.length - 1]} s`;
+    return { ok: false, reason: `Durations are ${list}.` };
+  }
   const total = totalDuration(seq) - seq[i].durationS + n;
   if (total > MAX_TOTAL_S) return { ok: false, reason: `${n} s would make the Reel ${total} s; the limit is ${MAX_TOTAL_S} s.` };
   return { ok: true, reason: "" };
@@ -106,12 +146,44 @@ export function setShot(seq, i, patch) {
     const a = durationAllowed(seq, i, patch.durationS);
     if (!a.ok) return refuse(seq, a.reason);
   }
+  if (patch.transition !== undefined) {
+    if (i === 0 && patch.transition && patch.transition.type !== "cut") {
+      return refuse(seq, "The first shot cannot have a transition.");
+    }
+    if (patch.transition && patch.transition.type !== "cut") {
+      const shotFrames = Math.round((patch.durationS ?? seq[i].durationS) * 30);
+      if (patch.transition.frames > shotFrames) {
+        return refuse(seq, "A transition cannot be longer than the shot.");
+      }
+    }
+  }
   return done(seq.map((s, k) => (k === i ? normShot(next) : s)));
+}
+
+export function setTransition(seq, i, transition) {
+  if (!Number.isInteger(i) || i < 0 || i >= seq.length) return refuse(seq, "No such shot.");
+  if (i === 0) return refuse(seq, "The first shot cannot have a transition.");
+  if (!transition || transition.type === "cut") {
+    return done(seq.map((s, k) => (k === i ? normShot({ ...s, transition: undefined }) : s)));
+  }
+  if (!TRANSITION_TYPES.includes(transition.type)) return refuse(seq, "That setting is not available.");
+  if (!TRANSITION_FRAMES.includes(transition.frames)) return refuse(seq, "That setting is not available.");
+  const shotFrames = Math.round(seq[i].durationS * 30);
+  if (transition.frames > shotFrames) return refuse(seq, "A transition cannot be longer than the shot.");
+  return done(seq.map((s, k) => (k === i ? normShot({ ...s, transition: { type: transition.type, frames: transition.frames } }) : s)));
 }
 
 // Slice C3a: replaces shot i's keys (an empty list removes the field).
 // Slice C4a: the shot's cycles are kept (and setShotCycles keeps the keys).
-const shotBase = (s) => ({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}), ...(s.title ? { title: s.title } : {}), ...(s.cam ? { cam: s.cam } : {}) });
+const shotBase = (s) => ({
+  move: s.move,
+  startView: s.startView,
+  durationS: s.durationS,
+  ...(s.frameOn === "start" ? { frameOn: "start" } : {}),
+  ...(s.title ? { title: s.title } : {}),
+  ...(s.cam ? { cam: s.cam } : {}),
+  ...(s.transition ? { transition: s.transition } : {}),
+});
 const withList = (o, name, list) => (Array.isArray(list) && list.length ? { ...o, [name]: list } : o);
 export function setShotKeys(seq, i, keys) {
   if (!Number.isInteger(i) || i < 0 || i >= seq.length) return refuse(seq, "No such shot.");
@@ -165,7 +237,17 @@ export function buildReelAnim(seq, fps = 30) {
   });
   if (seq.length === 1 && seq[0].move === "turntable") return { ...makeTurntable({ durationS: seq[0].durationS, fps }), ...keysOf(seq[0]) };
   const ranges = shotFrameRanges(seq, fps);
-  const shots = seq.map((s, k) => ({ move: s.move, startView: s.startView, durationS: s.durationS, f0: ranges[k].start, f1: ranges[k].end, t0: ranges[k].start / fps, ...keysOf(s), ...(s.cam ? { cam: s.cam } : {}) }));
+  const shots = seq.map((s, k) => ({
+    move: s.move,
+    startView: s.startView,
+    durationS: s.durationS,
+    f0: ranges[k].start,
+    f1: ranges[k].end,
+    t0: ranges[k].start / fps,
+    ...keysOf(s),
+    ...(s.cam ? { cam: s.cam } : {}),
+    ...(k > 0 && s.transition ? { transition: s.transition } : {}),
+  }));
   if (seq.length === 1) return { ...makeShot({ move: seq[0].move, durationS: seq[0].durationS, fps }), reel: { shots } };
   return { v: 1, durationS: totalDuration(seq), fps, loop: false, ease: "linear", model: { spinTurns: 0 }, cam: null, shot: { move: "sequence" }, reel: { shots } };
 }
@@ -196,13 +278,14 @@ export function reelShotAtTime(anim, ts) {
 /* ---- session form ---- */
 
 export const sequenceToSession = (seq) =>
-  seq.map((s) => ({
+  seq.map((s, k) => ({
     move: s.move,
     startView: s.startView,
     durationS: s.durationS,
     ...(s.frameOn === "start" ? { frameOn: "start" } : {}),
     ...(s.title ? { title: { text: s.title.text, pos: s.title.pos } } : {}),
     ...(s.cam ? { cam: { keys: s.cam.keys.map((k) => ({ t: k.t, position: [...k.position], target: [...k.target] })) } } : {}),
+    ...(k > 0 && s.transition && s.transition.type !== "cut" ? { transition: { type: s.transition.type, frames: s.transition.frames } } : {}),
     ...(Array.isArray(s.keys) && s.keys.length ? { keys: keysToSession(s.keys) } : {}),
     ...(Array.isArray(s.cycles) && s.cycles.length ? { cycles: cyclesToSession(s.cycles) } : {}),
   }));
@@ -213,14 +296,41 @@ export function sequenceFromSession(raw) {
   if (!Array.isArray(raw)) return null;
   const out = [];
   let total = 0;
-  for (const s of raw) {
+  for (let idx = 0; idx < raw.length; idx += 1) {
+    const s = raw[idx];
     // a bad title is dropped, not the shot (sessions saved before R1 have none)
-    if (!s || !isShot({ ...s, title: undefined, cam: undefined }) || out.length >= MAX_SHOTS || total + s.durationS > MAX_TOTAL_S) continue;
+    if (!s || !isShot({ ...s, title: undefined, cam: undefined, transition: undefined }) || out.length >= MAX_SHOTS || total + s.durationS > MAX_TOTAL_S) continue;
     const title = normTitle(s.title);
     const keys = sanitizeKeys(s.keys);
     const cycles = sanitizeCycles(s.cycles);
     const cam = sanitizeCam(s.cam);
-    out.push({ move: s.move, startView: s.startView, durationS: s.durationS, ...(s.frameOn === "start" ? { frameOn: "start" } : {}), ...(title ? { title } : {}), ...(keys ? { keys } : {}), ...(cycles ? { cycles } : {}), ...(cam ? { cam } : {}) });
+    let transition = undefined;
+    if (out.length > 0 && s.transition && typeof s.transition === "object") {
+      const type = s.transition.type;
+      let frames = s.transition.frames;
+      if (type && type !== "cut" && TRANSITION_TYPES.includes(type)) {
+        const shotFrames = Math.round(s.durationS * 30);
+        if (TRANSITION_FRAMES.includes(frames) && frames <= shotFrames) {
+          transition = { type, frames };
+        } else if (typeof frames === "number") {
+          // A saved one that is too long is clamped when it is loaded.
+          const clamped = [...TRANSITION_FRAMES].reverse().find((f) => f <= shotFrames && f <= frames) ||
+                          [...TRANSITION_FRAMES].reverse().find((f) => f <= shotFrames);
+          if (clamped) transition = { type, frames: clamped };
+        }
+      }
+    }
+    out.push({
+      move: s.move,
+      startView: s.startView,
+      durationS: s.durationS,
+      ...(s.frameOn === "start" ? { frameOn: "start" } : {}),
+      ...(title ? { title } : {}),
+      ...(keys ? { keys } : {}),
+      ...(cycles ? { cycles } : {}),
+      ...(cam ? { cam } : {}),
+      ...(transition ? { transition } : {}),
+    });
     total += s.durationS;
   }
   return out.length ? done(out).seq : null;

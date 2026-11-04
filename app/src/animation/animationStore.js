@@ -11,7 +11,7 @@
    deterministic frame stepping, see beginExport below), progress is an integer
    0-100 and message a string (both written by the MP4 exporter through
    setStatus, throttled by it). Slice C2b: `sequence` is the Reel shot list
-   (reelSequence.js: 1 to 5 shots { move, startView, durationS }, at most 30 s)
+   (reelSequence.js: 1 to 8 shots { move, startView, durationS }, at most 30 s)
    and durationS is always its total (the MP4 exporter reads durationS for its
    frame count); `shot` is the index of the shot the stage is playing (-1 when
    not previewing), reported by the stage once per shot change. The snapshot
@@ -138,7 +138,7 @@ export function stop() {
 
 /* ---- Slice C2b: the shot list ------------------------------------------- */
 
-// Every edit goes through reelSequence (the 5-shot and 30 s rules) and only
+// Every edit goes through reelSequence (the 8-shot and 30 s rules) and only
 // while idle. Returns { ok, reason }: reason is the sentence the Reel sheet
 // shows when an edit is refused.
 function edit(result) {

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import * as animationStore from "../animation/animationStore";
 import { brandingState, getBrandingSpec, getPreviewClock, drawBranding, FRAME_W, FRAME_H } from "../poster/branding";
 import { posterState, ensureLogoImage } from "../poster/poster.js";
+import { drawTransition } from "../animation/transitions";
 
 /* ==========================================================================
    Slice R1 - the live branding preview during Play (UI ONLY)
@@ -34,7 +35,7 @@ function frameRect() {
   return { x: (vw - w) / 2, y: (vh - h) / 2, w, h };
 }
 
-function Overlay({ spec, loops }) {
+function Overlay({ spec, loops, sequence }) {
   const canvasRef = useRef(null);
   const [resizeTick, setResizeTick] = useState(0);
   useEffect(() => {
@@ -54,6 +55,7 @@ function Overlay({ spec, loops }) {
     canvas.width = bw;
     canvas.height = bh;
     const ctx = canvas.getContext("2d");
+    const totalS = spec ? spec.totalS : (sequence ? sequence.reduce((n, s) => n + s.durationS, 0) : 0);
     let raf = 0;
     const tick = () => {
       raf = requestAnimationFrame(tick);
@@ -61,14 +63,32 @@ function Overlay({ spec, loops }) {
       if (start === null) return;
       let t = (performance.now() - start) / 1000;
       // a looping Turntable repeats its Reel (and its end card)
-      if (loops) t %= spec.totalS;
+      if (loops && totalS > 0) t %= totalS;
       ctx.clearRect(0, 0, bw, bh);
-      drawBranding(ctx, bw, bh, spec, t);
+
+      // Transitions hook: draw before branding so titles stay crisp
+      if (sequence) {
+        let t0 = 0;
+        for (let k = 0; k < sequence.length; k += 1) {
+          const s = sequence[k];
+          if (k > 0 && s.transition && s.transition.type && s.transition.type !== "cut") {
+            const transS = s.transition.frames / 30;
+            if (t >= t0 && t < t0 + transS) {
+              const p = (t - t0) / transS;
+              drawTransition(ctx, s.transition.type, p, bw, bh, null);
+              break;
+            }
+          }
+          t0 += s.durationS;
+        }
+      }
+
+      if (spec) drawBranding(ctx, bw, bh, spec, t);
       canvas.sosT = t; // read by the test harness; no DOM write per frame
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [spec, rect, loops]);
+  }, [spec, rect, loops, sequence]);
 
   return createPortal(
     <canvas
@@ -100,7 +120,8 @@ export function BrandingOverlayHost() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [previewing, anim.sequence, b, kitId, logoTick]
   );
-  if (!previewing || !spec) return null;
+  const hasTransitions = anim.sequence.some((s, i) => i > 0 && s.transition && s.transition.type && s.transition.type !== "cut");
+  if (!previewing || (!spec && !hasTransitions)) return null;
   const loops = anim.sequence.length === 1 && anim.sequence[0].move === "turntable";
-  return <Overlay spec={spec} loops={loops} />;
+  return <Overlay spec={spec} loops={loops} sequence={anim.sequence} />;
 }

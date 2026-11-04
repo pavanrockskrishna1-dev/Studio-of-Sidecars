@@ -48,7 +48,7 @@ const propHeight = ([id, , , , , s]) => {
 };
 
 /* ============================ the table matches the app ============================ */
-check("the sets' limits match the app's limits", MAX_SET_PROPS === MAX_PROPS && MAX_SET_EFFECTS === MAX_EFFECTS && MAX_SET_SHOTS === MAX_SHOTS && MAX_SET_REEL_S === MAX_TOTAL_S);
+check("the sets' limits stay within the app's limits", MAX_SET_PROPS === MAX_PROPS && MAX_SET_EFFECTS === MAX_EFFECTS && MAX_SET_SHOTS <= MAX_SHOTS && MAX_SET_REEL_S === MAX_TOTAL_S);
 check("the sets are built for the BBQ Bike", SET_PRODUCT_ID === "bbq-bike");
 
 const occasionIds = OCCASIONS.map((o) => o.id).filter((id) => id !== "none");

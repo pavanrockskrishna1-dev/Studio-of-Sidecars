@@ -29,6 +29,8 @@ import { SHOTS } from "./shotDefs";
 import * as lowerThirdStore from "./lowerThirdStore";
 import * as occasionStore from "./occasionStore";
 import { makeOccasionOverlay } from "./occasionOverlay";
+import { drawTransition } from "./transitions";
+import { shotFrameRanges, cutFrames } from "./reelSequence";
 
 const BITRATE = 10_000_000; // about 10 Mbps
 const STATUS_INTERVAL_MS = 250;
@@ -160,10 +162,32 @@ export async function exportReel({ width = REEL_EXPORT.width, height = REEL_EXPO
     outW = canvas.width;
     outH = canvas.height;
     writer = createMp4Writer({ width: outW, height: outH, fps: REEL_EXPORT.fps, bitrate: BITRATE });
+    const seq = animation.getSequence();
+    const ranges = shotFrameRanges(seq, REEL_EXPORT.fps);
+    const cuts = new Set(cutFrames(seq, REEL_EXPORT.fps));
+    const hasTransitions = seq.some((s, idx) => idx > 0 && s.transition && s.transition.type && s.transition.type !== "cut");
+    const transByFrame = new Map();
+    if (hasTransitions) {
+      seq.forEach((s, k) => {
+        if (k > 0 && s.transition && s.transition.type && s.transition.type !== "cut") {
+          const f0 = ranges[k].start;
+          const fCount = s.transition.frames;
+          for (let lf = 0; lf < fCount; lf += 1) {
+            transByFrame.set(f0 + lf, {
+              type: s.transition.type,
+              progress: (lf + 0.5) / fCount,
+            });
+          }
+        }
+      });
+    }
+
     let comp = null; // the composited frame the encoder takes (branding only)
     let compCtx = null;
     let lastCtx = null; // a copy of the last rendered frame, held for the end card
-    if (spec || overlay) {
+    let heldPrevCanvas = null;
+    let heldPrevCtx = null;
+    if (spec || overlay || hasTransitions) {
       const make = () => {
         const c = document.createElement("canvas");
         c.width = outW;
@@ -175,6 +199,10 @@ export async function exportReel({ width = REEL_EXPORT.width, height = REEL_EXPO
       compCtx = comp.getContext("2d");
       if (holdFrames) {
         lastCtx = make().getContext("2d");
+      }
+      if (hasTransitions) {
+        heldPrevCanvas = make();
+        heldPrevCtx = heldPrevCanvas.getContext("2d");
       }
     }
 
@@ -195,6 +223,11 @@ export async function exportReel({ width = REEL_EXPORT.width, height = REEL_EXPO
       if (comp) {
         compCtx.drawImage(canvas, 0, 0);
         if (overlay) overlay.draw(compCtx, times[i], reelDur);
+        const trans = transByFrame.get(i);
+        if (trans) {
+          drawTransition(compCtx, trans.type, trans.progress, outW, outH, heldPrevCanvas);
+        }
+        if (heldPrevCtx && cuts.has(i + 1)) heldPrevCtx.drawImage(comp, 0, 0);
         if (lastCtx && i === reelFrames - 1) lastCtx.drawImage(comp, 0, 0);
         if (spec) drawBranding(compCtx, outW, outH, spec, times[i]);
         source = comp;
