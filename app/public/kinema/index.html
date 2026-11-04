@@ -1779,21 +1779,45 @@ function drawParticle(ctx,L,t){
     const spd=(L.speed||0)*(0.8+__rnd()*0.4);     // ±20% magnitude jitter
     // vy is screen-up to match the integrator below, so the snow preset's
     // angle:270 (sin = -1) leaves the emitter heading downward on screen
-    L._particles.push({x:o.x,y:o.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,
+    // optional per-particle variety (size jitter, flicker/wobble phase). The extra
+    // random numbers are only drawn when one of those is on, so older projects
+    // keep exactly the same sequence (and the same picture) as before.
+    const fancy=L.sizeJitter>0||L.flicker>0||L.wobble>0;
+    const jit=L.sizeJitter>0?1+(__rnd()*2-1)*L.sizeJitter:1,ph=fancy?__rnd()*6.2832:0;
+    L._particles.push({x:o.x,y:o.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,jit:jit,ph:ph,
       age:0,life:Math.max(0.05,L.life||0.05),size0:L.sizeStart,size1:L.sizeEnd});}
   // integrate + cull the dead
   const keep=[];
   for(const p of L._particles){
     p.x+=p.vx*dt;p.y-=p.vy*dt;p.vy-=(L.gravity||0)*dt;p.age+=dt;
+    if(L.wobble>0)p.x+=Math.sin(p.age*4+p.ph)*L.wobble*dt;   // sideways drift, like rising embers
     if(p.age<p.life)keep.push(p);}
   L._particles=keep;
   // draw — size and color lerp by age/life, layer opacity × optional life fade
   const la=ctx.globalAlpha;
   for(const p of L._particles){
     const k=clamp(p.age/p.life,0,1);
-    ctx.globalAlpha=la*(L.fade?1-k:1);
-    ctx.fillStyle=lerpColor(L.colorStart,L.colorEnd,k);
-    drawDot(ctx,L.shape,p.x,p.y,Math.max(0.1,p.size0+(p.size1-p.size0)*k));}
+    let al=la*(L.fade?1-k:1);
+    if(L.flicker>0)al*=1-L.flicker*(0.5+0.5*Math.sin(p.age*22+p.ph));
+    const sz=Math.max(0.1,(p.size0+(p.size1-p.size0)*k)*(p.jit||1));
+    const c0=hex2(L.colorStart),c1=hex2(L.colorEnd);
+    const cr=Math.round(c0[0]+(c1[0]-c0[0])*k),cg=Math.round(c0[1]+(c1[1]-c0[1])*k),cb=Math.round(c0[2]+(c1[2]-c0[2])*k);
+    if(L.trail>0){ // motion streak behind the head (screen y is flipped: vy is up)
+      const tx=p.x-p.vx*L.trail*0.05,ty=p.y+p.vy*L.trail*0.05;
+      ctx.globalAlpha=al*0.55;ctx.strokeStyle='rgb('+cr+','+cg+','+cb+')';
+      ctx.lineCap='round';ctx.lineWidth=Math.max(0.5,sz*0.55);
+      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(tx,ty);ctx.stroke();}
+    if(L.soft){ // glowing sprite: hot core, soft falloff (looks best with the Add blend mode)
+      const r=Math.max(1,sz),g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r);
+      const hr=Math.min(255,cr+90),hg=Math.min(255,cg+90),hb=Math.min(255,cb+90);
+      g.addColorStop(0,'rgba('+hr+','+hg+','+hb+',1)');
+      g.addColorStop(0.25,'rgba('+cr+','+cg+','+cb+',0.85)');
+      g.addColorStop(1,'rgba('+cr+','+cg+','+cb+',0)');
+      ctx.globalAlpha=al;ctx.fillStyle=g;ctx.fillRect(p.x-r,p.y-r,r*2,r*2);}
+    else{
+      ctx.globalAlpha=al;
+      ctx.fillStyle='rgb('+cr+','+cg+','+cb+')';
+      drawDot(ctx,L.shape,p.x,p.y,sz);}}
   ctx.globalAlpha=la;
   if(L._particles.length)trackBB(L,L._particles);}
 
@@ -2919,6 +2943,11 @@ function mkParticle(o){o=o||{};
     colorEnd:o.colorEnd||'#FF0000',
     gravity:o.gravity==null?80:o.gravity, // px/s² downward
     fade:o.fade!==false,                // opacity fades 1→0 over life
+    soft:o.soft===true,                 // glowing sprite instead of a hard shape
+    trail:o.trail==null?0:o.trail,      // motion streak length (0 = none)
+    sizeJitter:o.sizeJitter==null?0:o.sizeJitter, // 0..1 random size variety
+    flicker:o.flicker==null?0:o.flicker,          // 0..1 brightness flicker
+    wobble:o.wobble==null?0:o.wobble,             // px/s sideways drift
     fx:[],props:baseProps()},o);}       // x/y/z/rx/ry/rz/scale/opacity stay keyframeable
 function mkCamera(o){o=o||{};
   return Object.assign({id:uid(),type:'camera',name:o.name||'Camera',visible:true,
@@ -3924,6 +3953,11 @@ function sanitize(P){
       if(typeof m.colorEnd!=='string'||m.colorEnd[0]!=='#')m.colorEnd='#FF0000';
       m.gravity=isFinite(+m.gravity)?clamp(+m.gravity,-3000,3000):80;
       m.fade=m.fade!==false;
+      m.soft=m.soft===true;
+      m.trail=clamp(isFinite(+m.trail)?+m.trail:0,0,6);
+      m.sizeJitter=clamp(isFinite(+m.sizeJitter)?+m.sizeJitter:0,0,1);
+      m.flicker=clamp(isFinite(+m.flicker)?+m.flicker:0,0,1);
+      m.wobble=clamp(isFinite(+m.wobble)?+m.wobble:0,0,600);
       m._particles=[];m._lastT=null;m._acc=0;}   // never restore stale sim state
     if(m.type==='camera'){                      // camera layer — clamp its own knobs
       m.fov=clamp(isFinite(+m.fov)?+m.fov:800,200,2000);
@@ -9772,6 +9806,16 @@ function buildInspector(){
     fchk.innerHTML='<input type="checkbox" '+(sel.fade?'checked':'')+'><span>FADE</span>';
     fchk.querySelector('input').addEventListener('change',ev=>{sel.fade=ev.target.checked;touch();dirty=true;commit('fade');});
     frow.appendChild(fchk);el.appendChild(frow);
+    // glow + variety (embers, sparks, fireflies)
+    const srow=div('prow2');srow.appendChild(span('plabel2','SOFT GLOW'));
+    const schk=div('chk');
+    schk.innerHTML='<input type="checkbox" '+(sel.soft?'checked':'')+'><span>GLOWING SPRITE</span>';
+    schk.querySelector('input').addEventListener('change',ev=>{sel.soft=ev.target.checked;touch();dirty=true;commit('soft');});
+    srow.appendChild(schk);el.appendChild(srow);
+    el.appendChild(rowNumS('TRAIL',sel.trail||0,v=>{sel.trail=clamp(v,0,6);touch();dirty=true;}));
+    el.appendChild(rowNumS('SIZE JITTER',sel.sizeJitter||0,v=>{sel.sizeJitter=clamp(v,0,1);touch();dirty=true;}));
+    el.appendChild(rowNumS('FLICKER',sel.flicker||0,v=>{sel.flicker=clamp(v,0,1);touch();dirty=true;}));
+    el.appendChild(rowNumS('WOBBLE',sel.wobble||0,v=>{sel.wobble=clamp(v,0,600);touch();dirty=true;}));
   }else if(sel.type==='precomp'){
     // precomp inspector — shows the nested layer count + sub-comp dimensions,
     // and an UNGROUP button that moves layers back to the parent project.
