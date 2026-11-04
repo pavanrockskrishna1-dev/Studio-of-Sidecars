@@ -1252,6 +1252,8 @@ function GaragePropShelf({ busy, propCount }) {
 function GarageEffectsShelf({ busy }) {
   const place = useSyncExternalStore(placeMode.subscribe, placeMode.getSnapshot, placeMode.getSnapshot);
   const { effects } = useSyncExternalStore(effectsStore.subscribe, effectsStore.getSnapshot, effectsStore.getSnapshot);
+  const anim = useSyncExternalStore(animationStore.subscribe, animationStore.getSnapshot, animationStore.getSnapshot);
+  const numShots = anim.reel?.shots?.length || 1;
   const counts = {};
   return (
     <>
@@ -1283,6 +1285,40 @@ function GarageEffectsShelf({ busy }) {
         return (
           <div key={e.id} className="sos-field sos-slider-field sos-fx-row">
             <em>{name}</em>
+            {numShots > 1 && (
+              <div className="sos-shelf" style={{ margin: "4px 0", flexWrap: "wrap", gap: "4px" }}>
+                <div className="sos-label" style={{ padding: "0 4px" }}>Shots:</div>
+                <button
+                  type="button"
+                  className="sos-pchip"
+                  data-on={!e.shots || undefined}
+                  aria-pressed={!e.shots}
+                  onClick={() => effectsStore.setEffectShots(e.id, [])}
+                >
+                  All
+                </button>
+                {Array.from({ length: numShots }).map((_, i) => {
+                  const active = !e.shots || e.shots.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      className="sos-pchip"
+                      data-on={active || undefined}
+                      aria-pressed={active}
+                      onClick={() => {
+                        let s = e.shots ? [...e.shots] : Array.from({ length: numShots }, (_, j) => j);
+                        if (active) s = s.filter((n) => n !== i);
+                        else s.push(i);
+                        effectsStore.setEffectShots(e.id, s);
+                      }}
+                    >
+                      {i + 1}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <input
               type="range"
               id={`fx-size-${e.id}`}

@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import * as effectsStore from "./effectsStore";
 import PremiumEffects from "./PremiumEffects";
+import { getCurrentShot, isVisibleInShot, subscribeShot } from "./shotGate";
 
 /* The placed 3D effects (effectsStore.js). Almost every one is a point-sprite
    system driven by the frame clock, so the export (which steps every frame
@@ -568,14 +569,35 @@ function Effect({ effect }) {
   return <points geometry={geometry} material={material} position={effect.position} frustumCulled={false} />;
 }
 
+function EffectGate({ effect, children }) {
+  const groupRef = useRef();
+  // Visibility follows the current reel shot. It is set directly when the shot
+  // changes (shotGate notifies synchronously), because during export the render
+  // loop is stopped and useFrame never runs.
+  useEffect(() => {
+    const apply = () => {
+      if (groupRef.current) groupRef.current.visible = isVisibleInShot(effect.shots, getCurrentShot());
+    };
+    apply();
+    return subscribeShot(apply);
+  }, [effect.shots]);
+  return <group ref={groupRef}>{children}</group>;
+}
+
 export default function EffectsLayer() {
   const { effects } = useSyncExternalStore(effectsStore.subscribe, effectsStore.getSnapshot, effectsStore.getSnapshot);
   return (
     <>
       {effects.map((e) => {
-        if (e.type === "snowground") return <SnowGround key={e.id} effect={e} />;
-        if (e.type === "diyas" || e.type === "bokeh" || e.type === "sparkshower" || e.type === "fireworks" || e.type === "logoreveal") return <PremiumEffects key={e.id} effect={e} />;
-        return <Effect key={e.id} effect={e} />;
+        let child;
+        if (e.type === "snowground") child = <SnowGround key={e.id} effect={e} />;
+        else if (e.type === "diyas" || e.type === "bokeh" || e.type === "sparkshower" || e.type === "fireworks" || e.type === "logoreveal") child = <PremiumEffects key={e.id} effect={e} />;
+        else child = <Effect key={e.id} effect={e} />;
+        return (
+          <EffectGate key={e.id} effect={e}>
+            {child}
+          </EffectGate>
+        );
       })}
     </>
   );

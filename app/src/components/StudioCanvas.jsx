@@ -66,6 +66,7 @@ import {
 import { getPosterSpec, posterAspectOk, drawPoster, ensureLogoImage } from "../poster/poster.js";
 import { endHoldS, setPreviewClock } from "../poster/branding.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { setCurrentShot } from "../fx/shotGate";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { FilmPass } from "three/examples/jsm/postprocessing/FilmPass.js";
@@ -1445,6 +1446,7 @@ function StudioStage({
   const stopPreview = useCallback(
     ({ restore = true } = {}) => {
       const run = animRunRef.current;
+      setCurrentShot(null);
       if (!run) return false;
       animRunRef.current = null;
       if (run.prevFit) liveFitRef.current = run.prevFit;
@@ -1639,6 +1641,7 @@ function StudioStage({
   const finishExport = useCallback(
     ({ restoreCamera, render }) => {
       const run = exportRunRef.current;
+      setCurrentShot(null);
       if (!run) return false;
       exportRunRef.current = null;
       if (run.prevFit) liveFitRef.current = run.prevFit;
@@ -1923,6 +1926,7 @@ function StudioStage({
           // pose at the shot's "Frame on" frame (first or last), and the keys
           // then move the objects.
           const at = reelShotAt(run.anim, t);
+          setCurrentShot(at.index);
           const start = run.starts[at.index];
           const fit0 = run.keyed ? run.keyed.frameFit[at.index] : null;
           const restFit = liveFitRef.current;
@@ -2545,6 +2549,7 @@ function StudioStage({
         at = reelShotAtTime(run.anim, run.anim.durationS - 1 / run.anim.fps);
       }
       if (!at) return void stopPreview();
+      setCurrentShot(at.index);
       const changed = at.index !== run.shotIndex;
       if (changed) {
         run.shotIndex = at.index;

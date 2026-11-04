@@ -58,10 +58,30 @@ export function addEffect(type, position) {
 export const removeEffect = (id) => set(state.effects.filter((e) => e.id !== id));
 export const setEffectSize = (id, size) =>
   set(state.effects.map((e) => (e.id === id ? { ...e, size: Math.min(4, Math.max(0.25, size)) } : e)));
+export const setEffectShots = (id, shots) => {
+  set(
+    state.effects.map((e) => {
+      if (e.id !== id) return e;
+      if (!Array.isArray(shots)) return e;
+      const valid = [...new Set(shots.filter((n) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 7))].sort((a, b) => a - b);
+      if (valid.length === 0 || valid.length === 8) {
+        const copy = { ...e };
+        delete copy.shots;
+        return copy;
+      }
+      return { ...e, shots: valid };
+    })
+  );
+};
 export const clearEffects = () => set([]);
 
 // projects: the placed effects as plain data, and back (bad entries dropped)
-export const effectsForSession = () => state.effects.map(({ type, position, size }) => ({ type, position: [...position], size }));
+export const effectsForSession = () =>
+  state.effects.map(({ type, position, size, shots }) => {
+    const e = { type, position: [...position], size };
+    if (shots) e.shots = [...shots];
+    return e;
+  });
 export function loadEffects(list) {
   if (!Array.isArray(list)) return;
   const ok = (v) => Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
@@ -69,6 +89,18 @@ export function loadEffects(list) {
     list
       .filter((e) => e && EFFECT_TYPES[e.type] && ok(e.position))
       .slice(0, MAX_EFFECTS)
-      .map((e) => ({ id: `fx${nextId++}`, type: e.type, position: e.position.slice(0, 3), size: Math.min(4, Math.max(0.25, Number(e.size) || 1)) }))
+      .map((e) => {
+        const out = {
+          id: `fx${nextId++}`,
+          type: e.type,
+          position: e.position.slice(0, 3),
+          size: Math.min(4, Math.max(0.25, Number(e.size) || 1)),
+        };
+        if (Array.isArray(e.shots)) {
+          const valid = [...new Set(e.shots.filter((n) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 7))].sort((a, b) => a - b);
+          if (valid.length > 0 && valid.length < 8) out.shots = valid;
+        }
+        return out;
+      })
   );
 }
