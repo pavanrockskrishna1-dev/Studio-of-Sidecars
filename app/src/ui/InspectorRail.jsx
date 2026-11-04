@@ -1262,6 +1262,7 @@ function GarageEffectsShelf({ busy }) {
       </span>
       <div className="sos-shelf">
         {Object.entries(effectsStore.EFFECT_TYPES).map(([type, info]) => {
+          if (info.attach && currentProduct.getSnapshot() !== "bbq-bike") return null;
           const id = `fx:${type}`;
           return (
             <button
@@ -1271,8 +1272,14 @@ function GarageEffectsShelf({ busy }) {
               data-on={place.assetId === id || undefined}
               aria-pressed={place.assetId === id}
               disabled={busy || effects.length >= effectsStore.MAX_EFFECTS}
-              title={`${info.label}: ${info.hint}. Click it, then click the ground.`}
-              onClick={() => (place.assetId === id ? placeMode.stopPlacing("") : placeMode.startPlacing(id))}
+              title={`${info.label}: ${info.hint}. ${info.attach ? "Sits on the bike and follows it." : "Click it, then click the ground."}`}
+              onClick={() => {
+                if (info.attach) {
+                  effectsStore.addEffect(type, [0, 0, 0]);
+                } else {
+                  place.assetId === id ? placeMode.stopPlacing("") : placeMode.startPlacing(id);
+                }
+              }}
             >
               {info.label}
             </button>

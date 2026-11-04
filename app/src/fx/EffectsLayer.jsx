@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import * as effectsStore from "./effectsStore";
 import PremiumEffects from "./PremiumEffects";
+import BikeFx from "./BikeFx";
 import { getCurrentShot, isVisibleInShot, subscribeShot } from "./shotGate";
 
 import { registerFx, getReelTime, tickFx } from "./fxClock";
@@ -600,6 +601,7 @@ export default function EffectsLayer() {
         let child;
         if (e.type === "snowground") child = <SnowGround key={e.id} effect={e} />;
         else if (e.type === "diyas" || e.type === "bokeh" || e.type === "sparkshower" || e.type === "fireworks" || e.type === "logoreveal") child = <PremiumEffects key={e.id} effect={e} />;
+        else if (e.type === "bikegrill" || e.type === "bikeexhaust" || e.type === "bikeheadlight" || e.type === "biketaillight") child = <BikeFx key={e.id} effect={e} />;
         else child = <Effect key={e.id} effect={e} />;
         return (
           <EffectGate key={e.id} effect={e}>

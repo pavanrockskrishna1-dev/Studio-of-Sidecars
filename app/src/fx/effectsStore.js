@@ -31,6 +31,10 @@ export const EFFECT_TYPES = Object.freeze({
   sparkshower: { label: "Spark shower", hint: "bright sparks raining upward and outward" },
   fireworks: { label: "Fireworks", hint: "sky bursts of glowing sparks behind the bike" },
   logoreveal: { label: "Logo reveal", hint: "fire ring, embers and smoke around a logo; place the BBQ Ride Logo prop in the middle" },
+  bikegrill: { label: "Bike grill smoke", hint: "soft smoke rising from the grill", attach: true },
+  bikeexhaust: { label: "Bike exhaust puff", hint: "small puffs leaving the tail pipe", attach: true },
+  bikeheadlight: { label: "Bike headlight beam", hint: "warm additive cone of light forward", attach: true },
+  biketaillight: { label: "Bike tail light", hint: "soft red glow at the rear", attach: true },
 });
 export const MAX_EFFECTS = 20;
 
@@ -50,6 +54,9 @@ function set(effects) {
 
 export function addEffect(type, position) {
   if (!EFFECT_TYPES[type]) return { ok: false, message: "Unknown effect." };
+  if (EFFECT_TYPES[type].attach && state.effects.some(e => e.type === type)) {
+    return { ok: false, message: `Only one "${EFFECT_TYPES[type].label}" can be placed.` };
+  }
   if (state.effects.length >= MAX_EFFECTS) return { ok: false, message: `At most ${MAX_EFFECTS} effects. Remove one first.` };
   const e = { id: `fx${nextId++}`, type, position: position.slice(0, 3), size: 1 };
   set([...state.effects, e]);
