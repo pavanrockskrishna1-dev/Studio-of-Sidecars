@@ -4,6 +4,8 @@ import * as animationStore from "../animation/animationStore";
 import { canAdd, durationAllowed, MAX_TOTAL_S } from "../animation/reelSequence";
 import { TRANSITION_FRAMES } from "../animation/transitions";
 import { listMotionTemplates } from "../animation/motionHost";
+import * as currentProduct from "../products/currentProduct";
+import { BIKE_MOVES, BIKE_MOVE_LABELS, applyBikeMove } from "../animation/bikeRig";
 
 const MOVE_LABELS = {
   turntable: "Turntable", orbit: "Orbit", "push-in": "Push In",
@@ -15,6 +17,7 @@ const SHOT_COLORS = ["#ff6b00", "#e05500", "#c94400", "#b33300", "#9d2200"];
 const fmtDur = (s) => (Number.isInteger(s) ? `${s}` : `${Number(s.toFixed(1))}`);
 
 export default function ReelTimeline() {
+  const productId = useSyncExternalStore(currentProduct.subscribe, currentProduct.getSnapshot, currentProduct.getSnapshot);
   const { sequence, mode, durationS } = useSyncExternalStore(
     animationStore.subscribe,
     animationStore.getSnapshot,
@@ -243,6 +246,34 @@ export default function ReelTimeline() {
                 </>
               )}
             </div>
+
+            {/* Bike */}
+            {productId === "bbq-bike" && (
+              <div className="sos2-tl-shot-trans" style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "4px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "11px", opacity: 0.6, flexShrink: 0 }}>Bike:</span>
+                <select
+                  className="sos2-tl-move-sel"
+                  style={{ height: "24px", minWidth: "60px", fontSize: "11px" }}
+                  disabled={busy}
+                  value="none"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val !== "none") {
+                      const snap = animationStore.getSnapshot();
+                      const res = applyBikeMove(snap.sequence, i, val, productId);
+                      const done = res.ok ? animationStore.commitSequence(res) : res;
+                      if (!done.ok) {
+                        alert(done.reason);
+                      }
+                      e.target.value = "none";
+                    }
+                  }}
+                >
+                  <option value="none">None</option>
+                  {BIKE_MOVES.map(m => <option key={m} value={m}>{BIKE_MOVE_LABELS[m]}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* Transition (every shot after the first) */}
             {i > 0 && (

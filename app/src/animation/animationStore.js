@@ -160,6 +160,8 @@ export const addShot = () => edit(reel.addShot(snapshot.sequence));
 export const deleteShot = (i) => edit(reel.deleteShot(snapshot.sequence, i));
 export const moveShot = (i, dir) => edit(reel.moveShot(snapshot.sequence, i, dir));
 export const setShot = (i, patch) => edit(reel.setShot(snapshot.sequence, i, patch));
+// A finished edit result { ok, seq, reason } from a helper such as bikeRig.applyBikeMove: committed only while idle.
+export const commitSequence = (result) => (snapshot.mode !== "idle" ? { ok: false, reason: "Stop the preview or export first." } : edit(result));
 
 // Session (Save / Restore / Reset): the plain form saved, a sanitized restore
 // (false when the saved data holds no usable shot) and the default list (one
