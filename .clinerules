@@ -1,0 +1,12 @@
+# Studio of Sidecars: rules for Cline
+
+Read `.github/copilot-instructions.md` in this repo first. It holds the owner's rules and a map of the code. The short version:
+
+- React 19 + Vite + three.js app in `app/src`. Read `app/NEXT_SESSION.md` before you start.
+- **No video exports or heavy renders or tests.** Light checks only (`node scripts/test-*.mjs`, esbuild syntax checks).
+- **Do not commit or push.** Stage nothing unless asked. Never `git add -A`.
+- Leave the ~57 deleted files alone. Do not use the existing HDRIs for the Halloween or night look.
+- Moving, rotating and placing GLBs must keep working.
+- Stay inside the files your task names. Another agent may be editing other files at the same time.
+- Work in small steps. After each step say, in plain words, what changed and which files.
+- This machine is a Linux VM (bash). The owner's laptop is Windows PowerShell 5.1.
