@@ -1,8 +1,9 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, useState, useEffect } from "react";
 import WhisperTip from "./WhisperTip";
 import * as animationStore from "../animation/animationStore";
 import { canAdd, durationAllowed, MAX_TOTAL_S } from "../animation/reelSequence";
 import { TRANSITION_FRAMES } from "../animation/transitions";
+import { listMotionTemplates } from "../animation/motionHost";
 
 const MOVE_LABELS = {
   turntable: "Turntable", orbit: "Orbit", "push-in": "Push In",
@@ -22,6 +23,13 @@ export default function ReelTimeline() {
   const busy = mode !== "idle";
   const pct = Math.min(100, (durationS / MAX_TOTAL_S) * 100);
   const canAddMore = canAdd(sequence).ok;
+
+  const [motions, setMotions] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    listMotionTemplates().then(list => { if (alive) setMotions(list); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   return (
     <div className="sos2-timeline">
@@ -180,6 +188,60 @@ export default function ReelTimeline() {
                 />
                 Vignette
               </label>
+            </div>
+
+            {/* Motion */}
+            <div className="sos2-tl-shot-trans" style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "4px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "11px", opacity: 0.6, flexShrink: 0 }}>Motion:</span>
+              <select
+                className="sos2-tl-move-sel"
+                style={{ height: "24px", minWidth: "60px", fontSize: "11px" }}
+                disabled={busy}
+                value={shot.motion?.id ?? "none"}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (id === "none") {
+                    animationStore.setShot(i, { motion: undefined });
+                  } else {
+                    animationStore.setShot(i, { motion: { id } });
+                  }
+                }}
+              >
+                <option value="none">None</option>
+                {motions.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+              {shot.motion && motions.find(m => m.id === shot.motion.id) && (
+                <>
+                  <label style={{ fontSize: "11px", display: "flex", alignItems: "center", gap: "2px", opacity: busy ? 0.5 : 1 }}>
+                    <input type="checkbox" disabled={busy} checked={shot.motion.clear ?? false} onChange={(e) => animationStore.setShot(i, { motion: { ...shot.motion, clear: e.target.checked } })} style={{ margin: 0 }} /> Clear bg
+                  </label>
+                  <label style={{ fontSize: "11px", display: "flex", alignItems: "center", gap: "2px", opacity: busy ? 0.5 : 1 }}>
+                    <input type="checkbox" disabled={busy} checked={shot.motion.hold ?? false} onChange={(e) => animationStore.setShot(i, { motion: { ...shot.motion, hold: e.target.checked } })} style={{ margin: 0 }} /> Hold last
+                  </label>
+                  {motions.find(m => m.id === shot.motion.id).texts.length > 0 && (
+                    <div style={{ flexBasis: "100%", display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "2px" }}>
+                      {motions.find(m => m.id === shot.motion.id).texts.map((t, idx) => (
+                        <input
+                          key={idx}
+                          type="text"
+                          disabled={busy}
+                          className="sos2-tl-move-sel"
+                          style={{ height: "24px", fontSize: "11px", width: "80px", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", color: "white", padding: "0 4px" }}
+                          placeholder={t}
+                          value={shot.motion.texts && shot.motion.texts[idx] !== undefined ? shot.motion.texts[idx] : ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const nt = [...(shot.motion.texts || [])];
+                            while(nt.length <= idx) nt.push(undefined);
+                            nt[idx] = val === "" ? undefined : val;
+                            animationStore.setShot(i, { motion: { ...shot.motion, texts: nt } });
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Transition (every shot after the first) */}

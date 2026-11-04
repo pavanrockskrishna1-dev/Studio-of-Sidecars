@@ -24,6 +24,7 @@ import { isTitle, normTitle } from "./shotTitle.js";
 import { sanitizeCam } from "./cameraKeys.js";
 import { TRANSITION_TYPES, TRANSITION_FRAMES } from "./transitions.js";
 import { isLook, normLook } from "./looks.js";
+import { normMotion } from "./motionMath.js";
 
 export const MAX_SHOTS = 8;
 export const MAX_TOTAL_S = 30;
@@ -56,7 +57,8 @@ export const isShot = (s) =>
   (s.title === undefined || isTitle(s.title)) &&
   (s.cam === undefined || s.cam === null || !!sanitizeCam(s.cam)) &&
   isTransition(s.transition, s.durationS) &&
-  isLook(s.look);
+  isLook(s.look) &&
+  (s.motion === undefined || normMotion(s.motion) !== undefined);
 
 const normTransition = (t, durationS) => {
   if (!t || typeof t !== "object" || t.type === "cut") return undefined;
@@ -83,6 +85,9 @@ const normShot = (s) => {
   const lk = normLook(rest.look);
   if (lk) rest.look = lk;
   else delete rest.look;
+  const mo = normMotion(rest.motion);
+  if (mo) rest.motion = mo;
+  else delete rest.motion;
   return rest;
 };
 
@@ -187,6 +192,16 @@ export function setLook(seq, i, look) {
   return done(seq.map((s, k) => (k === i ? normShot({ ...s, look: { type: look.type, vignette: !!look.vignette } }) : s)));
 }
 
+export function setMotion(seq, i, motion) {
+  if (!Number.isInteger(i) || i < 0 || i >= seq.length) return refuse(seq, "No such shot.");
+  if (!motion) {
+    return done(seq.map((s, k) => (k === i ? normShot({ ...s, motion: undefined }) : s)));
+  }
+  const mo = normMotion(motion);
+  if (!mo) return refuse(seq, "That setting is not available.");
+  return done(seq.map((s, k) => (k === i ? normShot({ ...s, motion: mo }) : s)));
+}
+
 // Slice C3a: replaces shot i's keys (an empty list removes the field).
 // Slice C4a: the shot's cycles are kept (and setShotCycles keeps the keys).
 const shotBase = (s) => ({
@@ -198,6 +213,7 @@ const shotBase = (s) => ({
   ...(s.cam ? { cam: s.cam } : {}),
   ...(s.transition ? { transition: s.transition } : {}),
   ...(s.look ? { look: s.look } : {}),
+  ...(s.motion ? { motion: s.motion } : {}),
 });
 const withList = (o, name, list) => (Array.isArray(list) && list.length ? { ...o, [name]: list } : o);
 export function setShotKeys(seq, i, keys) {
@@ -263,6 +279,7 @@ export function buildReelAnim(seq, fps = 30) {
     ...(s.cam ? { cam: s.cam } : {}),
     ...(k > 0 && s.transition ? { transition: s.transition } : {}),
     ...(s.look ? { look: s.look } : {}),
+    ...(s.motion ? { motion: s.motion } : {}),
   }));
   if (seq.length === 1) return { ...makeShot({ move: seq[0].move, durationS: seq[0].durationS, fps }), reel: { shots } };
   return { v: 1, durationS: totalDuration(seq), fps, loop: false, ease: "linear", model: { spinTurns: 0 }, cam: null, shot: { move: "sequence" }, reel: { shots } };
@@ -303,6 +320,7 @@ export const sequenceToSession = (seq) =>
     ...(s.cam ? { cam: { keys: s.cam.keys.map((k) => ({ t: k.t, position: [...k.position], target: [...k.target] })) } } : {}),
     ...(k > 0 && s.transition && s.transition.type !== "cut" ? { transition: { type: s.transition.type, frames: s.transition.frames } } : {}),
     ...(s.look ? { look: { type: s.look.type, vignette: !!s.look.vignette } } : {}),
+    ...(s.motion ? { motion: { id: s.motion.id, ...(s.motion.texts ? { texts: s.motion.texts } : {}), ...(s.motion.clear ? { clear: true } : {}), ...(s.motion.hold ? { hold: true } : {}) } } : {}),
     ...(Array.isArray(s.keys) && s.keys.length ? { keys: keysToSession(s.keys) } : {}),
     ...(Array.isArray(s.cycles) && s.cycles.length ? { cycles: cyclesToSession(s.cycles) } : {}),
   }));
@@ -316,12 +334,13 @@ export function sequenceFromSession(raw) {
   for (let idx = 0; idx < raw.length; idx += 1) {
     const s = raw[idx];
     // a bad title is dropped, not the shot (sessions saved before R1 have none)
-    if (!s || !isShot({ ...s, title: undefined, cam: undefined, transition: undefined }) || out.length >= MAX_SHOTS || total + s.durationS > MAX_TOTAL_S) continue;
+    if (!s || !isShot({ ...s, title: undefined, cam: undefined, transition: undefined, motion: undefined }) || out.length >= MAX_SHOTS || total + s.durationS > MAX_TOTAL_S) continue;
     const title = normTitle(s.title);
     const keys = sanitizeKeys(s.keys);
     const cycles = sanitizeCycles(s.cycles);
     const cam = sanitizeCam(s.cam);
     const look = normLook(s.look);
+    const motion = normMotion(s.motion);
     let transition = undefined;
     if (out.length > 0 && s.transition && typeof s.transition === "object") {
       const type = s.transition.type;
@@ -349,6 +368,7 @@ export function sequenceFromSession(raw) {
       ...(cam ? { cam } : {}),
       ...(transition ? { transition } : {}),
       ...(look ? { look } : {}),
+      ...(motion ? { motion } : {}),
     });
     total += s.durationS;
   }

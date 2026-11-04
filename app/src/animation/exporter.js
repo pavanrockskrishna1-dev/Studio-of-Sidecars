@@ -32,6 +32,8 @@ import { makeOccasionOverlay } from "./occasionOverlay";
 import { drawTransition } from "./transitions";
 import { drawLook } from "./looks";
 import { shotFrameRanges, cutFrames } from "./reelSequence";
+import { motionLocalTime } from "./motionMath";
+import { ensureKinema, makeMotionRun } from "./motionHost";
 
 const BITRATE = 10_000_000; // about 10 Mbps
 const STATUS_INTERVAL_MS = 250;
@@ -168,6 +170,16 @@ export async function exportReel({ width = REEL_EXPORT.width, height = REEL_EXPO
     const cuts = new Set(cutFrames(seq, REEL_EXPORT.fps));
     const hasTransitions = seq.some((s, idx) => idx > 0 && s.transition && s.transition.type && s.transition.type !== "cut");
     const hasLooks = seq.some((s) => !!s.look);
+    const hasMotions = seq.some((s) => !!s.motion);
+    const runs = new Map();
+    if (hasMotions) {
+      await ensureKinema();
+      for (let k = 0; k < seq.length; k += 1) {
+        if (seq[k].motion) {
+          runs.set(k, await makeMotionRun({ ...seq[k].motion, w: outW, h: outH }));
+        }
+      }
+    }
     const transByFrame = new Map();
     const lookByFrame = new Map();
     if (hasTransitions || hasLooks) {
@@ -196,7 +208,7 @@ export async function exportReel({ width = REEL_EXPORT.width, height = REEL_EXPO
     let lastCtx = null; // a copy of the last rendered frame, held for the end card
     let heldPrevCanvas = null;
     let heldPrevCtx = null;
-    if (spec || overlay || hasTransitions || hasLooks) {
+    if (spec || overlay || hasTransitions || hasLooks || hasMotions) {
       const make = () => {
         const c = document.createElement("canvas");
         c.width = outW;
@@ -232,6 +244,17 @@ export async function exportReel({ width = REEL_EXPORT.width, height = REEL_EXPO
       if (comp) {
         compCtx.drawImage(canvas, 0, 0);
         if (overlay) overlay.draw(compCtx, times[i], reelDur);
+        if (hasMotions) {
+          const k = ranges.findIndex(r => i >= r.start && i < r.end);
+          if (k >= 0 && runs.has(k)) {
+            const s = seq[k];
+            const localS = (i - ranges[k].start) / REEL_EXPORT.fps;
+            const t = motionLocalTime(localS, runs.get(k).dur, s.durationS, s.motion.hold);
+            if (t !== null) {
+              runs.get(k).draw(compCtx, t);
+            }
+          }
+        }
         const trans = transByFrame.get(i);
         if (trans) {
           drawTransition(compCtx, trans.type, trans.progress, outW, outH, heldPrevCanvas);

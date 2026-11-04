@@ -5,6 +5,8 @@ import { brandingState, getBrandingSpec, getPreviewClock, drawBranding, FRAME_W,
 import { posterState, ensureLogoImage } from "../poster/poster.js";
 import { drawTransition } from "../animation/transitions";
 import { drawLook } from "../animation/looks";
+import { motionLocalTime } from "../animation/motionMath";
+import { ensureKinema, makeMotionRun } from "../animation/motionHost";
 
 /* ==========================================================================
    Slice R1 - the live branding preview during Play (UI ONLY)
@@ -39,6 +41,8 @@ function frameRect() {
 function Overlay({ spec, loops, sequence }) {
   const canvasRef = useRef(null);
   const [resizeTick, setResizeTick] = useState(0);
+  const [runs, setRuns] = useState(null);
+
   useEffect(() => {
     const onResize = () => setResizeTick((t) => t + 1);
     window.addEventListener("resize", onResize);
@@ -46,6 +50,30 @@ function Overlay({ spec, loops, sequence }) {
   }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const rect = useMemo(() => frameRect(), [resizeTick]);
+
+  useEffect(() => {
+    let alive = true;
+    if (sequence && sequence.some(s => !!s.motion)) {
+      ensureKinema().then(() => {
+        if (!alive) return;
+        const newRuns = new Map();
+        const dpr = window.devicePixelRatio || 1;
+        const bw = Math.max(1, Math.round(rect.w * dpr));
+        const bh = Math.max(1, Math.round(rect.h * dpr));
+        Promise.all(sequence.map(async (s, k) => {
+          if (s.motion) {
+            const r = await makeMotionRun({ ...s.motion, w: Math.round(bw / 2), h: Math.round(bh / 2) });
+            if (alive) newRuns.set(k, r);
+          }
+        })).then(() => {
+          if (alive) setRuns(newRuns);
+        });
+      });
+    } else {
+      setRuns(null);
+    }
+    return () => { alive = false; };
+  }, [sequence, rect.w, rect.h]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -73,7 +101,19 @@ function Overlay({ spec, loops, sequence }) {
         let currentShot = null;
         for (let k = 0; k < sequence.length; k += 1) {
           const s = sequence[k];
-          if (t >= t0 && t < t0 + s.durationS) currentShot = s;
+          if (t >= t0 && t < t0 + s.durationS) {
+            currentShot = s;
+            if (s.motion && runs && runs.has(k)) {
+              const run = runs.get(k);
+              const mt = motionLocalTime(t - t0, run.dur, s.durationS, s.motion.hold);
+              if (mt !== null) {
+                ctx.save();
+                ctx.scale(2, 2);
+                run.draw(ctx, mt);
+                ctx.restore();
+              }
+            }
+          }
           if (k > 0 && s.transition && s.transition.type && s.transition.type !== "cut") {
             const transS = s.transition.frames / 30;
             if (t >= t0 && t < t0 + transS) {
@@ -93,7 +133,7 @@ function Overlay({ spec, loops, sequence }) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [spec, rect, loops, sequence]);
+  }, [spec, rect, loops, sequence, runs]);
 
   return createPortal(
     <canvas
@@ -127,7 +167,8 @@ export function BrandingOverlayHost() {
   );
   const hasTransitions = anim.sequence.some((s, i) => i > 0 && s.transition && s.transition.type && s.transition.type !== "cut");
   const hasLooks = anim.sequence.some((s) => !!s.look);
-  if (!previewing || (!spec && !hasTransitions && !hasLooks)) return null;
+  const hasMotions = anim.sequence.some((s) => !!s.motion);
+  if (!previewing || (!spec && !hasTransitions && !hasLooks && !hasMotions)) return null;
   const loops = anim.sequence.length === 1 && anim.sequence[0].move === "turntable";
   return <Overlay spec={spec} loops={loops} sequence={anim.sequence} />;
 }
