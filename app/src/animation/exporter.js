@@ -30,6 +30,7 @@ import * as lowerThirdStore from "./lowerThirdStore";
 import * as occasionStore from "./occasionStore";
 import { makeOccasionOverlay } from "./occasionOverlay";
 import { drawTransition } from "./transitions";
+import { drawLook } from "./looks";
 import { shotFrameRanges, cutFrames } from "./reelSequence";
 
 const BITRATE = 10_000_000; // about 10 Mbps
@@ -166,11 +167,19 @@ export async function exportReel({ width = REEL_EXPORT.width, height = REEL_EXPO
     const ranges = shotFrameRanges(seq, REEL_EXPORT.fps);
     const cuts = new Set(cutFrames(seq, REEL_EXPORT.fps));
     const hasTransitions = seq.some((s, idx) => idx > 0 && s.transition && s.transition.type && s.transition.type !== "cut");
+    const hasLooks = seq.some((s) => !!s.look);
     const transByFrame = new Map();
-    if (hasTransitions) {
+    const lookByFrame = new Map();
+    if (hasTransitions || hasLooks) {
       seq.forEach((s, k) => {
+        const f0 = ranges[k].start;
+        const f1 = ranges[k].end;
+        if (s.look) {
+          for (let lf = f0; lf < f1; lf += 1) {
+            lookByFrame.set(lf, s.look);
+          }
+        }
         if (k > 0 && s.transition && s.transition.type && s.transition.type !== "cut") {
-          const f0 = ranges[k].start;
           const fCount = s.transition.frames;
           for (let lf = 0; lf < fCount; lf += 1) {
             transByFrame.set(f0 + lf, {
@@ -187,7 +196,7 @@ export async function exportReel({ width = REEL_EXPORT.width, height = REEL_EXPO
     let lastCtx = null; // a copy of the last rendered frame, held for the end card
     let heldPrevCanvas = null;
     let heldPrevCtx = null;
-    if (spec || overlay || hasTransitions) {
+    if (spec || overlay || hasTransitions || hasLooks) {
       const make = () => {
         const c = document.createElement("canvas");
         c.width = outW;
@@ -227,6 +236,9 @@ export async function exportReel({ width = REEL_EXPORT.width, height = REEL_EXPO
         if (trans) {
           drawTransition(compCtx, trans.type, trans.progress, outW, outH, heldPrevCanvas);
         }
+        const look = lookByFrame.get(i);
+        if (look) drawLook(compCtx, look, outW, outH);
+        
         if (heldPrevCtx && cuts.has(i + 1)) heldPrevCtx.drawImage(comp, 0, 0);
         if (lastCtx && i === reelFrames - 1) lastCtx.drawImage(comp, 0, 0);
         if (spec) drawBranding(compCtx, outW, outH, spec, times[i]);

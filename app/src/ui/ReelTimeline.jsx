@@ -136,6 +136,52 @@ export default function ReelTimeline() {
               </select>
             </div>
 
+            {/* Look (every shot) */}
+            <div className="sos2-tl-shot-trans" style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "4px" }}>
+              <span style={{ fontSize: "11px", opacity: 0.6, flexShrink: 0 }}>Look:</span>
+              <select
+                className="sos2-tl-move-sel"
+                style={{ height: "24px", minWidth: "60px", fontSize: "11px" }}
+                disabled={busy}
+                value={shot.look?.type ?? "none"}
+                aria-label={`Shot ${i + 1} look`}
+                onChange={(e) => {
+                  const type = e.target.value;
+                  const vignette = shot.look?.vignette ?? false;
+                  if (type === "none" && !vignette) {
+                    animationStore.setShot(i, { look: undefined });
+                  } else {
+                    animationStore.setShot(i, { look: { type, vignette } });
+                  }
+                }}
+              >
+                <option value="none">None</option>
+                <option value="warm">Warm</option>
+                <option value="cool">Cool</option>
+                <option value="night">Night</option>
+                <option value="bright">Bright</option>
+                <option value="cinema">Cinema</option>
+              </select>
+              <label style={{ fontSize: "11px", display: "flex", alignItems: "center", gap: "2px", opacity: busy ? 0.5 : 1 }}>
+                <input
+                  type="checkbox"
+                  disabled={busy}
+                  checked={shot.look?.vignette ?? false}
+                  onChange={(e) => {
+                    const vignette = e.target.checked;
+                    const type = shot.look?.type ?? "none";
+                    if (type === "none" && !vignette) {
+                      animationStore.setShot(i, { look: undefined });
+                    } else {
+                      animationStore.setShot(i, { look: { type, vignette } });
+                    }
+                  }}
+                  style={{ margin: 0 }}
+                />
+                Vignette
+              </label>
+            </div>
+
             {/* Transition (every shot after the first) */}
             {i > 0 && (
               <div className="sos2-tl-shot-trans" style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "4px" }}>

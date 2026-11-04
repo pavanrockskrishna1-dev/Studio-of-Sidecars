@@ -4,6 +4,7 @@ import * as animationStore from "../animation/animationStore";
 import { brandingState, getBrandingSpec, getPreviewClock, drawBranding, FRAME_W, FRAME_H } from "../poster/branding";
 import { posterState, ensureLogoImage } from "../poster/poster.js";
 import { drawTransition } from "../animation/transitions";
+import { drawLook } from "../animation/looks";
 
 /* ==========================================================================
    Slice R1 - the live branding preview during Play (UI ONLY)
@@ -69,17 +70,21 @@ function Overlay({ spec, loops, sequence }) {
       // Transitions hook: draw before branding so titles stay crisp
       if (sequence) {
         let t0 = 0;
+        let currentShot = null;
         for (let k = 0; k < sequence.length; k += 1) {
           const s = sequence[k];
+          if (t >= t0 && t < t0 + s.durationS) currentShot = s;
           if (k > 0 && s.transition && s.transition.type && s.transition.type !== "cut") {
             const transS = s.transition.frames / 30;
             if (t >= t0 && t < t0 + transS) {
               const p = (t - t0) / transS;
               drawTransition(ctx, s.transition.type, p, bw, bh, null);
-              break;
             }
           }
           t0 += s.durationS;
+        }
+        if (currentShot && currentShot.look) {
+          drawLook(ctx, currentShot.look, bw, bh);
         }
       }
 
@@ -121,7 +126,8 @@ export function BrandingOverlayHost() {
     [previewing, anim.sequence, b, kitId, logoTick]
   );
   const hasTransitions = anim.sequence.some((s, i) => i > 0 && s.transition && s.transition.type && s.transition.type !== "cut");
-  if (!previewing || (!spec && !hasTransitions)) return null;
+  const hasLooks = anim.sequence.some((s) => !!s.look);
+  if (!previewing || (!spec && !hasTransitions && !hasLooks)) return null;
   const loops = anim.sequence.length === 1 && anim.sequence[0].move === "turntable";
   return <Overlay spec={spec} loops={loops} sequence={anim.sequence} />;
 }

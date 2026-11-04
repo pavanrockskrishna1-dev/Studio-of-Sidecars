@@ -23,6 +23,7 @@ import { cyclesToSession, sanitizeCycles } from "./reelCycles.js";
 import { isTitle, normTitle } from "./shotTitle.js";
 import { sanitizeCam } from "./cameraKeys.js";
 import { TRANSITION_TYPES, TRANSITION_FRAMES } from "./transitions.js";
+import { isLook, normLook } from "./looks.js";
 
 export const MAX_SHOTS = 8;
 export const MAX_TOTAL_S = 30;
@@ -54,7 +55,8 @@ export const isShot = (s) =>
   (s.frameOn === undefined || s.frameOn === "start" || s.frameOn === "end") &&
   (s.title === undefined || isTitle(s.title)) &&
   (s.cam === undefined || s.cam === null || !!sanitizeCam(s.cam)) &&
-  isTransition(s.transition, s.durationS);
+  isTransition(s.transition, s.durationS) &&
+  isLook(s.look);
 
 const normTransition = (t, durationS) => {
   if (!t || typeof t !== "object" || t.type === "cut") return undefined;
@@ -78,6 +80,9 @@ const normShot = (s) => {
   const trans = normTransition(rest.transition, rest.durationS);
   if (trans) rest.transition = trans;
   else delete rest.transition;
+  const lk = normLook(rest.look);
+  if (lk) rest.look = lk;
+  else delete rest.look;
   return rest;
 };
 
@@ -173,6 +178,15 @@ export function setTransition(seq, i, transition) {
   return done(seq.map((s, k) => (k === i ? normShot({ ...s, transition: { type: transition.type, frames: transition.frames } }) : s)));
 }
 
+export function setLook(seq, i, look) {
+  if (!Number.isInteger(i) || i < 0 || i >= seq.length) return refuse(seq, "No such shot.");
+  if (!look || (look.type === "none" && !look.vignette)) {
+    return done(seq.map((s, k) => (k === i ? normShot({ ...s, look: undefined }) : s)));
+  }
+  if (!isLook(look)) return refuse(seq, "That setting is not available.");
+  return done(seq.map((s, k) => (k === i ? normShot({ ...s, look: { type: look.type, vignette: !!look.vignette } }) : s)));
+}
+
 // Slice C3a: replaces shot i's keys (an empty list removes the field).
 // Slice C4a: the shot's cycles are kept (and setShotCycles keeps the keys).
 const shotBase = (s) => ({
@@ -183,6 +197,7 @@ const shotBase = (s) => ({
   ...(s.title ? { title: s.title } : {}),
   ...(s.cam ? { cam: s.cam } : {}),
   ...(s.transition ? { transition: s.transition } : {}),
+  ...(s.look ? { look: s.look } : {}),
 });
 const withList = (o, name, list) => (Array.isArray(list) && list.length ? { ...o, [name]: list } : o);
 export function setShotKeys(seq, i, keys) {
@@ -247,6 +262,7 @@ export function buildReelAnim(seq, fps = 30) {
     ...keysOf(s),
     ...(s.cam ? { cam: s.cam } : {}),
     ...(k > 0 && s.transition ? { transition: s.transition } : {}),
+    ...(s.look ? { look: s.look } : {}),
   }));
   if (seq.length === 1) return { ...makeShot({ move: seq[0].move, durationS: seq[0].durationS, fps }), reel: { shots } };
   return { v: 1, durationS: totalDuration(seq), fps, loop: false, ease: "linear", model: { spinTurns: 0 }, cam: null, shot: { move: "sequence" }, reel: { shots } };
@@ -286,6 +302,7 @@ export const sequenceToSession = (seq) =>
     ...(s.title ? { title: { text: s.title.text, pos: s.title.pos } } : {}),
     ...(s.cam ? { cam: { keys: s.cam.keys.map((k) => ({ t: k.t, position: [...k.position], target: [...k.target] })) } } : {}),
     ...(k > 0 && s.transition && s.transition.type !== "cut" ? { transition: { type: s.transition.type, frames: s.transition.frames } } : {}),
+    ...(s.look ? { look: { type: s.look.type, vignette: !!s.look.vignette } } : {}),
     ...(Array.isArray(s.keys) && s.keys.length ? { keys: keysToSession(s.keys) } : {}),
     ...(Array.isArray(s.cycles) && s.cycles.length ? { cycles: cyclesToSession(s.cycles) } : {}),
   }));
@@ -304,6 +321,7 @@ export function sequenceFromSession(raw) {
     const keys = sanitizeKeys(s.keys);
     const cycles = sanitizeCycles(s.cycles);
     const cam = sanitizeCam(s.cam);
+    const look = normLook(s.look);
     let transition = undefined;
     if (out.length > 0 && s.transition && typeof s.transition === "object") {
       const type = s.transition.type;
@@ -330,6 +348,7 @@ export function sequenceFromSession(raw) {
       ...(cycles ? { cycles } : {}),
       ...(cam ? { cam } : {}),
       ...(transition ? { transition } : {}),
+      ...(look ? { look } : {}),
     });
     total += s.durationS;
   }
