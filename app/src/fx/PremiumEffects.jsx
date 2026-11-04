@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { registerFx } from "./fxClock";
 import * as garageStore from "../garage/garageStore";
 import { FIREWORK, PALETTES, burstInfo, burstLocalTime, sparkPoint } from "./fireworkMath.js";
 
@@ -236,27 +237,25 @@ function PremiumEffectMesh({ effect, kind }) {
     [geometry, material]
   );
 
-  const clock = useRef(0);
   const v = useMemo(() => new THREE.Vector3(), []);
   const c = useMemo(() => ({}), []);
 
-  useFrame((_, dt) => {
-    clock.current += Math.min(dt, 0.1);
+  useEffect(() => registerFx((t) => {
     const { position: pos, color: col, aScale } = geometry.attributes;
     for (let i = 0; i < kind.count; i++) {
-      kind.at(i, clock.current, rand, v);
+      kind.at(i, t, rand, v);
       pos.setXYZ(i, v.x * effect.size, v.y * effect.size, v.z * effect.size);
       if (kind.look) {
         c.r = c.g = c.b = c.a = c.s = 1;
-        kind.look(i, clock.current, rand, c);
+        kind.look(i, t, rand, c);
         col.setXYZW(i, c.r, c.g, c.b, Math.max(0, c.a));
         aScale.setX(i, c.s);
       }
     }
     pos.needsUpdate = true;
     if (kind.look) col.needsUpdate = aScale.needsUpdate = true;
-    material.size = kind.material.size * effect.size * (effect.type === "bokeh" ? (0.9 + 0.25 * Math.sin(clock.current * 1.5)) : 1);
-  });
+    material.size = kind.material.size * effect.size * (effect.type === "bokeh" ? (0.9 + 0.25 * Math.sin(t * 1.5)) : 1);
+  }), [geometry, kind, effect.size, effect.type, material, rand, v, c]);
 
   return <points geometry={geometry} material={material} position={effect.position} frustumCulled={false} />;
 }
@@ -320,8 +319,9 @@ function LogoRevealEffect({ effect }) {
     smokeTexture.dispose();
   }, [ringGeometry, emberGeometry, ringMaterial, emberMaterial, smokeMats, smokeTexture]);
 
-  useFrame(({ camera }, dt) => {
-    const elapsed = (clock.current += Math.min(dt, 0.1));
+  const { camera } = useThree();
+  useEffect(() => registerFx((t) => {
+    const elapsed = t;
     const centerY = effect.position[1] + 0.02 + LOGOREVEAL_RING_MAX_RADIUS * effect.size;
     if (groupRef.current) {
       groupRef.current.position.set(effect.position[0], centerY, effect.position[2]);
@@ -385,7 +385,7 @@ function LogoRevealEffect({ effect }) {
       sprite.scale.setScalar(0.2 + (1 - alpha) * 0.7 + idx * 0.01);
       sprite.position.set(Math.cos(angle) * radius, lift, Math.sin(angle) * radius);
     });
-  });
+  }), [camera, randRing, ringGeometry, emberGeometry, ringMaterial, emberMaterial, smokeMats, effect.size, effect.position, resetPoint]);
 
   return (
     <group ref={groupRef}>
@@ -466,7 +466,8 @@ export function LogoRevealAttached({ item }) {
     smokeTexture.dispose();
   }, [ringGeometry, emberGeometry, ringMaterial, emberMaterial, smokeMats, smokeTexture]);
 
-  useFrame(({ camera }, dt) => {
+  const { camera } = useThree();
+  useEffect(() => registerFx((t) => {
     const group = groupRef.current;
     if (!group) return;
 
@@ -483,7 +484,7 @@ export function LogoRevealAttached({ item }) {
       return;
     }
 
-    const elapsed = (clock.current += Math.min(dt, 0.1));
+    const elapsed = t;
     const parent = group.parent;
     if (parent && parent.matrixWorld) {
       const parentWorldQuat = new THREE.Quaternion().setFromRotationMatrix(parent.matrixWorld);
@@ -553,7 +554,7 @@ export function LogoRevealAttached({ item }) {
       sprite.scale.setScalar((0.2 + (1 - alpha) * 0.7 + idx * 0.01) * scaleFactor);
       sprite.position.set(Math.cos(angle) * radius * localScale * scaleFactor, lift * localScale * scaleFactor, Math.sin(angle) * radius * localScale * scaleFactor);
     });
-  });
+  }), [camera, randRing, ringGeometry, emberGeometry, ringMaterial, emberMaterial, smokeMats, localScale]);
 
   return (
     <group ref={groupRef} visible={false}>
@@ -644,14 +645,14 @@ function FireworksEffect({ effect }) {
     [flashGeometry, flashMaterial, sparkGeometry, sparkMaterial]
   );
 
-  useFrame((_, dt) => {
-    clock.current += Math.min(dt, 0.1);
+  useEffect(() => registerFx((t) => {
+    const elapsed = t;
     const sparkPos = sparkGeometry.attributes.position;
     const sparkCol = sparkGeometry.attributes.color;
     let index = 0;
     for (let b = 0; b < FIREWORK.BURSTS; b++) {
-      const burst = burstInfo(b, Math.floor(clock.current / FIREWORK.CYCLE), burstSeed);
-      const cyc = clock.current % FIREWORK.CYCLE;
+      const burst = burstInfo(b, Math.floor(elapsed / FIREWORK.CYCLE), burstSeed);
+      const cyc = elapsed % FIREWORK.CYCLE;
       for (let i = 0; i < FIREWORK.SPARKS; i++) {
         for (let k = 0; k < FIREWORK.TRAIL; k++) {
           const trailBase = (cyc - burst.start + FIREWORK.CYCLE) % FIREWORK.CYCLE;
@@ -672,9 +673,9 @@ function FireworksEffect({ effect }) {
     const flashPos = flashGeometry.attributes.position;
     const flashCol = flashGeometry.attributes.color;
     for (let b = 0; b < FIREWORK.BURSTS; b++) {
-      const burst = burstInfo(b, Math.floor(clock.current / FIREWORK.CYCLE), burstSeed);
-      const cyc = clock.current % FIREWORK.CYCLE;
-      const local = burstLocalTime(clock.current, b, burstSeed);
+      const burst = burstInfo(b, Math.floor(elapsed / FIREWORK.CYCLE), burstSeed);
+      const cyc = elapsed % FIREWORK.CYCLE;
+      const local = burstLocalTime(elapsed, b, burstSeed);
       const alpha = local < 0.12 && local >= 0 ? 1 - local / 0.12 : 0;
       const rgba = palette[burst.hue];
       flashPos.setXYZ(b, effect.position[0] + burst.x * effect.size, effect.position[1] + burst.y * effect.size, effect.position[2] + burst.z * effect.size);
@@ -685,11 +686,11 @@ function FireworksEffect({ effect }) {
     flashMaterial.size = 0.34 * effect.size;
 
     if (lightRef.current) {
-      const pulse = 0.1 + Math.max(0, Math.sin(clock.current * 12)) * 0.5;
+      const pulse = 0.1 + Math.max(0, Math.sin(elapsed * 12)) * 0.5;
       lightRef.current.intensity = pulse;
       lightRef.current.position.set(effect.position[0], effect.position[1] + 0.2, effect.position[2]);
     }
-  });
+  }), [sparkGeometry, sparkMaterial, flashGeometry, flashMaterial, burstSeed, effect.position, effect.size, palette, tmp]);
 
   return (
     <>
@@ -737,20 +738,19 @@ export default function PremiumEffects({ effect }) {
   const lightRef = useRef(null);
   const pulseRef = useRef(0);
 
-  useFrame((_, dt) => {
+  useEffect(() => registerFx((t) => {
     if (!glowRef.current && !lightRef.current) return;
-    pulseRef.current += Math.min(dt, 0.1);
-    const pulse = 1 + 0.04 * Math.sin(pulseRef.current * 2.2 + effect.position[0] * 2);
+    const pulse = 1 + 0.04 * Math.sin(t * 2.2 + effect.position[0] * 2);
     if (glowRef.current) {
       glowRef.current.scale.setScalar(pulse);
       glowRef.current.material.opacity = 0.14 + 0.05 * pulse;
     }
     if (lightRef.current && (effect.type === "diyas" || effect.type === "sparkshower")) {
-      const flicker = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(pulseRef.current * 3.5 + effect.position[2] * 2.1));
+      const flicker = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(t * 3.5 + effect.position[2] * 2.1));
       lightRef.current.intensity = flicker;
       lightRef.current.position.set(effect.position[0], effect.position[1] + 0.25, effect.position[2]);
     }
-  });
+  }), [effect.position, effect.type]);
 
   useEffect(() => {
     if (effect.type !== "diyas" && effect.type !== "sparkshower") return undefined;

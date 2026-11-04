@@ -67,6 +67,7 @@ import { getPosterSpec, posterAspectOk, drawPoster, ensureLogoImage } from "../p
 import { endHoldS, setPreviewClock } from "../poster/branding.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { setCurrentShot } from "../fx/shotGate";
+import { setReelTime, tickFx } from "../fx/fxClock";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { FilmPass } from "three/examples/jsm/postprocessing/FilmPass.js";
@@ -1447,6 +1448,7 @@ function StudioStage({
     ({ restore = true } = {}) => {
       const run = animRunRef.current;
       setCurrentShot(null);
+      setReelTime(null);
       if (!run) return false;
       animRunRef.current = null;
       if (run.prevFit) liveFitRef.current = run.prevFit;
@@ -1642,6 +1644,7 @@ function StudioStage({
     ({ restoreCamera, render }) => {
       const run = exportRunRef.current;
       setCurrentShot(null);
+      setReelTime(null);
       if (!run) return false;
       exportRunRef.current = null;
       if (run.prevFit) liveFitRef.current = run.prevFit;
@@ -1978,6 +1981,8 @@ function StudioStage({
           }
           if (run.keyed) applyKeyed(run.keyed, at.index, at.local);
         }
+        setReelTime(t);
+        tickFx(t);
         invalidateShadowMap(gl);
         // Slice C2: cover-cropped backdrop for portrait / square frames, restored
         // in the same synchronous call (nothing to undo on abort or unmount).
@@ -2555,6 +2560,8 @@ function StudioStage({
         run.shotIndex = at.index;
         animation.reportShot(at.index);
       }
+      setReelTime(ts);
+      tickFx(ts);
       // Slice C3a: the shot's keys pose the keyed objects
       if (run.keyed) {
         applyKeyed(run.keyed, at.index, at.local);

@@ -5,6 +5,8 @@ import * as effectsStore from "./effectsStore";
 import PremiumEffects from "./PremiumEffects";
 import { getCurrentShot, isVisibleInShot, subscribeShot } from "./shotGate";
 
+import { registerFx, getReelTime, tickFx } from "./fxClock";
+
 /* The placed 3D effects (effectsStore.js). Almost every one is a point-sprite
    system driven by the frame clock, so the export (which steps every frame
    effect by one export frame) renders them exactly like the live view. The one
@@ -545,27 +547,25 @@ function Effect({ effect }) {
     },
     [geometry, material]
   );
-  const clock = useRef(0);
   const v = useMemo(() => new THREE.Vector3(), []);
   const c = useMemo(() => ({}), []);
-  useFrame((_, dt) => {
-    clock.current += Math.min(dt, 0.1);
+  useEffect(() => registerFx((t) => {
     const { position: pos, color: col, aScale } = geometry.attributes;
     for (let i = 0; i < kind.count; i++) {
-      kind.at(i, clock.current, rand, v);
+      kind.at(i, t, rand, v);
       pos.setXYZ(i, v.x * effect.size, v.y * effect.size, v.z * effect.size);
       if (kind.look) {
         c.r = c.g = c.b = c.a = c.s = 1;
-        kind.look(i, clock.current, rand, c);
+        kind.look(i, t, rand, c);
         col.setXYZW(i, c.r, c.g, c.b, Math.max(0, c.a));
         aScale.setX(i, c.s);
       }
     }
     pos.needsUpdate = true;
     if (kind.look) col.needsUpdate = aScale.needsUpdate = true;
-    if (effect.type === "bats") material.size = kind.material.size * effect.size * (0.8 + 0.25 * Math.abs(Math.sin(clock.current * 9)));
+    if (effect.type === "bats") material.size = kind.material.size * effect.size * (0.8 + 0.25 * Math.abs(Math.sin(t * 9)));
     else material.size = kind.material.size * (kind.linear || effect.type === "fog" ? effect.size : Math.sqrt(effect.size));
-  });
+  }), [geometry, kind, effect.size, effect.type, material, rand, v, c]);
   return <points geometry={geometry} material={material} position={effect.position} frustumCulled={false} />;
 }
 
@@ -586,6 +586,14 @@ function EffectGate({ effect, children }) {
 
 export default function EffectsLayer() {
   const { effects } = useSyncExternalStore(effectsStore.subscribe, effectsStore.getSnapshot, effectsStore.getSnapshot);
+  const liveT = useRef(0);
+  useFrame((_, dt) => {
+    if (getReelTime() === null) {
+      liveT.current += Math.min(dt, 0.1);
+      tickFx(liveT.current);
+    }
+  });
+
   return (
     <>
       {effects.map((e) => {
