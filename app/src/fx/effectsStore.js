@@ -26,6 +26,11 @@ export const EFFECT_TYPES = Object.freeze({
   petals: { label: "Cherry petals", hint: "pink blossom petals drifting down" },
   stars: { label: "Night stars", hint: "twinkling stars overhead" },
   lanterns: { label: "Sky lanterns", hint: "warm glowing lanterns floating up" },
+  diyas: { label: "Diyas", hint: "warm glowing lamps on the ground" },
+  bokeh: { label: "Bokeh glow", hint: "soft warm light discs drifting around the bike" },
+  sparkshower: { label: "Spark shower", hint: "bright sparks raining upward and outward" },
+  fireworks: { label: "Fireworks", hint: "sky bursts of glowing sparks behind the bike" },
+  logoreveal: { label: "Logo reveal", hint: "fire ring, embers and smoke around a logo; place the BBQ Ride Logo prop in the middle" },
 });
 export const MAX_EFFECTS = 20;
 

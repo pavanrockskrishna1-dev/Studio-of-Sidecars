@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import * as effectsStore from "./effectsStore";
+import PremiumEffects from "./PremiumEffects";
 
 /* The placed 3D effects (effectsStore.js). Almost every one is a point-sprite
    system driven by the frame clock, so the export (which steps every frame
@@ -571,9 +572,11 @@ export default function EffectsLayer() {
   const { effects } = useSyncExternalStore(effectsStore.subscribe, effectsStore.getSnapshot, effectsStore.getSnapshot);
   return (
     <>
-      {effects.map((e) =>
-        e.type === "snowground" ? <SnowGround key={e.id} effect={e} /> : <Effect key={e.id} effect={e} />
-      )}
+      {effects.map((e) => {
+        if (e.type === "snowground") return <SnowGround key={e.id} effect={e} />;
+        if (e.type === "diyas" || e.type === "bokeh" || e.type === "sparkshower" || e.type === "fireworks" || e.type === "logoreveal") return <PremiumEffects key={e.id} effect={e} />;
+        return <Effect key={e.id} effect={e} />;
+      })}
     </>
   );
 }

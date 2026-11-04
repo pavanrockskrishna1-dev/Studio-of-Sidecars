@@ -25,6 +25,7 @@ import * as effectsStore from "../fx/effectsStore";
 import PlacedLights from "../fx/PlacedLights";
 import { createLook } from "../fx/exportLook";
 import * as lookStore from "../fx/lookStore";
+import { LogoRevealHost } from "../fx/PremiumEffects";
 import { posterCapture, registerPosterApi } from "../utils/posterCapture";
 import LidAnimator from "../fx/LidAnimator";
 import * as THREE from "three";
@@ -4237,6 +4238,7 @@ function StudioStage({
         <AnimeOverlay />
         <OccasionFog />
         <EffectsLayer />
+        <LogoRevealHost />
         <group ref={pivotRef}>
           <group ref={pivotOffsetRef}>
             <primitive object={modelScene} />
