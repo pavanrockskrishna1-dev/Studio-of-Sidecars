@@ -3598,6 +3598,63 @@ the sheet; lift them to the sheet text colour (>= 4.5:1). */
   line-height: 1.4;
 }
 
+/* AI Reel Builder: four numbered steps. Colours come from the sheet theme (cream paper, ink),
+   so the text stays readable on the light sheet. */
+.ai-lead { font-size: 12px; line-height: 1.5; color: var(--manga-ink, #111); opacity: 0.8; margin: 0 0 2px; }
+.ai-lead strong { opacity: 1; }
+.ai-keyrow { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.ai-step { display: flex; gap: 10px; margin-top: 12px; }
+.ai-step-num {
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--manga-ink, #111);
+  color: var(--manga-panel, #f5f0e8);
+  font-size: 11px; font-weight: 700;
+  margin-top: 1px;
+}
+.ai-step-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ai-step-title { font-size: 12px; font-weight: 700; color: var(--manga-ink, #111); letter-spacing: 0.02em; }
+.ai-key-saved { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--manga-ink, #111); }
+.ai-link-btn {
+  background: none; border: none; padding: 0;
+  color: var(--manga-ink, #111); font-size: 12px; cursor: pointer; text-decoration: underline;
+}
+.ai-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-hint { color: var(--manga-ink, #111); opacity: 0.65; }
+.ai-product-badge, .ai-product-badge strong { color: var(--manga-ink, #111); }
+.ai-proptags { display: flex; flex-wrap: wrap; gap: 4px; }
+.ai-proptag {
+  font-size: 11px; line-height: 1.2;
+  padding: 3px 8px;
+  border: 1.5px solid var(--manga-ink, #111);
+  border-radius: 999px;
+  color: var(--manga-ink, #111);
+  background: var(--manga-panel-2, #e9e1d2);
+}
+.ai-propshelf { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; max-height: 320px; overflow: auto; }
+.ai-suggest { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.ai-suggest-title, .ai-addon-label { font-size: 11px; font-weight: 700; color: var(--manga-ink, #111); opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em; }
+.ai-suggest-list { display: flex; flex-direction: column; gap: 4px; }
+.ai-suggest-item {
+  text-align: left;
+  font-size: 12px; line-height: 1.35;
+  padding: 6px 9px;
+  border: 1.5px solid var(--manga-ink, #111);
+  border-radius: 6px;
+  background: var(--manga-panel, #f5f0e8);
+  color: var(--manga-ink, #111);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ai-suggest-item:hover:not(:disabled) { background: var(--manga-panel-2, #e9e1d2); }
+.ai-suggest-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-addon-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ai-addon-label { min-width: 44px; }
+.ai-result-main { display: flex; flex-direction: column; gap: 4px; }
+.ai-result-next { opacity: 0.7; font-size: 11px; }
+
 /* ── Reel Templates ────────────────────────────────────────── */
 .reel-templates {
   padding: 10px 14px 4px;

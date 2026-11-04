@@ -395,14 +395,12 @@ const SCENES = {
 export default function OccasionBackground() {
   const { occasionId } = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  if (occasionId === 'none') {
-    return <div style={{ ...WRAP, background: '#050505' }} aria-hidden="true" />;
-  }
+  // "No theme" (or an id with no scene) draws no layer. WRAP sits above the WebGL
+  // canvas (z-index 5), so a solid fill here would cover the whole 3D view.
+  if (occasionId === 'none') return null;
 
   const Scene = SCENES[occasionId];
-  if (!Scene) {
-    return <div style={{ ...WRAP, background: '#050505' }} aria-hidden="true" />;
-  }
+  if (!Scene) return null;
 
   return (
     <div style={WRAP} aria-hidden="true">

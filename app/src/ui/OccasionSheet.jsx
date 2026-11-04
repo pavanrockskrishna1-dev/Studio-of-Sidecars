@@ -25,7 +25,8 @@ import { PROPS } from '../products/props';
 // occasions with a matching Look (Light → Look); others keep the current look
 const OCCASION_LOOKS = { halloween: 'moonlit', diwali: 'sunset' };
 
-function applyOccasion(id) {
+// eslint-disable-next-line react-refresh/only-export-components
+export function applyOccasion(id) {
   const occ = getOccasion(id);
   setOccasion(id);
   if (OCCASION_LOOKS[id]) setLookPreset(OCCASION_LOOKS[id]);

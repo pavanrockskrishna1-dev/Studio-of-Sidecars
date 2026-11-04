@@ -1,20 +1,21 @@
 /* ==========================================================================
    Slice U2 - which Reel sheet section is open (new file, UI ONLY)
    --------------------------------------------------------------------------
-   The Reel sheet has five collapsible sections (Shots, Keys, Cycles, Branding
+   The Reel sheet has collapsible sections (AI Reel Builder, Shots, Keys, Cycles, Branding
    (Slice R1), Export);
    only ONE is open at a time (opening one closes the others, clicking the open
    one closes it, so "none" is a state too). The choice is remembered for the
    session: it is held here at module level (the sheet itself unmounts when it
    is closed) and mirrored to sessionStorage, which keeps it across a reload of
    the tab. Every storage access is guarded: without storage the choice still
-   holds for this page. Default: Shots.
+   holds for this page. Default: the AI Reel Builder.
    ========================================================================== */
 
 // every <ReelSection id> in the Reel sheet must be listed here, or opening it
-// falls back to Shots
-export const REEL_SECTIONS = Object.freeze(["shots", "director", "keys", "cycles", "branding", "shotseq", "export"]);
+// falls back to the default (the AI Reel Builder)
+export const REEL_SECTIONS = Object.freeze(["builder", "shots", "director", "keys", "cycles", "branding", "shotseq", "export"]);
 const STORAGE_KEY = "sos-reel-section";
+const DEFAULT_SECTION = "builder";
 
 function readStored() {
   try {
@@ -23,10 +24,10 @@ function readStored() {
   } catch {
     /* storage unavailable: use the default */
   }
-  return "shots";
+  return DEFAULT_SECTION;
 }
 
-let openSection = typeof window === "undefined" ? "shots" : readStored();
+let openSection = typeof window === "undefined" ? DEFAULT_SECTION : readStored();
 const listeners = new Set();
 
 export function subscribe(fn) {
@@ -37,7 +38,7 @@ export function subscribe(fn) {
 export const getSnapshot = () => openSection;
 
 export function setOpenSection(id) {
-  const next = id === "none" || REEL_SECTIONS.includes(id) ? id : "shots";
+  const next = id === "none" || REEL_SECTIONS.includes(id) ? id : DEFAULT_SECTION;
   if (next === openSection) return;
   openSection = next;
   try {

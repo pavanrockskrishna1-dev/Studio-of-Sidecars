@@ -13,6 +13,8 @@ import BrandArt from "./BrandArt";
 import PostStudio from "./PostStudio";
 import CaptionGen from "./CaptionGen";
 import AiScenePanel from "./AiScenePanel";
+import ReelSection from "./ReelSection";
+import QuickOccasionSets from "./QuickOccasionSets";
 import {
   AnimatePanel,
   CameraFraming,
@@ -247,12 +249,11 @@ export function ReelBody() {
 }
 
 // The Instagram caption generator moved here from InspectorRail, which is no
-// longer mounted.
+// longer mounted. The AI Reel Builder (the old AI Scene Builder) moved to the
+// top of the Reel sheet (see ReelSectionBody), so it appears in one place only.
 export function AiBody({ productId }) {
   return (
     <>
-      <AiScenePanel productId={productId} />
-      <div className="sos2-sheet-divider" aria-hidden="true" />
       <span className="sos2-sheet-subhead">Instagram Captions</span>
       <CaptionGen productId={productId} />
     </>
@@ -320,9 +321,15 @@ export function CreateBody({ productId }) {
 
 // Motion Lab is a full-screen overlay owned by StudioShell, not a sheet, so the
 // Reel section carries its toggle.
-export function ReelSectionBody({ motionLabOpen, onToggleMotionLab }) {
+export function ReelSectionBody({ motionLabOpen, onToggleMotionLab, productId }) {
   return (
     <>
+      <ReelSection id="builder" title="AI Reel Builder" summary="Describe it, then build">
+        <AiScenePanel productId={productId} />
+        <div className="sos2-sheet-divider" aria-hidden="true" />
+        <QuickOccasionSets productId={productId} />
+      </ReelSection>
+      <div className="sos2-sheet-divider" aria-hidden="true" />
       <button
         type="button"
         className="sos2-btn sos2-btn-primary sos2-motionlab-toggle"

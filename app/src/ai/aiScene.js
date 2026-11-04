@@ -201,8 +201,186 @@ Respond with ONLY a valid JSON object. No markdown fences. No explanation. No co
 }`;
 }
 
+/* ===================== "Use my scene" mode (keep the scene) =====================
+   The person picks the stage and the props first; the builder then only DIRECTS
+   the reel with what is already there: camera shots, grade, look, a few extra
+   effects and motion on the props that exist. It never adds, moves or removes
+   a prop and never changes the stage. */
+
+const round2 = (n) => Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
+
+// What is on the stage right now, for the builder's brief and its suggestion bar.
+export function readScene() {
+  const hasLayout = garageStore.getSnapshot().hasLayout;
+  const layout = hasLayout ? garageStore.getLayout() : null;
+  const props = [];
+  if (layout) {
+    for (const item of layout.items) {
+      if (item.primary || item.hidden) continue;
+      const def = PROPS.find((p) => p.id === item.assetId);
+      const t = item.transform || {};
+      props.push({
+        itemId: item.itemId,
+        assetId: item.assetId,
+        name: def ? def.name : item.assetId,
+        position: [round2(t.x), round2(t.y), round2(t.z)],
+      });
+    }
+  }
+  return {
+    stage: stageLook.getSnapshot().look,
+    occasion: occasionStore.getSnapshot().occasionId,
+    props,
+    effectCount: effectsStore.getSnapshot().effects.length,
+  };
+}
+
+function buildKeepScenePrompt(userText, context = {}) {
+  const productName = context.productName ?? "BBQ Bike";
+  const scene = context.scene ?? readScene();
+  const effectList = Object.entries(EFFECT_TYPES).map(([k, v]) => `  ${k} — ${v.label}`).join("\n");
+  const propLines = scene.props.length
+    ? scene.props.map((p, i) => `  ${i}: ${p.name} at [${p.position.join(", ")}]`).join("\n")
+    : "  (no props placed)";
+  const occasion = scene.occasion && scene.occasion !== "none" ? `, occasion: ${scene.occasion}` : "";
+
+  return `You are an award-winning commercial director specialising in short, emotional product reels.
+
+The person has ALREADY built the scene. Do NOT add, move or remove props and do NOT change the stage.
+Your job is to direct the reel using exactly what is on the stage.
+
+Product on stage: "${productName}" at [0, 0, 0]. Positive Z is towards the camera.
+Stage: ${scene.stage}${occasion}
+Props on the stage (index: name at [x, y, z]):
+${propLines}
+
+Director's brief: "${userText}"
+
+====================
+THE REEL
+====================
+
+- 3 shots, 16 to 20 seconds in total (4 shots, up to 28 s, only if the brief truly needs it).
+- Act 1 ESTABLISH (8 s): a wider or lower shot that sets the mood.
+- Act 2 REVEAL (8 s): the product with personality (orbit or slide).
+- Act 3 DESIRE (4 s): a closer, more intimate shot.
+- Never repeat the same camera move. If the brief names a prop or a side, pick start views that show it
+  (props with a positive X are on the bike's right, negative X on its left).
+
+====================
+MOOD AND LIGHT
+====================
+
+Grade: raw | warm | moody | cinema
+Look Preset: off | moonlit | sunset | studio
+Pair it with the stage: night -> moonlit or studio; day -> sunset or off; studio -> studio or sunset.
+
+====================
+EFFECTS (optional, 0 to 2, added to what is there)
+====================
+
+${effectList}
+Place them beside or behind the product (x = ±2.5 to ±4.5, z = -1 to -2.5, y = 0 to 0.5), size 0.6 to 1.2.
+Do not put an effect on top of a prop.
+
+====================
+PROP MOTION (optional, 0 to 2)
+====================
+
+Use only the prop indexes listed above.
+  bob — gentle float (food, lanterns) | spin — slow turn (wheels, orbs) | sway — soft pendulum | pulse — gentle breathing (a hero prop or fire)
+
+Camera moves: turntable | orbit | push-in | pull-back | slide | crane
+Start views: Front | Side | 3/4 | Rear | Top | Low Hero
+Shot durations: 4 | 8 | 12 (seconds only)
+
+====================
+OUTPUT
+====================
+
+Respond with ONLY a valid JSON object. No markdown fences. No explanation. No trailing commas.
+
+{
+  "note": "<one plain sentence, 20 words at most, saying the idea of the reel>",
+  "grade": "<raw|warm|moody|cinema>",
+  "lookPreset": "<off|moonlit|sunset|studio>",
+  "effects": [ { "type": "<effectType>", "position": [x, y, z], "size": <number> } ],
+  "reel": { "shots": [ { "move": "<move>", "startView": "<startView>", "durationS": <4|8|12> } ] },
+  "propCycles": [ { "propIndex": <index from the list>, "type": "<bob|spin|sway|pulse>", "amplitude": <number>, "period": <number> } ]
+}`;
+}
+
+const VALID_MOVES_KEEP = ["turntable", "orbit", "push-in", "pull-back", "slide", "crane"];
+const VALID_VIEWS_KEEP = ["Front", "Side", "3/4", "Rear", "Top", "Low Hero", "custom"];
+const VALID_DURATIONS_KEEP = [4, 8, 12];
+const VALID_CYCLES_KEEP = ["spin", "bob", "sway", "pulse"];
+
+function shotFields(s) {
+  return {
+    move: VALID_MOVES_KEEP.includes(s?.move) ? s.move : "orbit",
+    startView: VALID_VIEWS_KEEP.includes(s?.startView) ? s.startView : "3/4",
+    durationS: VALID_DURATIONS_KEEP.includes(s?.durationS) ? s.durationS : 8,
+  };
+}
+
+// Applies a "keep my scene" answer. Returns the text for the result card.
+function applyKeepScene(config, scene) {
+  if (["raw", "warm", "moody", "cinema"].includes(config.grade)) gradeStore.setGrade(config.grade);
+  if (["off", "moonlit", "sunset", "studio"].includes(config.lookPreset)) {
+    const bad = (scene.stage === "night" && config.lookPreset === "sunset") || (scene.stage === "day" && config.lookPreset === "moonlit");
+    if (!bad) lookStore.setLookPreset(config.lookPreset);
+  }
+
+  // effects are ADDED to the ones already placed (at most 2 new ones)
+  const stageApi = garageMode.apiRef.current;
+  const floorY = stageApi && typeof stageApi.getFloorY === "function" ? stageApi.getFloorY() : 0;
+  if (Array.isArray(config.effects)) {
+    for (const effect of config.effects.slice(0, 2)) {
+      if (!effect || !effect.type) continue;
+      const pos = Array.isArray(effect.position) ? effect.position : [0, 0, 0];
+      const r = effectsStore.addEffect(effect.type, [pos[0] ?? 0, floorY + Math.max(0, Math.min(0.5, pos[1] ?? 0)), pos[2] ?? 0]);
+      if (r.ok && typeof effect.size === "number") {
+        const list = effectsStore.getSnapshot().effects;
+        const added = list[list.length - 1];
+        if (added) effectsStore.setEffectSize(added.id, Math.max(0.4, Math.min(1.6, effect.size)));
+      }
+    }
+  }
+
+  // the Reel
+  if (Array.isArray(config.reel?.shots) && config.reel.shots.length > 0) {
+    const shots = config.reel.shots.slice(0, 4);
+    animationStore.resetSequence();
+    animationStore.setShot(0, shotFields(shots[0]));
+    for (let i = 1; i < shots.length; i++) {
+      if (!animationStore.addShot().ok) break;
+      animationStore.setShot(i, shotFields(shots[i]));
+    }
+  }
+
+  // motion on the props that really exist
+  let cycles = 0;
+  if (Array.isArray(config.propCycles)) {
+    for (const pc of config.propCycles.slice(0, 2)) {
+      if (!pc || !VALID_CYCLES_KEEP.includes(pc.type) || !Number.isInteger(pc.propIndex)) continue;
+      const prop = scene.props[pc.propIndex];
+      if (!prop) continue;
+      const { propIndex: _pi, ...fields } = pc;
+      if (animationStore.addCycle(0, { ...fields, target: prop.itemId, assetId: prop.assetId }).ok !== false) cycles += 1;
+    }
+  }
+
+  const sequence = animationStore.getSnapshot().sequence;
+  const moves = sequence.map((s) => s.move).join(" → ");
+  const kept = `kept your ${scene.props.length} prop${scene.props.length === 1 ? "" : "s"} and the ${scene.stage} stage`;
+  const note = typeof config.note === "string" && config.note.trim() ? `\n${config.note.trim().slice(0, 160)}` : "";
+  return `✦ Reel directed · ${sequence.length} shot${sequence.length === 1 ? "" : "s"} (${moves}) · ${cycles} prop motion${cycles === 1 ? "" : "s"} · ${kept}${note}`;
+}
+
 export async function buildScene(prompt, apiKey, context = {}) {
   set({ busy: true, error: null, result: null });
+  const keepScene = context.keepScene === true;
+  const sceneNow = keepScene ? (context.scene ?? readScene()) : null;
   try {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -217,7 +395,7 @@ export async function buildScene(prompt, apiKey, context = {}) {
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: "You are a JSON-only API. Output only a single valid JSON object. No markdown, no prose, no thinking tags." },
-          { role: "user", content: buildPrompt(prompt, context) },
+          { role: "user", content: keepScene ? buildKeepScenePrompt(prompt, { ...context, scene: sceneNow }) : buildPrompt(prompt, context) },
         ],
       }),
     });
@@ -240,6 +418,11 @@ export async function buildScene(prompt, apiKey, context = {}) {
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("No JSON found in response.");
       config = JSON.parse(match[0]);
+    }
+
+    if (keepScene) {
+      set({ busy: false, error: null, result: applyKeepScene(config, sceneNow) });
+      return;
     }
 
     const { config: cleanConfig, skippedIds } = validateAndClamp(config);

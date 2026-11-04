@@ -152,7 +152,11 @@ export default function StudioShell() {
         return <CreateBody productId={assets.productId} />;
       case "reel":
         return (
-          <ReelSectionBody motionLabOpen={motionLabOpen} onToggleMotionLab={() => setMotionLabOpen((v) => !v)} />
+          <ReelSectionBody
+            motionLabOpen={motionLabOpen}
+            onToggleMotionLab={() => setMotionLabOpen((v) => !v)}
+            productId={assets.productId}
+          />
         );
       case "export":
         return <ExportBody session={session} />;
