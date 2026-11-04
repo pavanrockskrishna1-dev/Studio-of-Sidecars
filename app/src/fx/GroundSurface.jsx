@@ -52,7 +52,7 @@ function FireGlass({ floorY, cx, cz, radius }) {
 
 export default function GroundSurface({ surface, floorY = 0, center, radius = 40 }) {
   const def = GROUND_SURFACES[surface] || GROUND_SURFACES.soil;
-  const set = def.textured ? groundTextureSet(surface) : null;
+  const set = def.textured || def.procedural ? groundTextureSet(surface) : null;
 
   const material = useMemo(() => {
     if (!set) return new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.88, metalness: 0 });

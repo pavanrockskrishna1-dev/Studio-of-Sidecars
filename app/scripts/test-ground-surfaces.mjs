@@ -36,8 +36,17 @@ for (const id of GROUND_IDS) {
   check(`${id}: has a swatch colour`, /^#[0-9a-f]{6}$/i.test(def.swatch), def.swatch);
 }
 
-check("isGroundId rejects an unknown id", !isGroundId("marble"));
+check("isGroundId rejects an unknown id", !isGroundId("marblezzz"));
 check("isGroundId rejects empty/undefined", !isGroundId() && !isGroundId(""));
+
+const proceduralIds = GROUND_IDS.filter((id) => GROUND_SURFACES[id].procedural);
+check("there are exactly six procedural grounds", proceduralIds.length === 6);
+for (const id of proceduralIds) {
+  const def = GROUND_SURFACES[id];
+  check(`${id}: procedural flag is enabled`, !!def.procedural);
+  check(`${id}: procedural ground has a valid tileMeters`, typeof def.tileMeters === "number" && def.tileMeters > 0.3 && def.tileMeters < 10, String(def.tileMeters));
+  check(`${id}: procedural ground has a swatch colour`, /^#[0-9a-f]{6}$/i.test(def.swatch), def.swatch);
+}
 
 check('DEFAULT_GROUND.night is "soil" (unchanged from before Day stage existed)', DEFAULT_GROUND.night === "soil");
 check("DEFAULT_GROUND.day is a real, textured ground surface", isGroundId(DEFAULT_GROUND.day) && GROUND_SURFACES[DEFAULT_GROUND.day].textured);
@@ -61,7 +70,7 @@ check('switching to a different stage (still no ground given) resets to THAT sta
 stageLook.setStageLook("day", "deck");
 check("an explicit ground on a stage switch is used instead of the default (project/session restore)", stageLook.getSnapshot().look === "day" && stageLook.getSnapshot().ground === "deck");
 
-stageLook.setGround("marble"); // not a real surface
+stageLook.setGround("marblezzz"); // not a real surface
 check("setGround ignores an unknown id", stageLook.getSnapshot().ground === "deck");
 
 stageLook.setStageLook("bogus");
